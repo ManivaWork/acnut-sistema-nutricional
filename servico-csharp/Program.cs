@@ -545,7 +545,7 @@ app.MapPost("/api/planos/item", async (ItemInput input) =>
             (refeicao_id, empresa_id, opcao, substitui_item_id, alimento_nome_livre, quantidade_g, medida_caseira,
              kcal_manual, proteinas_manual, carbos_manual, gorduras_manual, e_substituicao)
         VALUES
-            (@refeicao_id, (SELECT empresa_id FROM refeicoes r JOIN planos_alimentares p ON p.id = r.plano_id WHERE r.id = @refeicao_id), @opcao, @sub, @nome, @qtd, @medida, @kcal, @prot, @carbo, @gord, @e_sub)
+            (@refeicao_id, (SELECT p.empresa_id FROM refeicoes r JOIN planos_alimentares p ON p.id = r.plano_id WHERE r.id = @refeicao_id), @opcao, @sub, @nome, @qtd, @medida, @kcal, @prot, @carbo, @gord, @e_sub)
         RETURNING id;", conn);
 
     cmd.Parameters.AddWithValue("refeicao_id", refeicaoId);
@@ -1308,7 +1308,7 @@ app.MapPost("/api/planos/refeicao/{refeicaoId}/opcao/{opcao}/duplicar", async (i
     INSERT INTO itens_refeicao
     (refeicao_id, empresa_id, opcao, substitui_item_id, alimento_nome_livre, quantidade_g, medida_caseira,
     kcal_manual, proteinas_manual, carbos_manual, gorduras_manual, e_substituicao)
-    VALUES (@r, (SELECT empresa_id FROM refeicoes r JOIN planos_alimentares p ON p.id = r.plano_id WHERE r.id = @r), @o, @sub, @nome, @qtd, @medida, @kcal, @prot, @carbo, @gord, @esub)
+    VALUES (@r, (SELECT r.empresa_id FROM refeicoes r JOIN planos_alimentares p ON p.id = r.plano_id WHERE r.id = @r), @o, @sub, @nome, @qtd, @medida, @kcal, @prot, @carbo, @gord, @esub)
     RETURNING id;", conn, tx);
     cmd.Parameters.AddWithValue("r", refeicaoId);
     cmd.Parameters.AddWithValue("o", novaOpcao);
@@ -1431,7 +1431,7 @@ app.MapPost("/api/planos/versao/{id}/restaurar", async (int id, ClaimsPrincipal 
                 INSERT INTO itens_refeicao
                     (refeicao_id, empresa_id, opcao, substitui_item_id, alimento_nome_livre, quantidade_g, medida_caseira,
                      kcal_manual, proteinas_manual, carbos_manual, gorduras_manual, e_substituicao)
-                VALUES (@r, (SELECT empresa_id FROM refeicoes r JOIN planos_alimentares p ON p.id = r.plano_id WHERE r.id = @r), @o, @sub, @nome, @qtd, @medida, @kcal, @prot, @carbo, @gord, @esub)
+                VALUES (@r, (SELECT r.empresa_id FROM refeicoes r JOIN planos_alimentares p ON p.id = r.plano_id WHERE r.id = @r), @o, @sub, @nome, @qtd, @medida, @kcal, @prot, @carbo, @gord, @esub)
                 RETURNING id;", conn, tx);
             cmdI.Parameters.AddWithValue("r", novaRefeicaoId);
             cmdI.Parameters.AddWithValue("o", it.GetProperty("opcao").GetInt32());
