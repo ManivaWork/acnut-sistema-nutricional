@@ -860,9 +860,24 @@ app.MapPost("/api/metas/acompanhamento", async (AcompanhamentoInput input) =>
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
+
+    // Buscar empresa_id via meta -> paciente
+    int empresaId;
+    using (var cmdEmp = new NpgsqlCommand(@"
+        SELECT p.empresa_id
+        FROM metas_paciente m
+        JOIN pacientes p ON p.id = m.paciente_id
+        WHERE m.id = @metaId", conn))
+    {
+        cmdEmp.Parameters.AddWithValue("metaId", input.MetaId);
+        var result = await cmdEmp.ExecuteScalarAsync();
+        if (result == null) return Results.NotFound(new { mensagem = "Meta não encontrada." });
+        empresaId = Convert.ToInt32(result);
+    }
+
     using var cmd = new NpgsqlCommand(@"
-        INSERT INTO metas_acompanhamento (meta_id, data_acompanhamento, resultado, observacao)
-        VALUES (@meta, @data, @res, @obs) RETURNING id;", conn);
+        INSERT INTO metas_acompanhamento (meta_id, data_acompanhamento, resultado, observacao, empresa_id)
+        VALUES (@meta, @data, @res, @obs, @emp) RETURNING id;", conn);
     cmd.Parameters.AddWithValue("meta", input.MetaId);
     cmd.Parameters.Add(new NpgsqlParameter("data", NpgsqlTypes.NpgsqlDbType.Date)
     {
@@ -870,6 +885,7 @@ app.MapPost("/api/metas/acompanhamento", async (AcompanhamentoInput input) =>
     });
     cmd.Parameters.AddWithValue("res", input.Resultado!);
     cmd.Parameters.AddWithValue("obs", input.Observacao ?? "");
+    cmd.Parameters.AddWithValue("emp", empresaId);
 
     var id = await cmd.ExecuteScalarAsync();
     return Results.Created($"/api/metas/acompanhamento/{id}", new { id, mensagem = "Acompanhamento registrado!" });
@@ -972,11 +988,21 @@ app.MapPost("/api/evolucao", async (HttpRequest request) =>
     await conn.OpenAsync();
     using var tx = await conn.BeginTransactionAsync();
 
+    // Buscar empresa_id do paciente
+    int empresaId;
+    using (var cmdEmp = new NpgsqlCommand("SELECT empresa_id FROM pacientes WHERE id = @pid", conn, tx))
+    {
+        cmdEmp.Parameters.AddWithValue("pid", pacienteId);
+        var result = await cmdEmp.ExecuteScalarAsync();
+        if (result == null) return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+        empresaId = Convert.ToInt32(result);
+    }
+
     using var cmd = new NpgsqlCommand(@"
         INSERT INTO evolucao_registros
             (paciente_id, data_registro, peso_kg, percentual_gordura, cintura_cm, quadril_cm,
-             abdomen_cm, braco_cm, coxa_cm, observacao)
-        VALUES (@p, @data, @peso, @gord, @cint, @quad, @abd, @braco, @coxa, @obs)
+             abdomen_cm, braco_cm, coxa_cm, observacao, empresa_id)
+        VALUES (@p, @data, @peso, @gord, @cint, @quad, @abd, @braco, @coxa, @obs, @emp)
         RETURNING id;", conn, tx);
     cmd.Parameters.AddWithValue("p", pacienteId);
     cmd.Parameters.Add(new NpgsqlParameter("data", NpgsqlTypes.NpgsqlDbType.Date) { Value = c.Data });
@@ -988,6 +1014,7 @@ app.MapPost("/api/evolucao", async (HttpRequest request) =>
     cmd.Parameters.Add(ArquivoHelper.Num("braco", c.Braco));
     cmd.Parameters.Add(ArquivoHelper.Num("coxa", c.Coxa));
     cmd.Parameters.AddWithValue("obs", c.Obs);
+    cmd.Parameters.AddWithValue("emp", empresaId);
     int id = Convert.ToInt32(await cmd.ExecuteScalarAsync());
 
     await ArquivoHelper.Salvar(conn, tx, pacienteId, "evolucao", id, form.Files);
