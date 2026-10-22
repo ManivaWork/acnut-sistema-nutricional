@@ -607,14 +607,14 @@ app.MapDelete("/api/planos/item/{id}", async (int id) =>
 
 // ============================================PLANO ALIMENTAR: LEITURA E VERSÕES===========================================
 // Plano completo (refeições → itens, com opção e substituição)
-app.MapGet("/api/planos/{pacienteId}", async (int pacienteId) =>
+app.MapGet("/api/planos/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
-    return Results.Ok(await PlanoHelper.Montar(connString, pacienteId));
+    return Results.Ok(await PlanoHelper.Montar(connString, pacienteId, Auth.Empresa(user)));
 });
 // Salvar versão (snapshot do plano + orientações)
-app.MapPost("/api/planos/{pacienteId}/versoes", async (int pacienteId, VersaoInput input) =>
+app.MapPost("/api/planos/{pacienteId}/versoes", async (int pacienteId, VersaoInput input, ClaimsPrincipal user) =>
 {
-    var plano = await PlanoHelper.Montar(connString, pacienteId);
+    var plano = await PlanoHelper.Montar(connString, pacienteId, Auth.Empresa(user));
     var refeicoes = (List<Dictionary<string, object?>>)plano["refeicoes"]!;
     if (refeicoes.Count == 0)
         return Results.BadRequest(new { mensagem = "O plano está vazio. Adicione refeições antes de salvar uma versão." });
@@ -1331,7 +1331,7 @@ app.MapPost("/api/planos/refeicao/{refeicaoId}/opcao/{opcao}/duplicar", async (i
 });
 
 // Restaura uma versão (antes, guarda o plano atual como nova versão de segurança)
-app.MapPost("/api/planos/versao/{id}/restaurar", async (int id) =>
+app.MapPost("/api/planos/versao/{id}/restaurar", async (int id, ClaimsPrincipal user) =>
 {
     int pacienteId, numeroOrigem;
     string snapJson;
@@ -1350,7 +1350,7 @@ app.MapPost("/api/planos/versao/{id}/restaurar", async (int id) =>
         snapJson = rd0.GetString(2);
     }
 
-    var atual = await PlanoHelper.Montar(connString, pacienteId);
+    var atual = await PlanoHelper.Montar(connString, pacienteId, Auth.Empresa(user));
     var refeicoesAtuais = (List<Dictionary<string, object?>>)atual["refeicoes"]!;
 
     using var conn = new NpgsqlConnection(connString);
@@ -1633,15 +1633,17 @@ app.MapGet("/api/convites/info/{token}", async (string token) =>
     return Results.NotFound(new { mensagem = "Convite não encontrado ou expirado." });
 });
 
-// POST /api/onboarding - Criar primeira empresa + super-admin (sem auth, só se 0 usuários)
+// POST /api/onboarding - Criar primeira empresa + super-admin (sem auth, só se 0 usuários e 0 empresas)
 app.MapPost("/api/onboarding", async (OnboardingInput input) =>
 {
-    // Verificar se já existem usuários
+    // Verificar se já existem usuários OU empresas
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
-    using (var check = new NpgsqlCommand("SELECT COUNT(*) FROM usuarios", conn))
+    using (var checkUsers = new NpgsqlCommand("SELECT COUNT(*) FROM usuarios", conn))
+    using (var checkEmpresas = new NpgsqlCommand("SELECT COUNT(*) FROM empresas", conn))
     {
-        if (Convert.ToInt32(await check.ExecuteScalarAsync()) > 0)
+        if (Convert.ToInt32(await checkUsers.ExecuteScalarAsync()) > 0
+            || Convert.ToInt32(await checkEmpresas.ExecuteScalarAsync()) > 0)
             return Results.Forbid();
     }
 
@@ -2005,7 +2007,7 @@ app.MapGet("/api/paciente/tudo", async (ClaimsPrincipal user) =>
         nome = (await c.ExecuteScalarAsync())?.ToString() ?? "";
     }
 
-    var plano = await PlanoHelper.Montar(connString, pid);
+    var plano = await PlanoHelper.Montar(connString, pid, int.Parse(user.FindFirst("empresa")!.Value));
 
     string orientacoes;
     using (var c = new NpgsqlCommand("SELECT texto FROM orientacoes_nutricionais WHERE paciente_id = @p", conn))
@@ -2162,15 +2164,16 @@ record OnboardingInput(string EmpresaNome, string AdminNome, string AdminEmail, 
 // =====================================================================
 static class PlanoHelper
 {
-    public static async Task<Dictionary<string, object?>> Montar(string connString, int pacienteId)
+    public static async Task<Dictionary<string, object?>> Montar(string connString, int pacienteId, int empresaId)
     {
         using var conn = new NpgsqlConnection(connString);
         await conn.OpenAsync();
 
         int? planoId = null;
-        using (var cmdP = new NpgsqlCommand("SELECT id FROM planos_alimentares WHERE paciente_id = @p LIMIT 1;", conn))
+        using (var cmdP = new NpgsqlCommand("SELECT id FROM planos_alimentares WHERE paciente_id = @p AND empresa_id = @emp LIMIT 1;", conn))
         {
             cmdP.Parameters.AddWithValue("p", pacienteId);
+            cmdP.Parameters.AddWithValue("emp", empresaId);
             var r = await cmdP.ExecuteScalarAsync();
             if (r != null) planoId = Convert.ToInt32(r);
         }

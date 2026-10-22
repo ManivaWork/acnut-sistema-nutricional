@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("servico-csharp")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+95c96f78cc403f928211f2ca394ec572b7caf80c")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+e9f1070a72c4708da9209ceaecb0caeb7eb6044d")]
 [assembly: System.Reflection.AssemblyProductAttribute("servico-csharp")]
 [assembly: System.Reflection.AssemblyTitleAttribute("servico-csharp")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
