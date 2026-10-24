@@ -1,0 +1,330 @@
+@baseUrl = http://localhost:5000
+@tokenB = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...  # Token do usuário da empresa B
+@pacienteA = 1        # ID de paciente da empresa A
+@refeicaoA = 1        # ID de refeição da empresa A
+@itemA = 1            # ID de item da empresa A
+@metaA = 1            # ID de meta da empresa A
+@exameA = 1           # ID de exame da empresa A
+@evolucaoA = 1        # ID de evolução da empresa A
+@observacaoA = 1      # ID de observação da empresa A
+@arquivoA = 1         # ID de arquivo da empresa A
+@versaoA = 1          # ID de versão da empresa A
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+GET {{baseUrl}}/api/planos/{{pacienteA}}
+Authorization: Bearer {{tokenB}}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+GET {{baseUrl}}/api/planos/{{pacienteA}}/versoes
+Authorization: Bearer {{tokenB}}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+GET {{baseUrl}}/api/planos/versao/{{versaoA}}
+Authorization: Bearer {{tokenB}}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+GET {{baseUrl}}/api/metas/{{pacienteA}}
+Authorization: Bearer {{tokenB}}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+GET {{baseUrl}}/api/evolucao/{{pacienteA}}
+Authorization: Bearer {{tokenB}}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+GET {{baseUrl}}/api/exames/{{pacienteA}}
+Authorization: Bearer {{tokenB}}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+GET {{baseUrl}}/api/observacoes/{{pacienteA}}
+Authorization: Bearer {{tokenB}}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+GET {{baseUrl}}/api/checkins/{{pacienteA}}
+Authorization: Bearer {{tokenB}}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+GET {{baseUrl}}/api/anamnese/{{pacienteA}}
+Authorization: Bearer {{tokenB}}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+GET {{baseUrl}}/api/orientacoes/{{pacienteA}}
+Authorization: Bearer {{tokenB}}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+GET {{baseUrl}}/api/acessos/{{pacienteA}}
+Authorization: Bearer {{tokenB}}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+GET {{baseUrl}}/api/historico/{{pacienteA}}
+Authorization: Bearer {{tokenB}}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+GET {{baseUrl}}/api/arquivos/{{arquivoA}}
+Authorization: Bearer {{tokenB}}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+PUT {{baseUrl}}/api/planos/refeicao/{{refeicaoA}}
+Authorization: Bearer {{tokenB}}
+Content-Type: application/json
+
+{
+  "pacienteId": {{pacienteA}},
+  "nomeRefeicao": "Café da Manhã",
+  "horario": "08:00",
+  "observacoes": "Teste isolamento"
+}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+DELETE {{baseUrl}}/api/planos/refeicao/{{refeicaoA}}
+Authorization: Bearer {{tokenB}}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+PUT {{baseUrl}}/api/planos/item/{{itemA}}
+Authorization: Bearer {{tokenB}}
+Content-Type: application/json
+
+{
+  "refeicaoId": {{refeicaoA}},
+  "opcao": 1,
+  "alimentoNome": "Pão integral",
+  "quantidadeG": 50,
+  "medidaCaseira": "1 fatia",
+  "kcal": 130,
+  "proteinas": 5,
+  "carbos": 25,
+  "gorduras": 2
+}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+DELETE {{baseUrl}}/api/planos/item/{{itemA}}
+Authorization: Bearer {{tokenB}}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+PUT {{baseUrl}}/api/metas/{{metaA}}
+Authorization: Bearer {{tokenB}}
+Content-Type: application/json
+
+{
+  "pacienteId": {{pacienteA}},
+  "titulo": "Beber 2L de água",
+  "descricao": "Meta de hidratação",
+  "tipo": "agua",
+  "prazo": "2026-12-31",
+  "status": "ativa"
+}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+DELETE {{baseUrl}}/api/metas/{{metaA}}
+Authorization: Bearer {{tokenB}}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+PUT {{baseUrl}}/api/exames/{{exameA}}
+Authorization: Bearer {{tokenB}}
+Content-Type: multipart/form-data; boundary=boundary
+
+--boundary
+Content-Disposition: form-data; name="pacienteId"
+
+{{pacienteA}}
+--boundary
+Content-Disposition: form-data; name="titulo"
+
+Hemograma completo
+--boundary
+Content-Disposition: form-data; name="data"
+
+2026-01-15
+--boundary
+Content-Disposition: form-data; name="observacao"
+
+Exame de rotina
+--boundary--
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+DELETE {{baseUrl}}/api/exames/{{exameA}}
+Authorization: Bearer {{tokenB}}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+PUT {{baseUrl}}/api/evolucao/{{evolucaoA}}
+Authorization: Bearer {{tokenB}}
+Content-Type: multipart/form-data; boundary=boundary
+
+--boundary
+Content-Disposition: form-data; name="pacienteId"
+
+{{pacienteA}}
+--boundary
+Content-Disposition: form-data; name="data"
+
+2026-01-20
+--boundary
+Content-Disposition: form-data; name="peso"
+
+70.5
+--boundary
+Content-Disposition: form-data; name="observacao"
+
+Evolução semanal
+--boundary--
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+DELETE {{baseUrl}}/api/evolucao/{{evolucaoA}}
+Authorization: Bearer {{tokenB}}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+PUT {{baseUrl}}/api/observacoes/{{observacaoA}}
+Authorization: Bearer {{tokenB}}
+Content-Type: application/json
+
+{
+  "pacienteId": {{pacienteA}},
+  "tipo": "semana",
+  "data": "2026-01-20",
+  "texto": "Paciente relatou boa adesão ao plano"
+}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+DELETE {{baseUrl}}/api/observacoes/{{observacaoA}}
+Authorization: Bearer {{tokenB}}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+DELETE {{baseUrl}}/api/arquivos/{{arquivoA}}
+Authorization: Bearer {{tokenB}}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+# O middleware verifica empresa_id do pacienteId no body
+POST {{baseUrl}}/api/avaliacoes
+Authorization: Bearer {{tokenB}}
+Content-Type: application/json
+
+{
+  "pacienteId": {{pacienteA}},
+  "idade": 30,
+  "sexo": "F",
+  "pesoKg": 65,
+  "alturaCm": 165,
+  "nivelAtividade": "moderado",
+  "objetivo": "manutencao",
+  "percentualGordura": 25,
+  "massaMagraKg": 48.75
+}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+# O middleware verifica empresa_id do pacienteId no body
+POST {{baseUrl}}/api/checkins
+Authorization: Bearer {{tokenB}}
+Content-Type: application/json
+
+{
+  "pacienteId": {{pacienteA}},
+  "pesoAtualKg": 64.5,
+  "adesaoPlanoPorcentagem": 85,
+  "observacoes": "Boa semana"
+}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+# O middleware verifica empresa_id do pacienteId no body
+POST {{baseUrl}}/api/metas
+Authorization: Bearer {{tokenB}}
+Content-Type: application/json
+
+{
+  "pacienteId": {{pacienteA}},
+  "titulo": "Comer 3 frutas por dia",
+  "descricao": "Meta de frutas",
+  "tipo": "frutas",
+  "prazo": "2026-12-31"
+}
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+# O middleware verifica empresa_id do pacienteId no body (multipart)
+POST {{baseUrl}}/api/exames
+Authorization: Bearer {{tokenB}}
+Content-Type: multipart/form-data; boundary=boundary
+
+--boundary
+Content-Disposition: form-data; name="pacienteId"
+
+{{pacienteA}}
+--boundary
+Content-Disposition: form-data; name="titulo"
+
+Lipidograma
+--boundary
+Content-Disposition: form-data; name="data"
+
+2026-02-01
+--boundary
+Content-Disposition: form-data; name="observacao"
+
+Exame de lipídios
+--boundary--
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+# O middleware verifica empresa_id do pacienteId no body (multipart)
+POST {{baseUrl}}/api/evolucao
+Authorization: Bearer {{tokenB}}
+Content-Type: multipart/form-data; boundary=boundary
+
+--boundary
+Content-Disposition: form-data; name="pacienteId"
+
+{{pacienteA}}
+--boundary
+Content-Disposition: form-data; name="data"
+
+2026-02-10
+--boundary
+Content-Disposition: form-data; name="peso"
+
+64.0
+--boundary
+Content-Disposition: form-data; name="observacao"
+
+Nova evolução
+--boundary--
+
+###
+# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
+# O middleware verifica empresa_id do pacienteId no body
+POST {{baseUrl}}/api/observacoes
+Authorization: Bearer {{tokenB}}
+Content-Type: application/json
+
+{
+  "pacienteId": {{pacienteA}},
+  "tipo": "geral",
+  "data": "2026-02-15",
+  "texto": "Observação geral do paciente"
+}

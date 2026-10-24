@@ -1,4 +1,4 @@
-        const API_URL = "http://localhost:5001/api";
+        const API_URL = "http://localhost:5290/api";
 // const API_URL = "https://api.seudominio.com.br/api";   // usar só quando hospedar  TIRAR COMENTARIO QUANDO HOSPEDAR
         const TOKEN_KEY = "bybar_token";
 const getToken = () => sessionStorage.getItem(TOKEN_KEY);
@@ -75,9 +75,16 @@ function navegar(secao) {
         carregarPacientes();
         }
         if (secao === 'prontuario') restaurarProntuarioAtivo();
+        if (secao === 'empresas') carregarEmpresas();
         document.querySelectorAll(".acnut-rail-item[data-nav]").forEach(btn => {
         btn.classList.toggle("ativo", btn.dataset.nav === secao);
         });
+        // Mostrar/ocultar item Empresas conforme perfil
+        const navEmpresas = document.getElementById('nav-empresas');
+        const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
+        if (navEmpresas) {
+            navEmpresas.style.display = (user.perfil === 'super_admin') ? 'flex' : 'none';
+        }
         }
 async function carregarPacientes() {
         try {
@@ -716,7 +723,7 @@ function todosItens() {
         }
 function abrirModalItem(refeicaoId, opcao, substituiId = null, itemId = null) {
         if (!exigirPaciente()) return;
-        formItem = { refeicaoId, opcao, substituiId, itemId };
+        formItem = { refeicaoId, opcao, substituiId, itemId, alimentoId: null };
         const item = itemId ? todosItens().find(i => i.id === itemId) : null;
         const original = substituiId ? todosItens().find(i => i.id === substituiId) : null;
 let titulo = "Adicionar alimento";
@@ -737,31 +744,292 @@ let titulo = "Adicionar alimento";
         document.getElementById("mi-prot").value = item && item.proteinas ? item.proteinas : "";
         document.getElementById("mi-carbo").value = item && item.carbos ? item.carbos : "";
         document.getElementById("mi-gord").value = item && item.gorduras ? item.gorduras : "";
+
+        // Reset novos campos de medida caseira
+        document.getElementById("mi-medida-caseira").value = "";
+        document.getElementById("mi-qtd-medida").value = "";
+        document.getElementById("mi-obs-medida").value = "";
+        document.getElementById("mi-gramas-calculadas").classList.add("hidden");
+        mostrarContainerMedidaCaseira(false);
+
+        setupAlimentoAutocomplete();
         abrirModal("modal-item");
         }
+
+let alimentoAutocompleteTimer = null;
+let alimentoAutocompleteAbort = null;
+
+function setupAlimentoAutocomplete() {
+        const input = document.getElementById("mi-nome");
+        const dropdown = document.getElementById("mi-sugestoes");
+        if (!input || !dropdown) return;
+
+        // Remove listeners antigos
+        input.removeEventListener("input", onAlimentoInput);
+        input.removeEventListener("blur", onAlimentoBlur);
+        input.removeEventListener("focus", onAlimentoFocus);
+        document.removeEventListener("click", onAlimentoClickOutside);
+
+        // Adiciona novos
+        input.addEventListener("input", onAlimentoInput);
+        input.addEventListener("blur", onAlimentoBlur);
+        input.addEventListener("focus", onAlimentoFocus);
+        document.addEventListener("click", onAlimentoClickOutside);
+}
+
+async function onAlimentoInput(e) {
+        const input = e.target;
+        const dropdown = document.getElementById("mi-sugestoes");
+        const query = input.value.trim();
+
+        // Cancela busca anterior
+        if (alimentoAutocompleteTimer) clearTimeout(alimentoAutocompleteTimer);
+        if (alimentoAutocompleteAbort) alimentoAutocompleteAbort.abort();
+
+        if (query.length < 2) {
+        dropdown.classList.add("hidden");
+        return;
+        }
+
+        // Debounce 300ms
+        alimentoAutocompleteTimer = setTimeout(async () => {
+        alimentoAutocompleteAbort = new AbortController();
+        try {
+                const res = await fetch(`${API_URL}/alimentos/buscar?q=${encodeURIComponent(query)}&limite=10`, {
+                signal: alimentoAutocompleteAbort.signal,
+                headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+                });
+                if (!res.ok) throw new Error("Erro na busca");
+                const alimentos = await res.json();
+                renderAlimentoSugestoes(alimentos);
+        } catch (err) {
+                if (err.name !== "AbortError") console.error("Erro autocomplete:", err);
+        }
+        }, 300);
+}
+
+function onAlimentoBlur() {
+        // Delay para permitir clique no dropdown
+        setTimeout(() => {
+        const dropdown = document.getElementById("mi-sugestoes");
+        if (dropdown) dropdown.classList.add("hidden");
+        }, 200);
+}
+
+function onAlimentoFocus(e) {
+        const input = e.target;
+        if (input.value.trim().length >= 2) {
+        onAlimentoInput(e);
+        }
+}
+
+function onAlimentoClickOutside(e) {
+        const dropdown = document.getElementById("mi-sugestoes");
+        const input = document.getElementById("mi-nome");
+        if (dropdown && input && !dropdown.contains(e.target) && e.target !== input) {
+        dropdown.classList.add("hidden");
+        }
+}
+
+function renderAlimentoSugestoes(alimentos) {
+        const dropdown = document.getElementById("mi-sugestoes");
+        if (!dropdown) return;
+
+        if (!alimentos.length) {
+        dropdown.classList.add("hidden");
+        return;
+        }
+
+        dropdown.innerHTML = alimentos.map(a => `
+        <button type="button" class="w-full text-left px-3 py-2 hover:bg-slate-700 transition-colors flex items-center gap-2"
+                onclick="selecionarAlimento(${a.id})">
+            <span class="font-medium text-white">${escaparHtml(a.nome)}</span>
+            <span class="text-xs text-slate-400">${escaparHtml(a.categoria)}</span>
+            <span class="text-xs text-emerald-400 ml-auto">${a.calorias_100g} kcal/100g</span>
+        </button>
+        `).join("");
+        dropdown.classList.remove("hidden");
+}
+
+async function selecionarAlimento(id) {
+        const dropdown = document.getElementById("mi-sugestoes");
+        dropdown.classList.add("hidden");
+
+        // Busca detalhes completos do alimento
+        try {
+        const res = await fetch(`${API_URL}/alimentos/${id}`, {
+                headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+        });
+        if (!res.ok) throw new Error("Erro ao buscar detalhes");
+        const a = await res.json();
+
+        // Preenche nome e campos nutricionais (por 100g)
+        document.getElementById("mi-nome").value = a.nome;
+        document.getElementById("mi-kcal").value = a.calorias_100g ?? "";
+        document.getElementById("mi-prot").value = a.proteinas_100g ?? "";
+        document.getElementById("mi-carbo").value = a.carboidratos_100g ?? "";
+        document.getElementById("mi-gord").value = a.gorduras_100g ?? "";
+        } catch (err) {
+        console.error("Erro ao carregar detalhes do alimento:", err);
+        alert("Não foi possível carregar os detalhes do alimento.");
+        }
+}
+
+// ======================== MEDIDA CASEIRA ========================
+let medidaCaseiraCache = new Map(); // cache: alimento_id -> medidas[]
+
+async function carregarMedidasCaseira(alimentoId) {
+        if (medidaCaseiraCache.has(alimentoId)) {
+                return medidaCaseiraCache.get(alimentoId);
+        }
+        try {
+                const res = await fetch(`${API_URL}/alimentos/${alimentoId}/medidas`, {
+                        headers: { "Authorization": `Bearer ${getToken()}` }
+                });
+                if (!res.ok) throw new Error("Erro ao buscar medidas");
+                const medidas = await res.json();
+                medidaCaseiraCache.set(alimentoId, medidas);
+                return medidas;
+        } catch (err) {
+                console.error("Erro ao carregar medidas caseiras:", err);
+                return [];
+        }
+}
+
+function popularDropdownMedidas(medidas) {
+        const select = document.getElementById("mi-medida-caseira");
+        if (!select) return;
+        const valorAtual = select.value;
+        select.innerHTML = '<option value="">Selecione uma medida...</option>' +
+                medidas.map(m => {
+                        const label = m.observacao ? `${m.medida} (${m.observacao})` : m.medida;
+                        return `<option value="${escaparHtml(m.medida)}" data-obs="${escaparHtml(m.observacao || "")}" data-gramas="${m.gramas_por_unidade}">${escaparHtml(label)}</option>`;
+                }).join("");
+        // Restaura valor se ainda existe
+        if (valorAtual && [...select.options].some(o => o.value === valorAtual)) {
+                select.value = valorAtual;
+        }
+}
+
+function atualizarGramasPorMedida() {
+        const select = document.getElementById("mi-medida-caseira");
+        const qtdInput = document.getElementById("mi-qtd-medida");
+        const gramasDisplay = document.getElementById("mi-gramas-calculadas");
+        const miQtd = document.getElementById("mi-qtd");
+
+        if (!select || !qtdInput) return;
+
+        const option = select.options[select.selectedIndex];
+        const quantidade = parseFloat(qtdInput.value) || 0;
+
+        if (option && option.dataset.gramas && quantidade > 0) {
+                const gramasPorUnidade = parseFloat(option.dataset.gramas);
+                const gramasTotais = gramasPorUnidade * quantidade;
+                miQtd.value = gramasTotais.toFixed(1);
+                gramasDisplay.textContent = `→ ${gramasTotais.toFixed(1)}g (${quantidade} × ${gramasPorUnidade}g)`;
+                gramasDisplay.classList.remove("hidden");
+        } else {
+                gramasDisplay.classList.add("hidden");
+        }
+}
+
+function mostrarContainerMedidaCaseira(mostrar) {
+        const container = document.getElementById("mi-medida-container");
+        if (container) {
+                if (mostrar) container.classList.remove("hidden");
+                else container.classList.add("hidden");
+        }
+}
+
+async function selecionarAlimento(id) {
+        const dropdown = document.getElementById("mi-sugestoes");
+        dropdown.classList.add("hidden");
+
+        // Busca detalhes completos do alimento
+        try {
+        const res = await fetch(`${API_URL}/alimentos/${id}`, {
+                headers: { "Authorization": `Bearer ${getToken()}` }
+        });
+        if (!res.ok) throw new Error("Erro ao buscar detalhes");
+        const a = await res.json();
+
+        // Preenche nome e campos nutricionais (por 100g)
+        document.getElementById("mi-nome").value = a.nome;
+        document.getElementById("mi-kcal").value = a.calorias_100g ?? "";
+        document.getElementById("mi-prot").value = a.proteinas_100g ?? "";
+        document.getElementById("mi-carbo").value = a.carboidratos_100g ?? "";
+        document.getElementById("mi-gord").value = a.gorduras_100g ?? "";
+
+        // Armazena o ID do alimento para uso no endpoint de cálculo
+        formItem.alimentoId = String(a.id);
+
+        // Carrega medidas caseiras para este alimento
+        const medidas = await carregarMedidasCaseira(a.id);
+        popularDropdownMedidas(medidas);
+        mostrarContainerMedidaCaseira(medidas.length > 0);
+        } catch (err) {
+        console.error("Erro ao carregar detalhes do alimento:", err);
+        alert("Não foi possível carregar os detalhes do alimento.");
+        }
+}
 async function salvarItem(e) {
         e.preventDefault();
         const num = id => parseFloat(document.getElementById(id).value) || 0;
         const editando = !!formItem.itemId;
-        const body = {
-        refeicaoId: formItem.refeicaoId,
-        opcao: formItem.opcao,
-        substituiItemId: formItem.substituiId,
-        alimentoNome: document.getElementById("mi-nome").value,
-        quantidadeG: num("mi-qtd"),
-        medidaCaseira: document.getElementById("mi-medida").value,
-        kcal: num("mi-kcal"),
-        proteinas: num("mi-prot"),
-        carbos: num("mi-carbo"),
-        gorduras: num("mi-gord")
-        };
+        const medidaCaseira = document.getElementById("mi-medida-caseira").value;
+        const quantidadeMedida = num("mi-qtd-medida");
+        const observacaoMedida = document.getElementById("mi-obs-medida").value;
+
+        // Se tem medida caseira + quantidade, usa endpoint de cálculo automático
+        const usaCalculo = medidaCaseira && quantidadeMedida > 0;
+
+        let body, url, method;
+
+        if (usaCalculo) {
+            // Endpoint /calcular espera propriedades em PascalCase (C# record ItemCalcularInput)
+            body = {
+                RefeicaoId: formItem.refeicaoId,
+                Opcao: formItem.opcao,
+                SubstituiItemId: formItem.substituiId,
+                AlimentoId: formItem.alimentoId,  // ID do alimento na TACO (string)
+                Refeicao: "lanche",  // padrão
+                Observacao: "",
+                TargetKcal: null,
+                TargetProteina: null,
+                TargetCarbo: null,
+                TargetGordura: null,
+                Gramas: null,
+                MedidaCaseira: medidaCaseira,
+                QuantidadeMedida: quantidadeMedida,
+                ObservacaoMedida: observacaoMedida
+            };
+            url = `${API_URL}/planos/item/calcular`;
+            method = "POST";
+        } else {
+            // Endpoint regular espera propriedades em camelCase (C# record ItemInput)
+            body = {
+                refeicaoId: formItem.refeicaoId,
+                opcao: formItem.opcao,
+                substituiItemId: formItem.substituiId,
+                alimentoNome: document.getElementById("mi-nome").value,
+                quantidadeG: num("mi-qtd"),
+                medidaCaseira: medidaCaseira || document.getElementById("mi-medida").value,
+                quantidadeMedida: quantidadeMedida || null,
+                observacaoMedida: observacaoMedida || "",
+                kcal: num("mi-kcal"),
+                proteinas: num("mi-prot"),
+                carbos: num("mi-carbo"),
+                gorduras: num("mi-gord")
+            };
+            url = editando ? `${API_URL}/planos/item/${formItem.itemId}` : `${API_URL}/planos/item`;
+            method = editando ? "PUT" : "POST";
+        }
+
         try {
-        const res = await fetch(
-        editando ? `${API_URL}/planos/item/${formItem.itemId}` : `${API_URL}/planos/item`,
-        {
-        method: editando ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
+        const res = await fetch(url, {
+            method,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
         });
         if (res.ok) {
         fecharModal("modal-item");
@@ -2211,8 +2479,102 @@ function abaPaciente(aba) {
         }).join("") : vazio("Nenhuma meta combinada ainda.");
     }
 }
-////////////////////////////////////////########## INICIALIZAÇÃO ##########////////////////////////////////////////
-        document.addEventListener("DOMContentLoaded", async () => {
+// ===== EMPRESAS (super_admin) =====
+async function carregarEmpresas() {
+    // Verificar se é super_admin
+    const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
+    if (user.perfil !== 'super_admin') {
+        alert('Acesso restrito a super administradores.');
+        navegar('dashboard');
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_URL}/empresas`);
+        if (!res.ok) {
+            if (res.status === 403) {
+                alert('Acesso negado. Apenas super administradores podem ver esta tela.');
+                navegar('dashboard');
+                return;
+            }
+            throw new Error(`Erro HTTP: ${res.status}`);
+        }
+        const empresas = await res.json();
+        renderEmpresas(empresas);
+    } catch (err) {
+        console.error("Erro ao carregar empresas:", err);
+        document.getElementById('tabela-empresas').innerHTML = '<tr><td colspan="3" class="py-6 text-center text-rose-400">Erro ao carregar empresas</td></tr>';
+    }
+}
+
+function renderEmpresas(empresas) {
+    const tbody = document.getElementById('tabela-empresas');
+    if (!tbody) return;
+
+    if (!empresas || empresas.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="py-6 text-center text-slate-400">Nenhuma empresa cadastrada</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = empresas.map(emp => `
+        <tr class="hover:bg-slate-800/50">
+            <td class="py-3 px-4 text-white font-mono">#${emp.id}</td>
+            <td class="py-3 px-4 font-medium text-white">${escaparHtml(emp.nome)}</td>
+            <td class="py-3 px-4 text-slate-300">${new Date(emp.criadoEm).toLocaleDateString('pt-BR')}</td>
+        </tr>
+    `).join('');
+}
+
+async function cadastrarEmpresa(event) {
+    event.preventDefault();
+
+    const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
+    if (user.perfil !== 'super_admin') {
+        alert('Acesso restrito a super administradores.');
+        return;
+    }
+
+    const nome = document.getElementById('emp-nome').value.trim();
+    if (!nome) {
+        alert('Informe o nome da empresa.');
+        return;
+    }
+
+    const btn = event.target.querySelector('button[type="submit"]');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Cadastrando…';
+
+    try {
+        const res = await fetch(`${API_URL}/empresas`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nome })
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.mensagem || 'Erro ao cadastrar empresa');
+        }
+
+        const data = await res.json();
+        alert(`Empresa "${data.nome}" criada com sucesso!`);
+        document.getElementById('form-empresa').reset();
+        carregarEmpresas();
+
+        // Atualizar contador se necessário
+        atualizarDashboard();
+    } catch (err) {
+        console.error("Erro ao cadastrar empresa:", err);
+        alert(err.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}
+
+// ===== INICIALIZAÇÃO =====
+document.addEventListener("DOMContentLoaded", async () => {
     restaurarSidebar();
 
     // 1. Verificar se há token de convite na URL

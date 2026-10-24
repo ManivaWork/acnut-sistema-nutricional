@@ -1,0 +1,287 @@
+<!-- billing.html - Inclua no index.html antes de </body> ou carregue dinamicamente -->
+<!-- Tela de Planos / Assinatura (apenas admin/super_admin) -->
+
+<div id="sec-billing" class="hidden space-y-6">
+  <!-- Cabeçalho -->
+  <header class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
+    <div class="flex items-center gap-4">
+      <div class="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/20 flex items-center justify-center">
+        <i class="fa-solid fa-credit-card text-amber-400 text-lg"></i>
+      </div>
+      <div>
+        <h2 class="text-2xl font-extrabold text-white tracking-tight">Plano & Assinatura</h2>
+        <p class="text-sm text-slate-400 mt-1">Gerencie o plano da sua empresa, veja limites e altere a assinatura.</p>
+      </div>
+    </div>
+  </header>
+
+  <!-- Status Atual -->
+  <div id="billing-status" class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div>
+        <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Plano atual</p>
+        <p id="bill-plano" class="text-2xl font-bold text-white">—</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <span id="bill-badge" class="px-3 py-1 rounded-full text-xs font-bold border">Carregando…</span>
+        <button id="btn-mudar-plano" class="hidden h-11 px-5 rounded-xl text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 transition flex items-center gap-2">
+          <i class="fa-solid fa-arrows-rotate text-xs"></i> Mudar plano
+        </button>
+      </div>
+    </div>
+
+    <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="bill-limites">
+      <!-- preenchido por JS -->
+    </div>
+
+    <div class="mt-6 pt-6 border-t border-slate-700/50 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-300">
+      <div>Renovação: <span id="bill-renovacao" class="font-medium text-white">—</span></div>
+      <div>Próximo pagamento: <span id="bill-proximo" class="font-medium text-white">—</span></div>
+      <div id="bill-trial" class="hidden text-amber-400">Trial encerra em: <span id="bill-trial-fim" class="font-medium">—</span></div>
+    </div>
+  </div>
+
+  <!-- Catálogo de Planos -->
+  <div class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
+    <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2"><i class="fa-solid fa-list-check text-emerald-400"></i> Escolha seu plano</h3>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="bill-catalogo">
+      <!-- preenchido por JS com Planos.Catalogo -->
+    </div>
+  </div>
+
+  <!-- Modal Mudar Plano -->
+  <div id="modal-billing" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+    <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md mx-4 p-6 space-y-5">
+      <div class="flex items-center justify-between">
+        <h4 class="text-lg font-bold text-white" id="modal-bill-title">Alterar plano</h4>
+        <button onclick="fecharModal('modal-billing')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <p class="text-sm text-slate-300">Selecione o novo plano. A alteração entra na próxima cobrança.</p>
+      <select id="bill-novo-plano" class="acnut-input">
+        <option value="basico">Básico — R$ 97/mês</option>
+        <option value="profissional">Profissional — R$ 297/mês</option>
+        <option value="enterprise">Enterprise — R$ 797/mês</option>
+      </select>
+      <div id="bill-preview" class="text-sm text-slate-400 space-y-1"></div>
+      <div id="modal-bill-erro" class="hidden lg-error"><i class="fa-solid fa-circle-exclamation"></i><span></span></div>
+      <div class="flex gap-3 pt-2">
+        <button onclick="fecharModal('modal-billing')" class="flex-1 acnut-btn-secondary">Cancelar</button>
+        <button onclick="confirmarMudancaPlano()" class="flex-1 acnut-btn-primary" id="btn-confirmar-plano">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Histórico de Pagamentos (opcional) -->
+  <div class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
+    <h3 class="text-lg font-bold text-white mb-4">Eventos recentes (webhook Asaas)</h3>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-[11px] font-bold uppercase text-slate-500 border-b border-slate-700/50">
+            <th class="py-3 px-4">Data</th>
+            <th class="py-3 px-4">Evento</th>
+            <th class="py-3 px-4">Status</th>
+            <th class="py-3 px-4">Detalhe</th>
+          </tr>
+        </thead>
+        <tbody id="bill-webhook-log" class="divide-y divide-slate-700/40">
+          <tr><td colspan="4" class="py-6 text-center text-slate-400">Carregando…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== Catálogo de planos (espelha o backend) =====
+const PLANOS_CATALOGO = {
+  basico:       { valor: 97,   limites: { max_pacientes: 50,  max_profissionais: 2,  storage_mb: 500,   max_versoes_plano: 5 }  },
+  profissional: { valor: 297,  limites: { max_pacientes: 200, max_profissionais: 10, storage_mb: 2000,  max_versoes_plano: 20 } },
+  enterprise:   { valor: 797,  limites: { max_pacientes: 1000, max_profissionais: 50, storage_mb: 10000, max_versoes_plano: 100 } }
+};
+
+const PLANO_LABELS = {
+  basico: 'Básico', profissional: 'Profissional', enterprise: 'Enterprise',
+  inativa: 'Inativa', ativa: 'Ativa', trial: 'Trial', past_due: 'Atrasado', cancelada: 'Cancelada'
+};
+const STATUS_COR = {
+  ativa: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+  trial: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+  past_due: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+  cancelada: 'bg-rose-500/15 text-rose-400 border-rose-500/30',
+  inativa: 'bg-slate-500/15 text-slate-400 border-slate-500/30'
+};
+
+// Verifica se usuário logado é admin ou super_admin
+async function exigirAdmin() {
+  const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
+  if (!user.perfil || !['admin', 'super_admin'].includes(user.perfil)) {
+    alert('Acesso restrito a administradores.');
+    return false;
+  }
+  return true;
+}
+
+async function carregarBilling() {
+  if (!await exigirAdmin()) return;
+
+  // Status + limites
+  try {
+    const [stRes, limRes] = await Promise.all([
+      fetch(`${API_URL}/billing/assinatura`),
+      fetch(`${API_URL}/billing/limites`)
+    ]);
+
+    if (stRes.ok) {
+      const st = await stRes.json();
+      renderStatus(st);
+    } else if (stRes.status === 404) {
+      // Sem assinatura ainda
+      document.getElementById('bill-plano').innerText = 'Sem assinatura';
+      document.getElementById('bill-badge').innerText = 'Inativa';
+      document.getElementById('bill-badge').className = 'px-3 py-1 rounded-full text-xs font-bold border bg-slate-500/15 text-slate-400 border-slate-500/30';
+      document.getElementById('btn-mudar-plano').classList.remove('hidden');
+    }
+
+    if (limRes.ok) {
+      const lim = await limRes.json();
+      renderLimites(lim.limites || lim);
+    }
+  } catch (e) { console.error(e); }
+
+  // Catálogo
+  renderCatalogo();
+
+  // Webhook log (apenas super_admin)
+  const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
+  if (user.perfil === 'super_admin') carregarWebhookLog();
+}
+
+function renderStatus(st) {
+  document.getElementById('bill-plano').innerText = PLANO_LABELS[st.plano] || st.plano;
+  const badge = document.getElementById('bill-badge');
+  badge.innerText = PLANO_LABELS[st.status] || st.status;
+  badge.className = `px-3 py-1 rounded-full text-xs font-bold border ${STATUS_COR[st.status] || STATUS_COR.inativa}`;
+
+  document.getElementById('bill-renovacao').innerText = st.ciclo === 'yearly' ? 'Anual' : 'Mensal';
+  document.getElementById('bill-proximo').innerText = st.fim_vigencia ? new Date(st.fim_vigencia).toLocaleDateString('pt-BR') : '—';
+
+  const trialDiv = document.getElementById('bill-trial');
+  if (st.trial_fim) {
+    trialDiv.classList.remove('hidden');
+    document.getElementById('bill-trial-fim').innerText = new Date(st.trial_fim).toLocaleDateString('pt-BR');
+  }
+
+  // Botão mudar plano aparece se ativa/trial
+  if (['ativa','trial'].includes(st.status)) {
+    document.getElementById('btn-mudar-plano').classList.remove('hidden');
+    document.getElementById('btn-mudar-plano').onclick = () => abrirMudarPlano(st.plano);
+  }
+}
+
+function renderLimites(l) {
+  const box = (rotulo, valor, cor = 'text-emerald-400') => `
+    <div class="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
+      <p class="text-[10px] uppercase tracking-wider text-slate-500">${rotulo}</p>
+      <p class="text-2xl font-extrabold ${cor}">${valor}</p>
+    </div>`;
+  document.getElementById('bill-limites').innerHTML = `
+    ${box('Pacientes', l.max_pacientes)}
+    ${box('Profissionais', l.max_profissionais, 'text-blue-400')}
+    ${box('Armazenamento', `${l.storage_mb} MB`, 'text-purple-400')}
+    ${box('Versões de plano', l.max_versoes_plano, 'text-amber-400')}
+  `;
+}
+
+function renderCatalogo() {
+  const el = document.getElementById('bill-catalogo');
+  el.innerHTML = Object.entries(PLANOS_CATALOGO).map(([key, p]) => `
+    <div class="bg-slate-900/60 border border-slate-700/60 rounded-2xl p-5 space-y-3 relative">
+      <div class="flex items-baseline gap-2">
+        <span class="text-3xl font-extrabold text-white">R$ ${p.valor}</span>
+        <span class="text-slate-400">/mês</span>
+      </div>
+      <h4 class="text-lg font-bold text-white">${PLANO_LABELS[key]}</h4>
+      <ul class="space-y-2 text-sm text-slate-300">
+        <li><i class="fa-solid fa-check text-emerald-400 mr-2 w-4"></i>${p.limites.max_pacientes} pacientes</li>
+        <li><i class="fa-solid fa-check text-emerald-400 mr-2 w-4"></i>${p.limites.max_profissionais} profissionais</li>
+        <li><i class="fa-solid fa-check text-emerald-400 mr-2 w-4"></i>${p.limites.storage_mb} MB armazenamento</li>
+        <li><i class="fa-solid fa-check text-emerald-400 mr-2 w-4"></i>${p.limites.max_versoes_plano} versões de plano</li>
+      </ul>
+      <button onclick="abrirMudarPlano('${key}')" class="w-full mt-4 h-11 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-500 transition">
+        ${key === 'basico' ? 'Plano atual' : 'Selecionar'}
+      </button>
+    </div>
+  `).join('');
+}
+
+function abrirMudarPlano(atual) {
+  document.getElementById('bill-novo-plano').value = atual;
+  atualizarPreviewPlano();
+  abrirModal('modal-billing');
+}
+
+function atualizarPreviewPlano() {
+  const key = document.getElementById('bill-novo-plano').value;
+  const p = PLANOS_CATALOGO[key];
+  document.getElementById('bill-preview').innerHTML = `
+    <strong>Novo valor:</strong> R$ ${p.valor}/mês<br>
+    <strong>Pacientes:</strong> ${p.limites.max_pacientes} • <strong>Profissionais:</strong> ${p.limites.max_profissionais}<br>
+    <strong>Storage:</strong> ${p.limites.storage_mb} MB • <strong>Versões:</strong> ${p.limites.max_versoes_plano}
+  `;
+}
+
+async function confirmarMudancaPlano() {
+  const plano = document.getElementById('bill-novo-plano').value;
+  const btn = document.getElementById('btn-confirmar-plano');
+  const erroDiv = document.getElementById('modal-bill-erro');
+  erroDiv.style.display = 'none';
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processando…';
+
+  try {
+    const res = await fetch(`${API_URL}/billing/assinatura/iniciar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plano, trialDias: 0 })
+    });
+    if (!res.ok) throw new Error((await res.json()).mensagem || 'Erro ao alterar plano');
+
+    fecharModal('modal-billing');
+    alert('Plano alterado com sucesso! A cobrança será ajustada no próximo ciclo.');
+    carregarBilling();
+  } catch (e) {
+    erroDiv.querySelector('span').innerText = e.message;
+    erroDiv.style.display = 'flex';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Confirmar';
+  }
+}
+
+async function carregarWebhookLog() {
+  try {
+    const res = await fetch(`${API_URL}/billing/webhook-log`); // endpoint opcional p/ super_admin
+    if (!res.ok) return;
+    const eventos = await res.json();
+    const tbody = document.getElementById('bill-webhook-log');
+    tbody.innerHTML = eventos.slice(0, 20).map(e => `
+      <tr class="hover:bg-slate-800/50">
+        <td class="py-3 px-4 text-slate-300">${new Date(e.criado_em).toLocaleString('pt-BR')}</td>
+        <td class="py-3 px-4 text-white">${e.event_type}</td>
+        <td class="py-3 px-4">${e.processado_em
+          ? '<span class="px-2 py-0.5 text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded">OK</span>'
+          : '<span class="px-2 py-0.5 text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded">Pendente</span>'}</td>
+        <td class="py-3 px-4 text-slate-400 max-w-xs truncate">${e.erro || (e.payload_jsonb?.subscription?.id || '')}</td>
+      </tr>
+    `).join('');
+  } catch { /* ignora */ }
+}
+
+// Integração com navegação existente
+const origNavegar = window.navegar;
+window.navegar = function(secao) {
+  origNavegar(secao);
+  if (secao === 'billing') carregarBilling();
+};
+</script>

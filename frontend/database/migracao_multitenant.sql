@@ -197,4 +197,4 @@ ORDER BY tablename, indexname;
 SELECT to_regclass('public.convites') AS tabela_convites;
 
 -- >>> MODO TESTE: nada e gravado. Troque por COMMIT; para aplicar de verdade. <<<
-ROLLBACK;
+COMMIT;

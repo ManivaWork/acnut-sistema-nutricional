@@ -7,6 +7,8 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using System.Linq;
 using System.Collections.Generic;
+using ACNutri.Billing;
+using ACNutri.Email;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -49,12 +51,25 @@ builder.Services.AddAuthorization();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHttpClient();
+builder.Services.AddHttpClient<AsaasClient>();
+builder.Services.Configure<AsaasConfig>(builder.Configuration.GetSection("Asaas"));
+builder.Services.Configure<EmailConfig>(builder.Configuration.GetSection("Email"));
+builder.Services.AddSingleton<IEmailService, EmailService>();
+
+// Registrar NpgsqlDataSource para injeção de dependência (usado no BillingModule)
+builder.Services.AddSingleton<NpgsqlDataSource>(_ => NpgsqlDataSource.Create(connString));
 
 var app = builder.Build();
 app.UseRouting();              // ← adicione
 app.UseCors("Front");
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Billing endpoints (Asaas)
+var asaasCfg = builder.Configuration.GetSection("Asaas").Get<AsaasConfig>();
+if (asaasCfg is not null)
+    app.MapBillingEndpoints(connString, asaasCfg);
+
 await Seed.Garantir(connString, builder.Configuration);
         // Qualquer erro vira JSON { mensagem } (o front mostra no alert)
 app.Use(async (context, next) =>
@@ -79,8 +94,14 @@ app.Use(async (ctx, next) =>
 {
     var path = ctx.Request.Path.Value ?? "";
     var m = ctx.Request.Method;
-    if (!path.StartsWith("/api/") || path.StartsWith("/api/auth/") || HttpMethods.IsOptions(m))
-    { await next(); return; }
+    if (!path.StartsWith("/api/")
+    || path.StartsWith("/api/auth/")
+    || path.StartsWith("/api/webhook/")
+    || path == "/api/empresas/count"
+    || path.StartsWith("/api/convites/info/")
+    || path == "/api/onboarding"
+    || HttpMethods.IsOptions(m))
+{ await next(); return; }
     async Task Negar(int status, string msg)
     {
         ctx.Response.StatusCode = status;
@@ -97,7 +118,7 @@ app.Use(async (ctx, next) =>
     }
     if (u.FindFirst("tipo")?.Value != "equipe" || path.StartsWith("/api/paciente/"))
     { await Negar(403, "Acesso não permitido."); return; }
-    if (path.StartsWith("/api/usuarios") && u.FindFirst("perfil")?.Value != "admin")
+    if (path.StartsWith("/api/usuarios") && u.FindFirst("perfil")?.Value is not ("admin" or "super_admin"))
     { await Negar(403, "Apenas administradores."); return; }
     int nivel = Auth.Peso(u.FindFirst("mod_nutricao")?.Value);
     int exigido = HttpMethods.IsGet(m) ? 1
@@ -276,7 +297,7 @@ app.MapPost("/api/avaliacoes", async (AvaliacaoInput input, IHttpClientFactory c
     };
 
     var content = new StringContent(JsonSerializer.Serialize(payloadPython), Encoding.UTF8, "application/json");
-    var responsePython = await httpClient.PostAsync("http://127.0.0.1:5000/calcular-plano", content);
+    var responsePython = await httpClient.PostAsync("http://127.0.0.1:5002/calcular-plano", content);
 
     if (!responsePython.IsSuccessStatusCode)
         return Results.Problem("Erro ao comunicar com o microserviço em Python de cálculos nutricionais.");
@@ -335,6 +356,159 @@ app.MapGet("/api/alimentos", async () =>
     }
     return Results.Ok(alimentos);
 });
+
+// Busca alimentos por nome (para autocomplete/preenchimento automático)
+app.MapGet("/api/alimentos/buscar", async (string q, int limite = 20) =>
+{
+    if (string.IsNullOrWhiteSpace(q) || q.Length < 2)
+        return Results.Ok(new List<object>());
+
+    var alimentos = new List<object>();
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+    using var cmd = new NpgsqlCommand(@"
+        SELECT id, nome, categoria, calorias_100g, proteinas_100g, carboidratos_100g, gorduras_100g, fibras_100g
+        FROM alimentos
+        WHERE nome ILIKE @q
+        ORDER BY
+            CASE WHEN nome ILIKE @exato THEN 0 ELSE 1 END,
+            nome
+        LIMIT @lim;", conn);
+    cmd.Parameters.AddWithValue("q", $"%{q}%");
+    cmd.Parameters.AddWithValue("exato", $"{q}%");
+    cmd.Parameters.AddWithValue("lim", limite);
+
+    using var reader = await cmd.ExecuteReaderAsync();
+    while (await reader.ReadAsync())
+    {
+        alimentos.Add(new
+        {
+            id = reader.GetInt32(0),
+            nome = reader.GetString(1),
+            categoria = reader.IsDBNull(2) ? "" : reader.GetString(2),
+            calorias_100g = reader.GetDecimal(3),
+            proteinas_100g = reader.GetDecimal(4),
+            carboidratos_100g = reader.GetDecimal(5),
+            gorduras_100g = reader.GetDecimal(6),
+            fibras_100g = reader.IsDBNull(7) ? 0m : reader.GetDecimal(7)
+        });
+    }
+    return Results.Ok(alimentos);
+});
+
+// Busca alimento exato por ID (para preencher formulário ao selecionar)
+app.MapGet("/api/alimentos/{id:int}", async (int id) =>
+{
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+    using var cmd = new NpgsqlCommand("SELECT id, nome, categoria, calorias_100g, proteinas_100g, carboidratos_100g, gorduras_100g, fibras_100g FROM alimentos WHERE id = @id;", conn);
+    cmd.Parameters.AddWithValue("id", id);
+    using var reader = await cmd.ExecuteReaderAsync();
+    if (!await reader.ReadAsync())
+        return Results.NotFound(new { mensagem = "Alimento não encontrado." });
+
+    return Results.Ok(new
+    {
+        id = reader.GetInt32(0),
+        nome = reader.GetString(1),
+        categoria = reader.IsDBNull(2) ? "" : reader.GetString(2),
+        calorias_100g = reader.GetDecimal(3),
+        proteinas_100g = reader.GetDecimal(4),
+        carboidratos_100g = reader.GetDecimal(5),
+        gorduras_100g = reader.GetDecimal(6),
+        fibras_100g = reader.IsDBNull(7) ? 0m : reader.GetDecimal(7)
+    });
+});
+
+// Busca medidas caseiras de um alimento
+app.MapGet("/api/alimentos/{id:int}/medidas", async (int id) =>
+{
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+    using var cmd = new NpgsqlCommand("SELECT id, medida, gramas_por_unidade, observacao FROM alimentos_medidas_caseiras WHERE alimento_id = @id ORDER BY medida;", conn);
+    cmd.Parameters.AddWithValue("id", id);
+    using var reader = await cmd.ExecuteReaderAsync();
+    var medidas = new List<object>();
+    while (await reader.ReadAsync())
+    {
+        medidas.Add(new
+        {
+            id = reader.GetInt64(0),
+            medida = reader.GetString(1),
+            gramas_por_unidade = reader.GetDecimal(2),
+            observacao = reader.IsDBNull(3) ? "" : reader.GetString(3)
+        });
+    }
+    return Results.Ok(medidas);
+});
+
+// POST /api/alimentos/{id}/medidas - Criar medida caseira (admin/profissional)
+app.MapPost("/api/alimentos/{alimentoId:int}/medidas", async (int alimentoId, MedidaCaseiraInput input, ClaimsPrincipal user) =>
+{
+    var perfil = user.FindFirst("perfil")?.Value;
+    if (perfil != "super_admin" && perfil != "admin" && perfil != "profissional")
+        return Results.Forbid();
+
+    int emp = Auth.Empresa(user);
+    // Verificar se alimento pertence à empresa (alimentos globais não têm empresa_id, ou verificar se é da empresa)
+    // Para simplificar, permitimos adicionar medidas a qualquer alimento
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+    using var cmd = new NpgsqlCommand(@"
+        INSERT INTO alimentos_medidas_caseiras (alimento_id, medida, gramas_por_unidade, observacao)
+        VALUES (@alimento_id, @medida, @gramas, @obs) RETURNING id;", conn);
+    cmd.Parameters.AddWithValue("alimento_id", alimentoId);
+    cmd.Parameters.AddWithValue("medida", input.Medida ?? "");
+    cmd.Parameters.AddWithValue("gramas", input.GramasPorUnidade);
+    cmd.Parameters.AddWithValue("obs", (object?)input.Observacao ?? DBNull.Value);
+    var newId = await cmd.ExecuteScalarAsync();
+    return Results.Created($"/api/alimentos/{alimentoId}/medidas/{newId}", new { id = newId, mensagem = "Medida caseira criada!" });
+})
+.RequireAuthorization();
+
+// PUT /api/alimentos/{id}/medidas/{medidaId} - Atualizar medida caseira
+app.MapPut("/api/alimentos/{alimentoId:int}/medidas/{medidaId:int}", async (int alimentoId, int medidaId, MedidaCaseiraInput input, ClaimsPrincipal user) =>
+{
+    var perfil = user.FindFirst("perfil")?.Value;
+    if (perfil != "super_admin" && perfil != "admin" && perfil != "profissional")
+        return Results.Forbid();
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+    using var cmd = new NpgsqlCommand(@"
+        UPDATE alimentos_medidas_caseiras
+        SET medida = @medida, gramas_por_unidade = @gramas, observacao = @obs
+        WHERE id = @id AND alimento_id = @alimento_id;", conn);
+    cmd.Parameters.AddWithValue("id", medidaId);
+    cmd.Parameters.AddWithValue("alimento_id", alimentoId);
+    cmd.Parameters.AddWithValue("medida", input.Medida ?? "");
+    cmd.Parameters.AddWithValue("gramas", input.GramasPorUnidade);
+    cmd.Parameters.AddWithValue("obs", (object?)input.Observacao ?? DBNull.Value);
+    int rows = await cmd.ExecuteNonQueryAsync();
+    if (rows == 0) return Results.NotFound(new { mensagem = "Medida não encontrada." });
+    return Results.Ok(new { mensagem = "Medida caseira atualizada!" });
+})
+.RequireAuthorization();
+
+// DELETE /api/alimentos/{id}/medidas/{medidaId} - Excluir medida caseira
+app.MapDelete("/api/alimentos/{alimentoId:int}/medidas/{medidaId:int}", async (int alimentoId, int medidaId, ClaimsPrincipal user) =>
+{
+    var perfil = user.FindFirst("perfil")?.Value;
+    if (perfil != "super_admin" && perfil != "admin" && perfil != "profissional")
+        return Results.Forbid();
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+    using var cmd = new NpgsqlCommand("DELETE FROM alimentos_medidas_caseiras WHERE id = @id AND alimento_id = @alimento_id;", conn);
+    cmd.Parameters.AddWithValue("id", medidaId);
+    cmd.Parameters.AddWithValue("alimento_id", alimentoId);
+    int rows = await cmd.ExecuteNonQueryAsync();
+    if (rows == 0) return Results.NotFound(new { mensagem = "Medida não encontrada." });
+    return Results.Ok(new { mensagem = "Medida caseira excluída!" });
+})
+.RequireAuthorization();
+
 // ====================================================== CHECK-INS============================================================
 app.MapPost("/api/checkins", async (CheckinInput input) =>
 {
@@ -565,6 +739,117 @@ app.MapPost("/api/planos/item", async (ItemInput input) =>
 
     var id = await cmd.ExecuteScalarAsync();
     return Results.Created($"/api/planos/item/{id}", new { id, mensagem = "Item adicionado!" });
+});
+
+// POST /api/planos/item/calcular - Calcula macros via Python (TACO) e insere item
+app.MapPost("/api/planos/item/calcular", async (ItemCalcularInput input, IHttpClientFactory clientFactory) =>
+{
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+
+    int refeicaoId = input.RefeicaoId;
+    int opcao = input.Opcao > 0 ? input.Opcao : 1;
+
+    // Substituição herda refeição e opção do item original
+    if (input.SubstituiItemId.HasValue)
+    {
+        using var cmdPai = new NpgsqlCommand(
+            "SELECT refeicao_id, opcao FROM itens_refeicao WHERE id = @id AND substitui_item_id IS NULL;", conn);
+        cmdPai.Parameters.AddWithValue("id", input.SubstituiItemId.Value);
+        using var rd = await cmdPai.ExecuteReaderAsync();
+        if (!await rd.ReadAsync())
+            return Results.BadRequest(new { mensagem = "Item original não encontrado." });
+        refeicaoId = rd.GetInt32(0);
+        opcao = rd.GetInt32(1);
+    }
+
+    // Chama o microserviço Python para calcular
+    var httpClient = clientFactory.CreateClient();
+    var payloadPython = new
+    {
+        alimento_id = input.AlimentoId,
+        target_kcal = input.TargetKcal,
+        target_proteina = input.TargetProteina,
+        target_carbo = input.TargetCarbo,
+        target_gordura = input.TargetGordura,
+        gramas = input.Gramas,
+        medida_caseira = input.MedidaCaseira,
+        quantidade_medida = input.QuantidadeMedida,
+        observacao_medida = input.ObservacaoMedida ?? "",
+        refeicao = input.Refeicao ?? "lanche",
+        observacao = input.Observacao ?? ""
+    };
+
+    var content = new StringContent(JsonSerializer.Serialize(payloadPython), Encoding.UTF8, "application/json");
+    var responsePython = await httpClient.PostAsync("http://127.0.0.1:5002/calcular-item", content);
+
+    if (!responsePython.IsSuccessStatusCode)
+    {
+        var errorContent = await responsePython.Content.ReadAsStringAsync();
+        return Results.Problem($"Erro ao calcular item: {errorContent}");
+    }
+
+    var jsonResp = await responsePython.Content.ReadAsStringAsync();
+    using var doc = JsonDocument.Parse(jsonResp);
+    var root = doc.RootElement;
+
+    // Extrai valores calculados (podem ser null se dado não disponível na TACO)
+    string alimentoNome = root.GetProperty("alimento_nome").GetString()!;
+    double gramas = root.GetProperty("gramas").GetDouble();
+
+    // Helper para ler double opcional do JSON
+    double? GetOptionalDouble(JsonElement root, string propertyName)
+    {
+        var prop = root.GetProperty(propertyName);
+        return prop.ValueKind == JsonValueKind.Null ? null : prop.GetDouble();
+    }
+
+    double? kcal = GetOptionalDouble(root, "kcal");
+    double? proteina = GetOptionalDouble(root, "proteina");
+    double? carbo = GetOptionalDouble(root, "carbo");
+    double? gordura = GetOptionalDouble(root, "gordura");
+    string baseCalculo = root.GetProperty("base_calculo").GetString()!;
+
+    // Se dados insuficientes, retorna erro informativo
+    if (baseCalculo == "dados_insuficientes")
+    {
+        return Results.BadRequest(new
+        {
+            mensagem = $"Alimento '{alimentoNome}' não possui dados nutricionais disponíveis na TACO para cálculo automático. Use entrada manual."
+        });
+    }
+
+    // Insere o item com valores calculados (usa DBNull.Value para macros não disponíveis)
+    using var cmd = new NpgsqlCommand(@"
+        INSERT INTO itens_refeicao
+            (refeicao_id, empresa_id, opcao, substitui_item_id, alimento_nome_livre, quantidade_g, medida_caseira,
+             kcal_manual, proteinas_manual, carbos_manual, gorduras_manual, e_substituicao)
+        VALUES
+            (@refeicao_id, (SELECT p.empresa_id FROM refeicoes r JOIN planos_alimentares p ON p.id = r.plano_id WHERE r.id = @refeicao_id), @opcao, @sub, @nome, @qtd, @medida, @kcal, @prot, @carbo, @gord, @e_sub)
+        RETURNING id;", conn);
+
+    cmd.Parameters.AddWithValue("refeicao_id", refeicaoId);
+    cmd.Parameters.AddWithValue("opcao", opcao);
+    cmd.Parameters.Add(new NpgsqlParameter("sub", NpgsqlTypes.NpgsqlDbType.Integer)
+    {
+        Value = (object?)input.SubstituiItemId ?? DBNull.Value
+    });
+    cmd.Parameters.AddWithValue("nome", alimentoNome);
+    cmd.Parameters.AddWithValue("qtd", gramas);
+    cmd.Parameters.AddWithValue("medida", $"{gramas}g (calc: {baseCalculo})");
+    cmd.Parameters.Add(new NpgsqlParameter("kcal", NpgsqlTypes.NpgsqlDbType.Numeric) { Value = (object?)kcal ?? DBNull.Value });
+    cmd.Parameters.Add(new NpgsqlParameter("prot", NpgsqlTypes.NpgsqlDbType.Numeric) { Value = (object?)proteina ?? DBNull.Value });
+    cmd.Parameters.Add(new NpgsqlParameter("carbo", NpgsqlTypes.NpgsqlDbType.Numeric) { Value = (object?)carbo ?? DBNull.Value });
+    cmd.Parameters.Add(new NpgsqlParameter("gord", NpgsqlTypes.NpgsqlDbType.Numeric) { Value = (object?)gordura ?? DBNull.Value });
+    cmd.Parameters.AddWithValue("e_sub", input.SubstituiItemId.HasValue);
+
+    var newId = await cmd.ExecuteScalarAsync();
+    return Results.Created($"/api/planos/item/{newId}", new
+    {
+        id = newId,
+        mensagem = "Item adicionado com cálculo automático!",
+        calculo = new { baseCalculo = baseCalculo, gramas, kcal, proteina, carbo, gordura }
+    });
 });
 
 app.MapPut("/api/planos/item/{id}", async (int id, ItemInput input) =>
@@ -1537,7 +1822,7 @@ app.MapPost("/api/auth/login", async (LoginInput input) =>
         cm.Parameters.AddWithValue("emp", empresaId);
         using var rd = await cm.ExecuteReaderAsync();
         while (await rd.ReadAsync())
-            modulos[rd.GetString(0)] = perfil == "admin" ? "total" : rd.GetString(1);
+            modulos[rd.GetString(0)] = (perfil == "admin" || perfil == "super_admin") ? "total" : rd.GetString(1);
     }
 
     var token = Auth.Gerar(jwtKey, id, empresaId, perfil, modulos);
@@ -1686,7 +1971,7 @@ app.MapPost("/api/onboarding", async (OnboardingInput input) =>
 });
 
 // POST /api/empresas/{id}/convite - Convidar usuário para empresa (admin/super_admin)
-app.MapPost("/api/empresas/{empresaId:int}/convite", async (int empresaId, ConviteInput input, ClaimsPrincipal user) =>
+app.MapPost("/api/empresas/{empresaId:int}/convite", async (int empresaId, ConviteInput input, ClaimsPrincipal user, IEmailService emailService) =>
 {
     var perfilToken = user.FindFirst("perfil")?.Value;
     if (perfilToken != "super_admin" && perfilToken != "admin")
@@ -1706,11 +1991,16 @@ app.MapPost("/api/empresas/{empresaId:int}/convite", async (int empresaId, Convi
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
-    // Verificar se empresa existe
-    using var check = new NpgsqlCommand("SELECT 1 FROM empresas WHERE id = @id", conn);
-    check.Parameters.AddWithValue("id", empresaId);
-    if (await check.ExecuteScalarAsync() == null)
-        return Results.NotFound(new { mensagem = "Empresa não encontrada." });
+    // Verificar se empresa existe e buscar nome
+    string empresaNome = "";
+    using (var check = new NpgsqlCommand("SELECT nome FROM empresas WHERE id = @id", conn))
+    {
+        check.Parameters.AddWithValue("id", empresaId);
+        var result = await check.ExecuteScalarAsync();
+        if (result == null)
+            return Results.NotFound(new { mensagem = "Empresa não encontrada." });
+        empresaNome = result.ToString()!;
+    }
 
     // Verificar se já existe usuário com esse email na empresa
     using var exist = new NpgsqlCommand("SELECT 1 FROM usuarios WHERE email = @e AND empresa_id = @emp", conn);
@@ -1734,15 +2024,18 @@ app.MapPost("/api/empresas/{empresaId:int}/convite", async (int empresaId, Convi
     cmd.Parameters.AddWithValue("exp", expiracao);
     int conviteId = Convert.ToInt32(await cmd.ExecuteScalarAsync());
 
-    // TODO: Enviar e-mail com link de aceite (frontend: /convite/{token})
-    // Por enquanto retorna o token para testes
+    // Enviar e-mail de convite
+    var emailEnviado = await emailService.EnviarConviteAsync(email, empresaNome, conviteToken, perfil, nivel);
+
     return Results.Created($"/api/convites/{conviteId}", new
     {
         id = conviteId,
         token = conviteToken,
         urlConvite = $"/convite/{conviteToken}",
         expiraEm = expiracao,
-        mensagem = "Convite criado! Envie o link para o convidado."
+        mensagem = emailEnviado
+            ? "Convite criado e e-mail enviado!"
+            : "Convite criado! (Falha ao enviar e-mail - configure SMTP no appsettings.json)"
     });
 })
 .RequireAuthorization();
@@ -2133,7 +2426,7 @@ app.MapGet("/api/historico/{pacienteId}", async (int pacienteId) =>
 });
 
 // ===========================EXECUÇÃO DA APLICAÇÃO=========================================
-app.Run("http://localhost:5001");
+app.Run();
 // ===============================================DTOs===============================================================
 
 record PacienteLoginInput(string? Cpf, string? Nascimento);
@@ -2151,11 +2444,31 @@ record ItemInput(
     int RefeicaoId, int Opcao, int? SubstituiItemId, string? AlimentoNome,
     double QuantidadeG, string? MedidaCaseira,
     double Kcal, double Proteinas, double Carbos, double Gorduras);
+
+// Entrada para cálculo automático via Python service (TACO)
+record ItemCalcularInput(
+    int RefeicaoId, int Opcao, int? SubstituiItemId,
+    string AlimentoId,           // ID do alimento na TACO (ex: "175" = banana)
+    string? Refeicao,            // "cafe_manha", "almoco", "jantar", "lanche", "pre_treino", "pos_treino", "ceia"
+    string? Observacao,
+    // Um destes targets (prioridade: kcal > proteina > carbo > gordura)
+    double? TargetKcal,
+    double? TargetProteina,
+    double? TargetCarbo,
+    double? TargetGordura,
+    // Ou gramas fixas (ignora targets se fornecido)
+    double? Gramas,
+    // Ou medida caseira (ex: "2 colheres de sopa")
+    string? MedidaCaseira,
+    double? QuantidadeMedida,
+    string? ObservacaoMedida);
+
 record VersaoInput(string? Descricao);
 record EmpresaInput(string? Nome);
 record ConviteInput(string? Email, string? Perfil, string? NivelNutricao);
 record AceitarConviteInput(string? Token, string? Senha, string? Nome);
 record OnboardingInput(string EmpresaNome, string AdminNome, string AdminEmail, string AdminSenha);
+record MedidaCaseiraInput(string Medida, decimal GramasPorUnidade, string? Observacao = null);
 // =====================================================================
 // MONTA O PLANO COMPLETO (refeições → itens)
 // =====================================================================
@@ -2503,7 +2816,7 @@ static class Escopo
                 }
                 else if (seg.Length > 2 && seg[2] == "item")
                 {
-                    if (post && seg.Length == 3)
+                    if (post && (seg.Length == 3 || (seg.Length == 4 && seg[3] == "calcular")))
                     {
                         Add("refeicao", await Corpo(ctx, "refeicaoId"));
                         int sub = await Corpo(ctx, "substituiItemId");

@@ -1012,7 +1012,7 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
             <div class="lg-brand">
                 <img src="../assets/logo.png.png" alt="AC Hub" class="lg-logo-img">
             </div>
-            <h1 class="lg-title">Bem-vindo ao ACNUT<span>.</span></h1>
+            <h1 class="lg-title">Bem-vindo ao ACNUTRI<span>.</span></h1>
             <p class="text-slate-400 text-sm mb-8">Configure sua empresa e crie a conta de super-administrador para começar.</p>
             <div class="lg-bar"></div>
 
@@ -1249,6 +1249,18 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         class="acnut-rail-item">
         <i class="fa-solid fa-file-medical"></i>
         <span class="acnut-rail-label">Prontuário</span>
+        </button>
+        <button type="button" data-nav="billing" data-tip="Plano & Assinatura"
+        onclick="navegar('billing'); fecharMenuMobile();"
+        class="acnut-rail-item">
+        <i class="fa-solid fa-credit-card"></i>
+        <span class="acnut-rail-label">Plano & Assinatura</span>
+        </button>
+        <button type="button" data-nav="empresas" data-tip="Empresas"
+        onclick="navegar('empresas'); fecharMenuMobile();"
+        class="acnut-rail-item" id="nav-empresas" style="display:none;">
+        <i class="fa-solid fa-building"></i>
+        <span class="acnut-rail-label">Empresas</span>
         </button>
         </nav>
 <!-- RODAPÉ -->
@@ -3193,17 +3205,41 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         <button type="button" onclick="fecharModal('modal-item')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <p id="mi-contexto" class="hidden text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2"></p>
-        <div>
+        <div class="relative">
         <label class="block text-xs font-semibold text-slate-400 mb-1.5">Alimento</label>
-        <input id="mi-nome" required placeholder="Ex: Ovos mexidos com pão integral" class="acnut-input">
+        <input id="mi-nome" required placeholder="Ex: Ovos mexidos com pão integral" class="acnut-input" autocomplete="off">
+        <div id="mi-sugestoes" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto"></div>
         </div>
+
+        <!-- Medida Caseira (calcula gramas automaticamente) -->
+        <div id="mi-medida-container" class="hidden space-y-3">
+        <p class="text-xs font-semibold text-emerald-400 mb-1">Medida caseira (preenche gramas automaticamente)</p>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div>
+        <label class="block text-xs font-semibold text-slate-400 mb-1.5">Medida</label>
+        <select id="mi-medida-caseira" class="acnut-input" onchange="atualizarGramasPorMedida()">
+        <option value="">Selecione uma medida...</option>
+        </select>
+        </div>
+        <div>
+        <label class="block text-xs font-semibold text-slate-400 mb-1.5">Quantidade</label>
+        <input id="mi-qtd-medida" type="number" step="0.1" min="0.1" placeholder="1" class="acnut-input" oninput="atualizarGramasPorMedida()">
+        </div>
+        <div>
+        <label class="block text-xs font-semibold text-slate-400 mb-1.5">Observação (opcional)</label>
+        <input id="mi-obs-medida" placeholder="Ex: rasa, cheia, 200ml" class="acnut-input">
+        </div>
+        </div>
+        <p id="mi-gramas-calculadas" class="hidden text-xs text-emerald-300"></p>
+        </div>
+
         <div class="grid grid-cols-2 gap-3">
         <div>
         <label class="block text-xs font-semibold text-slate-400 mb-1.5">Quantidade (g/ml)</label>
         <input id="mi-qtd" type="number" step="0.1" placeholder="150" class="acnut-input">
         </div>
         <div>
-        <label class="block text-xs font-semibold text-slate-400 mb-1.5">Medida caseira</label>
+        <label class="block text-xs font-semibold text-slate-400 mb-1.5">Medida caseira (manual)</label>
         <input id="mi-medida" placeholder="Ex: 2 fatias" class="acnut-input">
         </div>
         </div>
@@ -3761,8 +3797,365 @@ function mostrarLogin() {
     document.getElementById("area-paciente").style.display = "none";
 }
 </script>
+        <!-- ========================================================= SEÇÃO: BILLING (Plano & Assinatura) ========================================================= -->
+        <section id="sec-billing" class="hidden space-y-6">
+          <!-- Cabeçalho -->
+          <header class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
+            <div class="flex items-center gap-4">
+              <div class="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/20 flex items-center justify-center">
+                <i class="fa-solid fa-credit-card text-amber-400 text-lg"></i>
+              </div>
+              <div>
+                <h2 class="text-2xl font-extrabold text-white tracking-tight">Plano & Assinatura</h2>
+                <p class="text-sm text-slate-400 mt-1">Gerencie o plano da sua empresa, veja limites e altere a assinatura.</p>
+              </div>
+            </div>
+          </header>
+
+          <!-- Status Atual -->
+          <div id="billing-status" class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Plano atual</p>
+                <p id="bill-plano" class="text-2xl font-bold text-white">—</p>
+              </div>
+              <div class="flex items-center gap-3">
+                <span id="bill-badge" class="px-3 py-1 rounded-full text-xs font-bold border">Carregando…</span>
+                <button id="btn-mudar-plano" class="hidden h-11 px-5 rounded-xl text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 transition flex items-center gap-2">
+                  <i class="fa-solid fa-arrows-rotate text-xs"></i> Mudar plano
+                </button>
+              </div>
+            </div>
+
+            <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="bill-limites">
+              <!-- preenchido por JS -->
+            </div>
+
+            <div class="mt-6 pt-6 border-t border-slate-700/50 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-300">
+              <div>Renovação: <span id="bill-renovacao" class="font-medium text-white">—</span></div>
+              <div>Próximo pagamento: <span id="bill-proximo" class="font-medium text-white">—</span></div>
+              <div id="bill-trial" class="hidden text-amber-400">Trial encerra em: <span id="bill-trial-fim" class="font-medium">—</span></div>
+            </div>
+          </div>
+
+          <!-- Catálogo de Planos -->
+          <div class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
+            <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2"><i class="fa-solid fa-list-check text-emerald-400"></i> Escolha seu plano</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="bill-catalogo">
+              <!-- preenchido por JS com Planos.Catalogo -->
+            </div>
+          </div>
+
+          <!-- Modal Mudar Plano -->
+          <div id="modal-billing" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md mx-4 p-6 space-y-5">
+              <div class="flex items-center justify-between">
+                <h4 class="text-lg font-bold text-white" id="modal-bill-title">Alterar plano</h4>
+                <button onclick="fecharModal('modal-billing')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+              </div>
+              <p class="text-sm text-slate-300">Selecione o novo plano. A alteração entra na próxima cobrança.</p>
+              <select id="bill-novo-plano" class="acnut-input">
+                <option value="basico">Básico — R$ 97/mês</option>
+                <option value="profissional">Profissional — R$ 297/mês</option>
+                <option value="enterprise">Enterprise — R$ 797/mês</option>
+              </select>
+              <div id="bill-preview" class="text-sm text-slate-400 space-y-1"></div>
+              <div id="modal-bill-erro" class="hidden lg-error"><i class="fa-solid fa-circle-exclamation"></i><span></span></div>
+              <div class="flex gap-3 pt-2">
+                <button onclick="fecharModal('modal-billing')" class="flex-1 acnut-btn-secondary">Cancelar</button>
+                <button onclick="confirmarMudancaPlano()" class="flex-1 acnut-btn-primary" id="btn-confirmar-plano">Confirmar</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Histórico de Pagamentos (super_admin) -->
+          <div class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
+            <h3 class="text-lg font-bold text-white mb-4">Eventos recentes (webhook Asaas)</h3>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="text-left text-[11px] font-bold uppercase text-slate-500 border-b border-slate-700/50">
+                    <th class="py-3 px-4">Data</th>
+                    <th class="py-3 px-4">Evento</th>
+                    <th class="py-3 px-4">Status</th>
+                    <th class="py-3 px-4">Detalhe</th>
+                  </tr>
+                </thead>
+                <tbody id="bill-webhook-log" class="divide-y divide-slate-700/40">
+                  <tr><td colspan="4" class="py-6 text-center text-slate-400">Carregando…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+        <!-- =========================================================SEÇÃO: EMPRESAS (super_admin)========================================================= -->
+        <section id="sec-empresas" class="hidden space-y-6">
+        <!-- Cabeçalho -->
+        <header class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
+          <div class="flex items-center gap-4">
+            <div class="w-12 h-12 rounded-2xl bg-purple-500/15 border border-purple-500/20 flex items-center justify-center">
+              <i class="fa-solid fa-building text-purple-400 text-lg"></i>
+            </div>
+            <div>
+              <h2 class="text-2xl font-extrabold text-white tracking-tight">Empresas</h2>
+              <p class="text-sm text-slate-400 mt-1">Gerencie as empresas do sistema (apenas super administrador)</p>
+            </div>
+          </div>
+        </header>
+
+        <!-- Formulário Nova Empresa -->
+        <div class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
+          <div class="flex items-center gap-3 mb-6">
+            <div class="w-10 h-10 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center">
+              <i class="fa-solid fa-plus"></i>
+            </div>
+            <div>
+              <h3 class="text-base font-bold text-white">Nova empresa</h3>
+              <p class="text-xs text-slate-400">Cadastre uma nova empresa no sistema</p>
+            </div>
+          </div>
+          <form id="form-empresa" onsubmit="cadastrarEmpresa(event)" class="max-w-md">
+            <div class="space-y-2">
+              <label class="text-xs font-semibold text-slate-400">Nome da empresa</label>
+              <div class="relative">
+                <i class="fa-solid fa-building absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
+                <input type="text" id="emp-nome" placeholder="Ex: Clínica Nutrição & Saúde" required
+                class="w-full h-12 pl-11 pr-4 bg-slate-900/70 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-600 outline-none transition-all focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10">
+              </div>
+            </div>
+            <div class="mt-4">
+              <button type="submit" class="w-full h-12 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-sm shadow-lg shadow-emerald-600/20 transition-all hover:-translate-y-0.5 active:scale-[0.98]">
+                <i class="fa-solid fa-plus mr-2"></i>Cadastrar Empresa
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Lista de Empresas -->
+        <div class="bg-slate-800/70 backdrop-blur-xl rounded-3xl border border-slate-700/60 shadow-xl overflow-hidden">
+          <div class="px-6 py-5 border-b border-slate-700/60 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center">
+                <i class="fa-solid fa-list"></i>
+              </div>
+              <div>
+                <h3 class="text-base font-bold text-white">Empresas cadastradas</h3>
+                <p class="text-xs text-slate-400">Lista completa das empresas do sistema</p>
+              </div>
+            </div>
+          </div>
+          <div class="w-full overflow-x-auto">
+            <table class="w-full">
+              <thead class="bg-slate-900/60 border-b border-slate-700/70">
+                <tr>
+                  <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">ID</th>
+                  <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Nome</th>
+                  <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Criada em</th>
+                </tr>
+              </thead>
+              <tbody id="tabela-empresas" class="divide-y divide-slate-700/40">
+                <tr><td colspan="3" class="py-6 text-center text-slate-400">Carregando…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        </section>
         <!-- Importa o app.js apenas no fim, com defer ou logo antes de fechar -->
 <script src="app.js"></script>
+        <!-- Billing JavaScript -->
+<script>
+// ===== Catálogo de planos (espelha o backend) =====
+const PLANOS_CATALOGO = {
+  basico:       { valor: 97,   limites: { max_pacientes: 50,  max_profissionais: 2,  storage_mb: 500,   max_versoes_plano: 5 }  },
+  profissional: { valor: 297,  limites: { max_pacientes: 200, max_profissionais: 10, storage_mb: 2000,  max_versoes_plano: 20 } },
+  enterprise:   { valor: 797,  limites: { max_pacientes: 1000, max_profissionais: 50, storage_mb: 10000, max_versoes_plano: 100 } }
+};
+
+const PLANO_LABELS = {
+  basico: 'Básico', profissional: 'Profissional', enterprise: 'Enterprise',
+  inativa: 'Inativa', ativa: 'Ativa', trial: 'Trial', past_due: 'Atrasado', cancelada: 'Cancelada'
+};
+const STATUS_COR = {
+  ativa: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+  trial: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+  past_due: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+  cancelada: 'bg-rose-500/15 text-rose-400 border-rose-500/30',
+  inativa: 'bg-slate-500/15 text-slate-400 border-slate-500/30'
+};
+
+// Verifica se usuário logado é admin ou super_admin
+async function exigirAdmin() {
+  const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
+  if (!user.perfil || !['admin', 'super_admin'].includes(user.perfil)) {
+    alert('Acesso restrito a administradores.');
+    return false;
+  }
+  return true;
+}
+
+async function carregarBilling() {
+  if (!await exigirAdmin()) return;
+
+  // Status + limites
+  try {
+    const [stRes, limRes] = await Promise.all([
+      fetch(`${API_URL}/billing/assinatura`),
+      fetch(`${API_URL}/billing/limites`)
+    ]);
+
+    if (stRes.ok) {
+      const st = await stRes.json();
+      renderStatus(st);
+    } else if (stRes.status === 404) {
+      // Sem assinatura ainda
+      document.getElementById('bill-plano').innerText = 'Sem assinatura';
+      document.getElementById('bill-badge').innerText = 'Inativa';
+      document.getElementById('bill-badge').className = 'px-3 py-1 rounded-full text-xs font-bold border bg-slate-500/15 text-slate-400 border-slate-500/30';
+      document.getElementById('btn-mudar-plano').classList.remove('hidden');
+    }
+
+    if (limRes.ok) {
+      const lim = await limRes.json();
+      renderLimites(lim.limites || lim);
+    }
+  } catch (e) { console.error(e); }
+
+  // Catálogo
+  renderCatalogo();
+
+  // Webhook log (apenas super_admin)
+  const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
+  if (user.perfil === 'super_admin') carregarWebhookLog();
+}
+
+function renderStatus(st) {
+  document.getElementById('bill-plano').innerText = PLANO_LABELS[st.plano] || st.plano;
+  const badge = document.getElementById('bill-badge');
+  badge.innerText = PLANO_LABELS[st.status] || st.status;
+  badge.className = `px-3 py-1 rounded-full text-xs font-bold border ${STATUS_COR[st.status] || STATUS_COR.inativa}`;
+
+  document.getElementById('bill-renovacao').innerText = st.ciclo === 'yearly' ? 'Anual' : 'Mensal';
+  document.getElementById('bill-proximo').innerText = st.fim_vigencia ? new Date(st.fim_vigencia).toLocaleDateString('pt-BR') : '—';
+
+  const trialDiv = document.getElementById('bill-trial');
+  if (st.trial_fim) {
+    trialDiv.classList.remove('hidden');
+    document.getElementById('bill-trial-fim').innerText = new Date(st.trial_fim).toLocaleDateString('pt-BR');
+  }
+
+  // Botão mudar plano aparece se ativa/trial
+  if (['ativa','trial'].includes(st.status)) {
+    document.getElementById('btn-mudar-plano').classList.remove('hidden');
+    document.getElementById('btn-mudar-plano').onclick = () => abrirMudarPlano(st.plano);
+  }
+}
+
+function renderLimites(l) {
+  const box = (rotulo, valor, cor = 'text-emerald-400') => `
+    <div class="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
+      <p class="text-[10px] uppercase tracking-wider text-slate-500">${rotulo}</p>
+      <p class="text-2xl font-extrabold ${cor}">${valor}</p>
+    </div>`;
+  document.getElementById('bill-limites').innerHTML = `
+    ${box('Pacientes', l.max_pacientes)}
+    ${box('Profissionais', l.max_profissionais, 'text-blue-400')}
+    ${box('Armazenamento', `${l.storage_mb} MB`, 'text-purple-400')}
+    ${box('Versões de plano', l.max_versoes_plano, 'text-amber-400')}
+  `;
+}
+
+function renderCatalogo() {
+  const el = document.getElementById('bill-catalogo');
+  el.innerHTML = Object.entries(PLANOS_CATALOGO).map(([key, p]) => `
+    <div class="bg-slate-900/60 border border-slate-700/60 rounded-2xl p-5 space-y-3 relative">
+      <div class="flex items-baseline gap-2">
+        <span class="text-3xl font-extrabold text-white">R$ ${p.valor}</span>
+        <span class="text-slate-400">/mês</span>
+      </div>
+      <h4 class="text-lg font-bold text-white">${PLANO_LABELS[key]}</h4>
+      <ul class="space-y-2 text-sm text-slate-300">
+        <li><i class="fa-solid fa-check text-emerald-400 mr-2 w-4"></i>${p.limites.max_pacientes} pacientes</li>
+        <li><i class="fa-solid fa-check text-emerald-400 mr-2 w-4"></i>${p.limites.max_profissionais} profissionais</li>
+        <li><i class="fa-solid fa-check text-emerald-400 mr-2 w-4"></i>${p.limites.storage_mb} MB armazenamento</li>
+        <li><i class="fa-solid fa-check text-emerald-400 mr-2 w-4"></i>${p.limites.max_versoes_plano} versões de plano</li>
+      </ul>
+      <button onclick="abrirMudarPlano('${key}')" class="w-full mt-4 h-11 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-500 transition">
+        ${key === 'basico' ? 'Plano atual' : 'Selecionar'}
+      </button>
+    </div>
+  `).join('');
+}
+
+function abrirMudarPlano(atual) {
+  document.getElementById('bill-novo-plano').value = atual;
+  atualizarPreviewPlano();
+  abrirModal('modal-billing');
+}
+
+function atualizarPreviewPlano() {
+  const key = document.getElementById('bill-novo-plano').value;
+  const p = PLANOS_CATALOGO[key];
+  document.getElementById('bill-preview').innerHTML = `
+    <strong>Novo valor:</strong> R$ ${p.valor}/mês<br>
+    <strong>Pacientes:</strong> ${p.limites.max_pacientes} • <strong>Profissionais:</strong> ${p.limites.max_profissionais}<br>
+    <strong>Storage:</strong> ${p.limites.storage_mb} MB • <strong>Versões:</strong> ${p.limites.max_versoes_plano}
+  `;
+}
+
+async function confirmarMudancaPlano() {
+  const plano = document.getElementById('bill-novo-plano').value;
+  const btn = document.getElementById('btn-confirmar-plano');
+  const erroDiv = document.getElementById('modal-bill-erro');
+  erroDiv.style.display = 'none';
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processando…';
+
+  try {
+    const res = await fetch(`${API_URL}/billing/assinatura/iniciar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plano, trialDias: 0 })
+    });
+    if (!res.ok) throw new Error((await res.json()).mensagem || 'Erro ao alterar plano');
+
+    fecharModal('modal-billing');
+    alert('Plano alterado com sucesso! A cobrança será ajustada no próximo ciclo.');
+    carregarBilling();
+  } catch (e) {
+    erroDiv.querySelector('span').innerText = e.message;
+    erroDiv.style.display = 'flex';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Confirmar';
+  }
+}
+
+async function carregarWebhookLog() {
+  try {
+    const res = await fetch(`${API_URL}/billing/webhook-log`); // endpoint opcional p/ super_admin
+    if (!res.ok) return;
+    const eventos = await res.json();
+    const tbody = document.getElementById('bill-webhook-log');
+    tbody.innerHTML = eventos.slice(0, 20).map(e => `
+      <tr class="hover:bg-slate-800/50">
+        <td class="py-3 px-4 text-slate-300">${new Date(e.criado_em).toLocaleString('pt-BR')}</td>
+        <td class="py-3 px-4 text-white">${e.event_type}</td>
+        <td class="py-3 px-4">${e.processado_em
+          ? '<span class="px-2 py-0.5 text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded">OK</span>'
+          : '<span class="px-2 py-0.5 text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded">Pendente</span>'}</td>
+        <td class="py-3 px-4 text-slate-400 max-w-xs truncate">${e.erro || (e.payload_jsonb?.subscription?.id || '')}</td>
+      </tr>
+    `).join('');
+  } catch { /* ignora */ }
+}
+
+// Integração com navegação existente
+const origNavegar = window.navegar;
+window.navegar = function(secao) {
+  origNavegar(secao);
+  if (secao === 'billing') carregarBilling();
+};
+</script>
         </main>
         </div>
         </body>
