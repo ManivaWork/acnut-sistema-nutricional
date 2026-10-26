@@ -28,9 +28,13 @@ builder.Services.AddHttpClient<AsaasClient>();
     ?? throw new InvalidOperationException("Defina Jwt:Key nos user-secrets (mínimo 32 caracteres).");
 var origens = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? new[] { "null" };
 // "null" = página aberta direto do disco (file://). Com Live Server, adicione http://127.0.0.1:5500
+// Em produção (Render), defina Cors__AllowedOrigins como JSON array: ["https://achubhome.vercel.app","https://seu-outro-dominio.com"]
 
     builder.Services.AddCors(o => o.AddPolicy("Front", p =>
-    p.WithOrigins(origens).AllowAnyMethod().AllowAnyHeader()));
+        p.WithOrigins(origens)
+         .AllowAnyMethod()
+         .AllowAnyHeader()
+         .AllowCredentials())); // necessário se frontend envia cookies/Authorization header
 
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
