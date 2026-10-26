@@ -1,5 +1,5 @@
 {
-  "buildCommand": "node frontend/interface/build.js",
+  "buildCommand": "echo skip",
   "installCommand": "echo skip",
   "outputDirectory": "frontend",
   "framework": null,
