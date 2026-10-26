@@ -1,7 +1,9 @@
 {
-  "rootDirectory": "frontend/interface",
-  "buildCommand": "node build.js",
-  "outputDirectory": ".",
-  "installCommand": "npm install",
-  "framework": null
+  "buildCommand": "node frontend/interface/build.js",
+  "installCommand": "echo skip",
+  "outputDirectory": "frontend",
+  "framework": null,
+  "redirects": [
+    { "source": "/", "destination": "/interface/index.html", "permanent": false }
+  ]
 }
