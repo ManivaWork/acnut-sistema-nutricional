@@ -1,5 +1,5 @@
         const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ? 'http://localhost:5290/api'
+  ? 'https://acnut-sistema-nutricional.onrender.com'
   : 'https://SUA-API-BACKEND.com/api'; // placeholder até o backend subir
         const TOKEN_KEY = "bybar_token";
 const getToken = () => sessionStorage.getItem(TOKEN_KEY);

@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const API_URL = process.env.VITE_API_URL || process.env.API_URL || 'http://localhost:5290/api';
+const API_URL = process.env.VITE_API_URL || process.env.API_URL || 'https://acnut-sistema-nutricional.onrender.com';
 
 const indexPath = path.join(__dirname, 'index.html');
 let html = fs.readFileSync(indexPath, 'utf8');

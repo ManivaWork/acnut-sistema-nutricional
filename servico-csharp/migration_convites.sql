@@ -23,8 +23,7 @@ CREATE INDEX IF NOT EXISTS idx_convites_empresa_email
     WHERE usado_em IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_convites_token_valido
-    ON convites (token)
-    WHERE usado_em IS NULL AND expira_em > CURRENT_TIMESTAMP;
+    ON convites (token) WHERE usado_em IS NULL;
 
 -- 3. Constraint de unicidade: um convite ativo por email por empresa
 -- (parcial: só enquanto não usado e não expirado)
