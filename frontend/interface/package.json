@@ -1,0 +1,12 @@
+{
+  "name": "acnutri-frontend",
+  "version": "1.0.0",
+  "description": "ACNUTRI Frontend - Sistema Clínico de Nutrição",
+  "scripts": {
+    "build": "node build.js",
+    "dev": "npx serve . -p 5173"
+  },
+  "devDependencies": {
+    "serve": "^14.2.0"
+  }
+}

@@ -11,6 +11,16 @@ using ACNutri.Billing;
 using ACNutri.Email;
 
 var builder = WebApplication.CreateBuilder(args);
+// === Asaas / Billing ===
+var asaasSection = builder.Configuration.GetSection("Asaas");
+var asaasCfg = new AsaasConfig(
+    asaasSection["BaseUrl"] ?? "https://sandbox.asaas.com/api/v3",
+    asaasSection["ApiKey"] ?? throw new InvalidOperationException("Defina Asaas:ApiKey nos user-secrets ou variáveis de ambiente."),
+    asaasSection["WebhookSecret"] ?? throw new InvalidOperationException("Defina Asaas:WebhookSecret nos user-secrets ou variáveis de ambiente.")
+);
+
+builder.Services.AddSingleton(asaasCfg);
+builder.Services.AddHttpClient<AsaasClient>();
 
     string connString = builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException("Defina ConnectionStrings:Default nos user-secrets.");
@@ -47,27 +57,27 @@ var origens = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?
     };
     });
 builder.Services.AddAuthorization();
-
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHttpClient();
-builder.Services.AddHttpClient<AsaasClient>();
-builder.Services.Configure<AsaasConfig>(builder.Configuration.GetSection("Asaas"));
 builder.Services.Configure<EmailConfig>(builder.Configuration.GetSection("Email"));
 builder.Services.AddSingleton<IEmailService, EmailService>();
 
 // Registrar NpgsqlDataSource para injeção de dependência (usado no BillingModule)
 builder.Services.AddSingleton<NpgsqlDataSource>(_ => NpgsqlDataSource.Create(connString));
 
+// === Asaas / Billing ===
+builder.Services.Configure<AsaasConfig>(builder.Configuration.GetSection("Asaas"));
+builder.Services.AddHttpClient<AsaasClient>();
+builder.Services.AddSingleton(sp => 
+    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AsaasConfig>>().Value);
+
 var app = builder.Build();
-app.UseRouting();              // ← adicione
+app.UseRouting();
 app.UseCors("Front");
 app.UseAuthentication();
 app.UseAuthorization();
-
-// Billing endpoints (Asaas)
-var asaasCfg = builder.Configuration.GetSection("Asaas").Get<AsaasConfig>();
-if (asaasCfg is not null)
+if (!string.IsNullOrEmpty(asaasCfg.ApiKey))
     app.MapBillingEndpoints(connString, asaasCfg);
 
 await Seed.Garantir(connString, builder.Configuration);

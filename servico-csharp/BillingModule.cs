@@ -98,6 +98,8 @@ public class AsaasClient
     }
 }
 
+
+
 // ============================================================
 // ENDPOINTS (chame app.MapBillingEndpoints() no Program.cs)
 // ============================================================
@@ -108,41 +110,41 @@ public static class BillingEndpoints
         var grupo = app.MapGroup("/api/billing").RequireAuthorization();
 
         // ---- GET: assinatura da empresa logada ----
-        grupo.MapGet("/assinatura", async (ClaimsPrincipal user, NpgsqlDataSource db) =>
-        {
-            int emp = Auth.Empresa(user);
-            await using var cmd = db.CreateCommand(@"
-                SELECT a.id, a.plano, a.status, a.valor_centavos, a.ciclo,
-                       a.trial_fim, a.inicio_vigencia, a.fim_vigencia,
-                       a.asaas_customer_id, a.asaas_subscription_id,
-                       CASE a.plano
-                           WHEN 'basico'       THEN '{\""max_pacientes\"":50,\""max_profissionais\"":2,\""storage_mb\"":500,\""max_versoes_plano\"":5}'::jsonb
-                           WHEN 'profissional' THEN '{\""max_pacientes\"":200,\""max_profissionais\"":10,\""storage_mb\"":2000,\""max_versoes_plano\"":20}'::jsonb
-                           WHEN 'enterprise'   THEN '{\""max_pacientes\"":1000,\""max_profissionais\"":50,\""storage_mb\"":10000,\""max_versoes_plano\"":100}'::jsonb
-                       END AS limites
-                FROM assinaturas a
-                WHERE a.empresa_id = @emp;");
-            cmd.Parameters.AddWithValue("emp", emp);
+grupo.MapGet("/assinatura", async (ClaimsPrincipal user, NpgsqlDataSource db) =>
+{
+    int emp = Auth.Empresa(user);
+    await using var cmd = db.CreateCommand(@"
+        SELECT a.id, a.plano, a.status, a.valor_centavos, a.ciclo,
+               a.trial_fim, a.inicio_vigencia, a.fim_vigencia,
+               a.asaas_customer_id, a.asaas_subscription_id,
+               CASE a.plano
+                   WHEN 'basico'       THEN jsonb_build_object('max_pacientes', 50,  'max_profissionais', 2,  'storage_mb', 500,   'max_versoes_plano', 5)
+                   WHEN 'profissional' THEN jsonb_build_object('max_pacientes', 200, 'max_profissionais', 10, 'storage_mb', 2000,  'max_versoes_plano', 20)
+                   WHEN 'enterprise'   THEN jsonb_build_object('max_pacientes', 1000,'max_profissionais', 50, 'storage_mb', 10000, 'max_versoes_plano', 100)
+               END AS limites
+        FROM assinaturas a
+        WHERE a.empresa_id = @emp;");
+    cmd.Parameters.AddWithValue("emp", emp);
 
-            await using var rd = await cmd.ExecuteReaderAsync();
-            if (!await rd.ReadAsync())
-                return Results.NotFound(new { mensagem = "Empresa sem assinatura configurada." });
+    await using var rd = await cmd.ExecuteReaderAsync();
+    if (!await rd.ReadAsync())
+        return Results.NotFound(new { mensagem = "Empresa sem assinatura configurada." });
 
-            return Results.Ok(new
-            {
-                id = rd.GetInt64(0),
-                plano = rd.GetString(1),
-                status = rd.GetString(2),
-                valor_centavos = rd.GetInt32(3),
-                ciclo = rd.GetString(4),
-                trial_fim = rd.IsDBNull(5) ? (DateTime?)null : rd.GetDateTime(5),
-                inicio_vigencia = rd.GetDateTime(6),
-                fim_vigencia = rd.IsDBNull(7) ? (DateTime?)null : rd.GetDateTime(7),
-                asaas_customer_id = rd.IsDBNull(8) ? null : rd.GetString(8),
-                asaas_subscription_id = rd.IsDBNull(9) ? null : rd.GetString(9),
-                limites = JsonSerializer.Deserialize<PlanoLimites>(rd.GetString(10))
-            });
-        });
+    return Results.Ok(new
+    {
+        id = rd.GetInt64(0),
+        plano = rd.GetString(1),
+        status = rd.GetString(2),
+        valor_centavos = rd.GetInt32(3),
+        ciclo = rd.GetString(4),
+        trial_fim = rd.IsDBNull(5) ? (DateTime?)null : rd.GetDateTime(5),
+        inicio_vigencia = rd.GetDateTime(6),
+        fim_vigencia = rd.IsDBNull(7) ? (DateTime?)null : rd.GetDateTime(7),
+        asaas_customer_id = rd.IsDBNull(8) ? null : rd.GetString(8),
+        asaas_subscription_id = rd.IsDBNull(9) ? null : rd.GetString(9),
+        limites = JsonSerializer.Deserialize<PlanoLimites>(rd.GetString(10))
+    });
+});
 
         // ---- POST: iniciar/alterar plano (cria customer + subscription no Asaas) ----
         grupo.MapPost("/assinatura/iniciar", async (IniciarPlanoInput input, ClaimsPrincipal user, NpgsqlDataSource db, AsaasClient asaas) =>
@@ -311,24 +313,40 @@ public static class BillingEndpoints
             return Results.Ok(new { recebido = true });
         }).AllowAnonymous();
 
-        // ---- GET: limites do plano atual (para o front bloquear UI) ----
-        grupo.MapGet("/limites", async (ClaimsPrincipal user, NpgsqlDataSource db) =>
-        {
-            int emp = Auth.Empresa(user);
-            await using var cmd = db.CreateCommand("SELECT * FROM v_assinaturas_ativas WHERE empresa_id = @emp");
-            cmd.Parameters.AddWithValue("emp", emp);
-            await using var rd = await cmd.ExecuteReaderAsync();
-            if (!await rd.ReadAsync())
-                return Results.Ok(new { tem_assinatura = false, limites = Planos.Catalogo["basico"].Limites });
+       // ---- GET: limites do plano atual (para o front bloquear UI) ----
+// ---- GET: limites do plano atual (para o front bloquear UI) ----
+grupo.MapGet("/limites", async (ClaimsPrincipal user, NpgsqlDataSource db) =>
+{
+    int emp = Auth.Empresa(user);
+    await using var cmd = db.CreateCommand("SELECT * FROM v_assinaturas_ativas WHERE empresa_id = @emp");
+    cmd.Parameters.AddWithValue("emp", emp);
+    await using var rd = await cmd.ExecuteReaderAsync();
 
-            return Results.Ok(new
+    if (!await rd.ReadAsync())
+    {
+        // Fallback: plano básico em snake_case (o front espera assim)
+        var lim = Planos.Catalogo["basico"].Limites;
+        return Results.Ok(new
+        {
+            tem_assinatura = false,
+            limites = new
             {
-                tem_assinatura = true,
-                plano = rd.GetString(1),
-                status = rd.GetString(2),
-                limites = JsonSerializer.Deserialize<PlanoLimites>(rd.GetString(8))
-            });
+                max_pacientes = lim.MaxPacientes,
+                max_profissionais = lim.MaxProfissionais,
+                storage_mb = lim.StorageMB,
+                max_versoes_plano = lim.MaxVersoesPlano
+            }
         });
+    }
+
+    return Results.Ok(new
+    {
+        tem_assinatura = true,
+        plano = rd.GetString(1),
+        status = rd.GetString(2),
+        limites = JsonSerializer.Deserialize<PlanoLimites>(rd.GetString(8))
+    });
+});
 
         // ---- GET: webhook log (apenas super_admin) ----
         grupo.MapGet("/webhook-log", async (ClaimsPrincipal user, NpgsqlDataSource db) =>
@@ -452,5 +470,6 @@ public static class BillingEndpoints
         }
     }
 }
+
 
 public record IniciarPlanoInput(string Plano, int TrialDias = 14);

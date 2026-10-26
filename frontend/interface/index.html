@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
+        <!-- API_URL configurável: definido no build (Vercel: VITE_API_URL) ou fallback localhost -->
+        <script>window.ENV_API_URL = "http://localhost:5290/api";</script>
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
         <meta charset="UTF-8">
@@ -891,7 +893,7 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         <div class="lg-panel">
         <div class="lg-box">
         <div class="lg-brand">
-        <img src="../assets/logo.png.png" alt="Ac Hub" class="lg-logo-img">
+        <img src="../assets/logo.png" alt="Ac Hub" class="lg-logo-img">
         </div>
         <h1 class="lg-title">Faça seu login<span>.</span></h1>
         <div class="lg-bar"></div>
@@ -1010,7 +1012,7 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
     <div class="lg-panel">
         <div class="lg-box">
             <div class="lg-brand">
-                <img src="../assets/logo.png.png" alt="AC Hub" class="lg-logo-img">
+                <img src="../assets/logo.png" alt="AC Hub" class="lg-logo-img">
             </div>
             <h1 class="lg-title">Bem-vindo ao ACNUTRI<span>.</span></h1>
             <p class="text-slate-400 text-sm mb-8">Configure sua empresa e crie a conta de super-administrador para começar.</p>
@@ -1116,7 +1118,7 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
     <div class="lg-panel">
         <div class="lg-box">
             <div class="lg-brand">
-                <img src="../assets/logo.png.png" alt="AC Hub" class="lg-logo-img">
+                <img src="../assets/logo.png" alt="AC Hub" class="lg-logo-img">
             </div>
             <h1 class="lg-title">Convite recebido<span>.</span></h1>
             <p class="text-slate-400 text-sm mb-8" id="convite-info">Configure sua senha para acessar a empresa.</p>

@@ -1,5 +1,6 @@
-        const API_URL = "http://localhost:5290/api";
-// const API_URL = "https://api.seudominio.com.br/api";   // usar só quando hospedar  TIRAR COMENTARIO QUANDO HOSPEDAR
+        const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ? 'http://localhost:5290/api'
+  : 'https://SUA-API-BACKEND.com/api'; // placeholder até o backend subir
         const TOKEN_KEY = "bybar_token";
 const getToken = () => sessionStorage.getItem(TOKEN_KEY);
 const urlArquivo = id => `${API_URL}/arquivos/${id}?t=${encodeURIComponent(getToken() || "")}`;
