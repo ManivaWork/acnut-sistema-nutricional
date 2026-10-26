@@ -5,3 +5,5 @@ obj/
 __pycache__/
 .vs/
 /database/
+appsettings.Development.json
+.env

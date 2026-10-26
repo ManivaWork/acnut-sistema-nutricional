@@ -26,7 +26,7 @@ builder.Services.AddHttpClient<AsaasClient>();
     ?? throw new InvalidOperationException("Defina ConnectionStrings:Default nos user-secrets.");
     string jwtKey = builder.Configuration["Jwt:Key"]
     ?? throw new InvalidOperationException("Defina Jwt:Key nos user-secrets (mínimo 32 caracteres).");
-var origens = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? new[] { "null" };
+var origens = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? new[] { "null" };
 // "null" = página aberta direto do disco (file://). Com Live Server, adicione http://127.0.0.1:5500
 
     builder.Services.AddCors(o => o.AddPolicy("Front", p =>
@@ -74,6 +74,10 @@ builder.Services.AddSingleton(sp =>
 
 var app = builder.Build();
 app.UseRouting();
+
+// Health endpoint for UptimeRobot (no auth, no DB)
+app.MapGet("/health", () => Results.Ok("ok")).AllowAnonymous();
+
 app.UseCors("Front");
 app.UseAuthentication();
 app.UseAuthorization();
