@@ -1114,17 +1114,21 @@ async function selecionarAlimento(id) {
         // Busca detalhes completos do alimento
         try {
         const res = await fetch(`${API_URL}/alimentos/${id}`, {
-                headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+                headers: { "Authorization": `Bearer ${getToken()}` }
         });
-        if (!res.ok) throw new Error("Erro ao buscar detalhes");
+        if (!res.ok) {
+                console.error("Erro ao buscar detalhes do alimento:", res.status, await res.text());
+                throw new Error("Erro ao buscar detalhes");
+        }
         const a = await res.json();
+        console.log("Detalhes do alimento:", a);
 
-        // Preenche nome e campos nutricionais (por 100g)
+        // Preenche nome e campos nutricionais (por 100g) - suporta ambos nomes de campos
         document.getElementById("mi-nome").value = a.nome;
-        document.getElementById("mi-kcal").value = a.calorias_100g ?? "";
-        document.getElementById("mi-prot").value = a.proteinas_100g ?? "";
-        document.getElementById("mi-carbo").value = a.carboidratos_100g ?? "";
-        document.getElementById("mi-gord").value = a.gorduras_100g ?? "";
+        document.getElementById("mi-kcal").value = a.calorias_100g ?? a.calorias ?? "";
+        document.getElementById("mi-prot").value = a.proteinas_100g ?? a.proteinas ?? "";
+        document.getElementById("mi-carbo").value = a.carboidratos_100g ?? a.carbos ?? "";
+        document.getElementById("mi-gord").value = a.gorduras_100g ?? a.gorduras ?? "";
         } catch (err) {
         console.error("Erro ao carregar detalhes do alimento:", err);
         alert("Não foi possível carregar os detalhes do alimento.");
