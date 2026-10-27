@@ -2556,7 +2556,28 @@ function formatarCpf(c) {
     return d.length === 11 ? d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : d;
 }
 
-// ---------- Login: alternar equipe / paciente ----------
+// ---------- Telefone ----------
+function mascararTelefone(el) {
+    let d = el.value.replace(/\D/g, "").slice(0, 11);
+    // Formato: (11) 98765-4321 ou (11) 8765-4321
+    if (d.length <= 2) {
+        el.value = d.replace(/(\d{0,2})/, "($1");
+    } else if (d.length <= 6) {
+        el.value = d.replace(/(\d{2})(\d{0,4})/, "($1) $2");
+    } else if (d.length <= 10) {
+        el.value = d.replace(/(\d{2})(\d{4,5})(\d{0,4})/, "($1) $2-$3");
+    } else {
+        el.value = d.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
+    }
+}
+function formatarTelefone(t) {
+    const d = String(t || "").replace(/\D/g, "");
+    if (d.length === 10) return d.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3");
+    if (d.length === 11) return d.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
+    return t;
+}
+
+// ---------- Login: alternar equipe / paciente -->
 function modoLogin(modo) {
     const pac = modo === "paciente";
     document.getElementById("form-login-equipe").style.display = pac ? "none" : "";

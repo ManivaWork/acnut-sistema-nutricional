@@ -1584,6 +1584,9 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         type="text"
         id="p-telefone"
         placeholder="(11) 98765-4321"
+        inputmode="numeric"
+        maxlength="15"
+        oninput="mascararTelefone(this)"
         class="
         w-full
         h-12
