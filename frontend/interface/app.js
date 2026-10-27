@@ -274,7 +274,6 @@ async function gerarAvaliacao(e) {
 
 // ===================== AVALIAÇÃO: AUTO-PREENCHER IDADE =====================
 async function carregarDadosPacienteAvaliacao(pacienteId) {
-        alert("[DEBUG] carregarDadosPacienteAvaliacao CHAMADA com: " + pacienteId);
         if (!pacienteId) return;
         const id = parseInt(pacienteId);
         if (isNaN(id)) return;
@@ -282,7 +281,7 @@ async function carregarDadosPacienteAvaliacao(pacienteId) {
         console.log("[Avaliação] Buscando paciente ID:", id);
 
         try {
-                const token = localStorage.getItem("token");
+                const token = getToken(); // usa helper correto (sessionStorage.bybar_token)
                 console.log("[Avaliação] Token:", token ? "presente" : "AUSENTE");
 
                 const res = await fetch(`${API_URL}/pacientes/${id}`, {
@@ -385,10 +384,8 @@ function calcularMassaMagraAutomatica() {
         if (pacienteIdInput) {
                 let timeoutId;
                 pacienteIdInput.addEventListener("input", (e) => {
-                        console.log("[DEBUG] Input event disparou, valor:", e.target.value);
                         clearTimeout(timeoutId);
                         timeoutId = setTimeout(() => {
-                                console.log("[DEBUG] Debounce completou, chamando função...");
                                 carregarDadosPacienteAvaliacao(e.target.value);
                         }, 500);
                 });
