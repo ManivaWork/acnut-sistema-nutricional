@@ -574,14 +574,15 @@ app.MapPost("/api/anamnese", async (AnamneseInput input) =>
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
     using var cmd = new NpgsqlCommand(@"
-        INSERT INTO anamneses (paciente_id, empresa_id, historico_medico, alergias, intolerancias, rotina_diaria, historico_familiar)
-        VALUES (@paciente_id, (SELECT empresa_id FROM pacientes WHERE id = @paciente_id), @historico, @alergias, @intolerancias, @rotina, @familiar)
+        INSERT INTO anamneses (paciente_id, empresa_id, historico_medico, alergias, intolerancias, rotina_diaria, historico_familiar, dados_extendidos)
+        VALUES (@paciente_id, (SELECT empresa_id FROM pacientes WHERE id = @paciente_id), @historico, @alergias, @intolerancias, @rotina, @familiar, @dados_extendidos)
         ON CONFLICT (paciente_id) DO UPDATE SET
             historico_medico = EXCLUDED.historico_medico,
             alergias = EXCLUDED.alergias,
             intolerancias = EXCLUDED.intolerancias,
             rotina_diaria = EXCLUDED.rotina_diaria,
             historico_familiar = EXCLUDED.historico_familiar,
+            dados_extendidos = EXCLUDED.dados_extendidos,
             atualizado_em = CURRENT_TIMESTAMP
         RETURNING id;", conn);
 
@@ -591,6 +592,7 @@ app.MapPost("/api/anamnese", async (AnamneseInput input) =>
     cmd.Parameters.AddWithValue("intolerancias", input.Intolerancias ?? "");
     cmd.Parameters.AddWithValue("rotina", input.RotinaDiaria ?? "");
     cmd.Parameters.AddWithValue("familiar", input.HistoricoFamiliar ?? "");
+    cmd.Parameters.AddWithValue("dados_extendidos", input.DadosExtendidos != null ? System.Text.Json.JsonSerializer.Serialize(input.DadosExtendidos) : "{}");
 
     var id = await cmd.ExecuteScalarAsync();
     return Results.Ok(new { id, mensagem = "Anamnese salva com sucesso!" });
@@ -600,19 +602,21 @@ app.MapGet("/api/anamnese/{pacienteId}", async (int pacienteId) =>
 {
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
-    using var cmd = new NpgsqlCommand("SELECT historico_medico, alergias, intolerancias, rotina_diaria, historico_familiar FROM anamneses WHERE paciente_id = @id;", conn);
+    using var cmd = new NpgsqlCommand("SELECT historico_medico, alergias, intolerancias, rotina_diaria, historico_familiar, dados_extendidos FROM anamneses WHERE paciente_id = @id;", conn);
     cmd.Parameters.AddWithValue("id", pacienteId);
     using var reader = await cmd.ExecuteReaderAsync();
 
     if (await reader.ReadAsync())
     {
+        var dadosExtendidos = reader.IsDBNull(5) ? "{}" : reader.GetString(5);
         return Results.Ok(new
         {
             historico_medico = reader.IsDBNull(0) ? "" : reader.GetString(0),
             alergias = reader.IsDBNull(1) ? "" : reader.GetString(1),
             intolerancias = reader.IsDBNull(2) ? "" : reader.GetString(2),
             rotina_diaria = reader.IsDBNull(3) ? "" : reader.GetString(3),
-            historico_familiar = reader.IsDBNull(4) ? "" : reader.GetString(4)
+            historico_familiar = reader.IsDBNull(4) ? "" : reader.GetString(4),
+            dados_extendidos = string.IsNullOrEmpty(dadosExtendidos) ? "{}" : dadosExtendidos
         });
     }
 
@@ -622,7 +626,8 @@ app.MapGet("/api/anamnese/{pacienteId}", async (int pacienteId) =>
         alergias = "",
         intolerancias = "",
         rotina_diaria = "",
-        historico_familiar = ""
+        historico_familiar = "",
+        dados_extendidos = "{}"
     });
 });
 
@@ -2459,7 +2464,7 @@ record AcompanhamentoInput(int MetaId, string Resultado, string? Observacao, str
 record OrientacaoDto(int PacienteId, string? Texto);
 record AvaliacaoInput(int PacienteId, int Idade, string Sexo, double PesoKg, double AlturaCm, string NivelAtividade, string Objetivo, double PercentualGordura, double MassaMagraKg);
 record CheckinInput(int PacienteId, double PesoAtualKg, int AdesaoPlanoPorcentagem, string? Observacoes);
-record AnamneseInput(int PacienteId, string? HistoricoMedico, string? Alergias, string? Intolerancias, string? RotinaDiaria, string? HistoricoFamiliar);
+record AnamneseInput(int PacienteId, string? HistoricoMedico, string? Alergias, string? Intolerancias, string? RotinaDiaria, string? HistoricoFamiliar, object? DadosExtendidos);
 record RefeicaoInput(int PacienteId, string NomeRefeicao, string? Horario, string? Observacoes);
 record ItemInput(
     int RefeicaoId, int Opcao, int? SubstituiItemId, string? AlimentoNome,

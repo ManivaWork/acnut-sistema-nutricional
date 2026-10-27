@@ -2928,7 +2928,343 @@ function abaPaciente(aba) {
             </div>`;
         }).join("") : vazio("Nenhuma meta combinada ainda.");
     }
+    else if (aba === "anamnese") {
+        renderAnamneseForm(d.paciente.id);
+    }
 }
+
+// ===== ANAMNESE - Formulário de 8 seções =====
+let anamneseState = {
+    pacienteId: null,
+    currentSection: 1,
+    totalSections: 8,
+    data: {},
+    originalData: {}
+};
+
+const anamneseSections = [
+    { id: 1, title: "Objetivo", icon: "fa-bullseye" },
+    { id: 2, title: "Histórico Médico", icon: "fa-file-medical" },
+    { id: 3, title: "Alergias e Intolerâncias", icon: "fa-triangle-exclamation" },
+    { id: 4, title: "Rotina e Hábitos", icon: "fa-clock" },
+    { id: 5, title: "Histórico Familiar", icon: "fa-users" },
+    { id: 6, title: "Exames e Suplementação", icon: "fa-flask-vial" },
+    { id: 7, title: "Alimentação Atual", icon: "fa-bowl-food" },
+    { id: 8, title: "Observações Finais", icon: "fa-pen-to-square" }
+];
+
+async function renderAnamneseForm(pacienteId) {
+    anamneseState.pacienteId = pacienteId;
+    anamneseState.currentSection = 1;
+    anamneseState.data = {};
+    anamneseState.originalData = {};
+
+    const el = document.getElementById("pac-conteudo");
+    el.innerHTML = `
+        <div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5 space-y-5">
+            <!-- Progress Bar -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-sm">
+                    <span class="text-slate-300" id="anamnese-progress-text">Seção 1 de 8</span>
+                    <span class="text-slate-400" id="anamnese-progress-percent">0%</span>
+                </div>
+                <div class="h-2 bg-slate-700 rounded-full overflow-hidden">
+                    <div id="anamnese-progress-bar" class="h-full bg-gradient-to-r from-purple-600 to-pink-600 rounded-full transition-all duration-300" style="width: 12.5%"></div>
+                </div>
+            </div>
+
+            <!-- Section Navigation Pills -->
+            <div class="flex flex-wrap gap-1.5 p-1 bg-slate-900/50 rounded-xl" id="anamnese-nav-pills">
+                ${anamneseSections.map(s => `
+                    <button type="button" onclick="anamneseGoToSection(${s.id})"
+                        class="anamnese-pill px-3 py-1.5 text-xs font-medium rounded-lg transition
+                            ${s.id === 1 ? 'bg-purple-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600 hover:text-white'}"
+                        data-section="${s.id}">
+                        <i class="fa-solid ${s.icon} mr-1"></i>${s.title}
+                    </button>
+                `).join("")}
+            </div>
+
+            <!-- Section Content -->
+            <div id="anamnese-section-content" class="space-y-4 min-h-[300px]">
+                <!-- Content rendered here -->
+            </div>
+
+            <!-- Navigation Buttons -->
+            <div class="flex items-center justify-between pt-4 border-t border-white/10">
+                <button type="button" onclick="anamnesePrevSection()"
+                    id="anamnese-btn-prev"
+                    class="px-5 py-2.5 text-sm font-semibold rounded-xl bg-slate-700 text-slate-300 hover:bg-slate-600 hover:text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled>
+                    <i class="fa-solid fa-chevron-left mr-2"></i>Anterior
+                </button>
+                <div class="flex items-center gap-3">
+                    <button type="button" onclick="anamneseSaveDraft()"
+                        class="px-5 py-2.5 text-sm font-semibold rounded-xl bg-slate-700 text-slate-300 hover:bg-slate-600 hover:text-white transition">
+                        <i class="fa-solid fa-floppy-disk mr-2"></i>Salvar rascunho
+                    </button>
+                    <button type="button" onclick="anamneseNextSection()"
+                        id="anamnese-btn-next"
+                        class="px-5 py-2.5 text-sm font-semibold rounded-xl text-white transition"
+                        style="background:linear-gradient(90deg,#6c34eb,#b731b4)">
+                        Seguinte<i class="fa-solid fa-chevron-right ml-2"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Load existing data from server
+    await anamneseLoadFromServer();
+
+    // Render first section
+    renderAnamneseSection(1);
+}
+
+// Render a specific section
+function renderAnamneseSection(sectionNum) {
+    anamneseState.currentSection = sectionNum;
+    const contentEl = document.getElementById("anamnese-section-content");
+
+    // Update progress
+    const percent = (sectionNum / anamneseState.totalSections) * 100;
+    document.getElementById("anamnese-progress-text").textContent = `Seção ${sectionNum} de ${anamneseState.totalSections}`;
+    document.getElementById("anamnese-progress-percent").textContent = `${Math.round(percent)}%`;
+    document.getElementById("anamnese-progress-bar").style.width = `${percent}%`;
+
+    // Update nav pills
+    document.querySelectorAll(".anamnese-pill").forEach(btn => {
+        const sec = parseInt(btn.dataset.section);
+        if (sec === sectionNum) {
+            btn.className = "anamnese-pill px-3 py-1.5 text-xs font-medium rounded-lg transition bg-purple-600 text-white";
+        } else if (sec < sectionNum) {
+            btn.className = "anamnese-pill px-3 py-1.5 text-xs font-medium rounded-lg transition bg-green-600/30 text-green-400 hover:bg-green-600/50";
+        } else {
+            btn.className = "anamnese-pill px-3 py-1.5 text-xs font-medium rounded-lg transition bg-slate-700 text-slate-400 hover:bg-slate-600 hover:text-white";
+        }
+    });
+
+    // Update prev/next buttons
+    document.getElementById("anamnese-btn-prev").disabled = sectionNum === 1;
+    const isLast = sectionNum === anamneseState.totalSections;
+    const nextBtn = document.getElementById("anamnese-btn-next");
+    if (isLast) {
+        nextBtn.innerHTML = 'Finalizar<i class="fa-solid fa-check ml-2"></i>';
+        nextBtn.onclick = anamneseSubmit;
+    } else {
+        nextBtn.innerHTML = 'Seguinte<i class="fa-solid fa-chevron-right ml-2"></i>';
+        nextBtn.onclick = anamneseNextSection;
+    }
+
+    // Render section content
+    const section = anamneseSections.find(s => s.id === sectionNum);
+    let html = "";
+
+    if (sectionNum === 1) {
+        html = renderSectionObjetivo();
+    } else {
+        html = `<div class="text-center py-12 text-slate-500">
+            <i class="fa-solid ${section.icon} text-3xl mb-3"></i>
+            <p>Seção ${sectionNum}: ${section.title} - Em desenvolvimento</p>
+        </div>`;
+    }
+
+    contentEl.innerHTML = html;
+}
+
+// Section 1: Objetivo
+function renderSectionObjetivo() {
+    const data = anamneseState.data.objetivo || {};
+    return `
+        <div class="space-y-5">
+            <div>
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-bullseye text-purple-400"></i>Qual seu principal objetivo?
+                </h3>
+                <p class="text-sm text-slate-400 mt-1">Selecione a opção que melhor descreve o que você busca</p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="anamnese-objetivo-options">
+                ${[
+                    { value: "emagrecimento", label: "Emagrecimento", icon: "fa-chart-line-down", desc: "Perder peso e gordura corporal" },
+                    { value: "ganho_massa", label: "Ganho de massa muscular", icon: "fa-dumbbell", desc: "Hipertrofia e força" },
+                    { value: "reeducacao", label: "Reeducação alimentar", icon: "fa-leaf", desc: "Melhorar hábitos alimentares" },
+                    { value: "saude", label: "Melhorar saúde/condicionamento", icon: "fa-heart-pulse", desc: "Prevenção e bem-estar" },
+                    { value: "performance", label: "Performance esportiva", icon: "fa-running", desc: "Melhorar rendimento no esporte" },
+                    { value: "outro", label: "Outro", icon: "fa-ellipsis", desc: "Outro objetivo não listado" }
+                ].map(opt => `
+                    <label class="anamnese-radio-card relative cursor-pointer group ${data.objetivo === opt.value ? 'ring-2 ring-purple-500' : ''}">
+                        <input type="radio" name="anamnese_objetivo" value="${opt.value}"
+                            class="sr-only" ${data.objetivo === opt.value ? 'checked' : ''}
+                            onchange="anamneseUpdateField('objetivo', 'objetivo', this.value); anamneseUpdateCardSelection(this)">
+                        <div class="bg-slate-800/50 border border-white/10 rounded-xl p-4 hover:border-purple-500/50 transition">
+                            <div class="flex items-start gap-3">
+                                <div class="w-10 h-10 rounded-lg flex items-center justify-center bg-purple-600/20 text-purple-400 group-hover:bg-purple-600/40 transition">
+                                    <i class="fa-solid ${opt.icon} text-lg"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <p class="font-medium text-white">${opt.label}</p>
+                                    <p class="text-xs text-slate-400">${opt.desc}</p>
+                                </div>
+                                <div class="anamnese-radio-check w-5 h-5 rounded-full border-2 border-white/20 group-hover:border-purple-500 transition
+                                    ${data.objetivo === opt.value ? 'bg-purple-500 border-purple-500' : ''}
+                                    flex items-center justify-center">
+                                    <i class="fa-solid fa-check text-xs text-white"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </label>
+                `).join("")}
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-slate-300 mb-2">Descreva melhor seu objetivo</label>
+                <textarea id="anamnese_objetivo_detalhes" rows="3"
+                    class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                    placeholder="Ex: Quero perder 10kg em 6 meses, melhorar disposição, dormir melhor..."
+                    oninput="anamneseUpdateField('objetivo', 'detalhes', this.value)">${data.detalhes || ''}</textarea>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-slate-300 mb-2">Tem alguma meta específica ou prazo?</label>
+                <input type="text" id="anamnese_objetivo_meta"
+                    class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                    placeholder="Ex: Perder 5kg até o casamento em dezembro, correr 5km em 30min..."
+                    value="${data.meta || ''}"
+                    oninput="anamneseUpdateField('objetivo', 'meta', this.value)">
+            </div>
+        </div>
+    `;
+}
+
+// Navigation functions
+function anamneseGoToSection(sectionNum) {
+    if (sectionNum <= anamneseState.currentSection + 1 || sectionNum < anamneseState.currentSection) {
+        renderAnamneseSection(sectionNum);
+    }
+}
+
+function anamnesePrevSection() {
+    if (anamneseState.currentSection > 1) {
+        renderAnamneseSection(anamneseState.currentSection - 1);
+    }
+}
+
+function anamneseNextSection() {
+    if (anamneseState.currentSection < anamneseState.totalSections) {
+        renderAnamneseSection(anamneseState.currentSection + 1);
+    }
+}
+
+// Update card selection visual
+function anamneseUpdateCardSelection(radio) {
+    document.querySelectorAll('.anamnese-radio-card').forEach(card => {
+        card.classList.remove('ring-2', 'ring-purple-500');
+        const check = card.querySelector('.anamnese-radio-check');
+        check.classList.remove('bg-purple-500', 'border-purple-500');
+        check.classList.add('border-white/20');
+    });
+    const card = radio.closest('.anamnese-radio-card');
+    card.classList.add('ring-2', 'ring-purple-500');
+    const check = card.querySelector('.anamnese-radio-check');
+    check.classList.add('bg-purple-500', 'border-purple-500');
+    check.classList.remove('border-white/20');
+}
+
+// Generic field updater
+function anamneseUpdateField(sectionKey, fieldKey, value) {
+    if (!anamneseState.data[sectionKey]) {
+        anamneseState.data[sectionKey] = {};
+    }
+    anamneseState.data[sectionKey][fieldKey] = value;
+}
+
+// Save draft
+async function anamneseSaveDraft() {
+    const pacienteId = anamneseState.pacienteId;
+    if (!pacienteId) return;
+
+    const btn = event.target.closest('button');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Salvando...';
+    btn.disabled = true;
+
+    try {
+        // Prepare data for server - merge with existing legacy fields
+        const payload = {
+            PacienteId: pacienteId,
+            HistoricoMedico: anamneseState.data.historico_medico?.texto || "",
+            Alergias: anamneseState.data.alergias?.lista || "",
+            Intolerancias: anamneseState.data.intolerancias?.lista || "",
+            RotinaDiaria: anamneseState.data.rotina?.texto || "",
+            HistoricoFamiliar: anamneseState.data.historico_familiar?.texto || "",
+            DadosExtendidos: anamneseState.data
+        };
+
+        const res = await fetch(`${API_URL}/api/anamnese`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) throw new Error("Erro ao salvar");
+
+        anamneseState.originalData = JSON.parse(JSON.stringify(anamneseState.data));
+        btn.innerHTML = '<i class="fa-solid fa-check mr-2"></i>Salvo!';
+        setTimeout(() => { btn.innerHTML = originalText; btn.disabled = false; }, 2000);
+    } catch (err) {
+        console.error("Erro ao salvar anamnese:", err);
+        btn.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-2"></i>Erro';
+        setTimeout(() => { btn.innerHTML = originalText; btn.disabled = false; }, 2000);
+    }
+}
+
+// Submit final
+async function anamneseSubmit() {
+    await anamneseSaveDraft();
+    // Could add toast notification here
+    alert("Anamnese salva com sucesso!");
+}
+
+// Load from server
+async function anamneseLoadFromServer() {
+    const pacienteId = anamneseState.pacienteId;
+    if (!pacienteId) return;
+
+    try {
+        const res = await fetch(`${API_URL}/api/anamnese/${pacienteId}`);
+        if (!res.ok) throw new Error("Erro ao carregar");
+
+        const data = await res.json();
+
+        // Load legacy fields into extended structure
+        anamneseState.data = {};
+
+        if (data.dados_extendidos) {
+            try {
+                const extended = typeof data.dados_extendidos === 'string'
+                    ? JSON.parse(data.dados_extendidos)
+                    : data.dados_extendidos;
+                anamneseState.data = extended;
+            } catch (e) {
+                console.warn("Erro ao parsear dados_extendidos:", e);
+            }
+        }
+
+        // Backfill from legacy fields if extended is empty
+        if (!anamneseState.data.objetivo) {
+            anamneseState.data.objetivo = {};
+        }
+
+        anamneseState.originalData = JSON.parse(JSON.stringify(anamneseState.data));
+
+        // Re-render current section with loaded data
+        renderAnamneseSection(anamneseState.currentSection);
+    } catch (err) {
+        console.error("Erro ao carregar anamnese:", err);
+    }
+}
+
 // ===== EMPRESAS (super_admin) =====
 async function carregarEmpresas() {
     // Verificar se é super_admin
