@@ -78,6 +78,8 @@ builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AsaasConfig>>().Value);
 
 var app = builder.Build();
+app.UseDefaultFiles();
+app.UseStaticFiles();
 app.UseRouting();
 
 // Health endpoint for UptimeRobot (no auth, no DB)
@@ -2259,7 +2261,7 @@ app.MapPost("/api/auth/paciente", async (PacienteLoginInput i, HttpContext ctx) 
     using (var c = new NpgsqlCommand(@"
         SELECT
           (SELECT COUNT(*) FROM acessos_paciente WHERE cpf_tentado = @c AND NOT sucesso AND criado_em > CURRENT_TIMESTAMP - interval '15 minutes'),
-          (SELECT COUNT(*) FROM acessos_paciente WHERE ip = @ip AND NOT sucesso AND criado_em > CURRENT_TIMESTAMP - interval '15 minutes');", conn))
+          (SELECT COUNT(*) FROM acessos_paciente WHERE ip = @ip::inet AND NOT sucesso AND criado_em > CURRENT_TIMESTAMP - interval '15 minutes');", conn))
     {
         c.Parameters.AddWithValue("c", cpf);
         c.Parameters.AddWithValue("ip", ip);
@@ -2284,7 +2286,7 @@ app.MapPost("/api/auth/paciente", async (PacienteLoginInput i, HttpContext ctx) 
     }
 
     using (var log = new NpgsqlCommand(
-        "INSERT INTO acessos_paciente (paciente_id, cpf_tentado, ip, sucesso) VALUES (@p, @c, @ip, @s);", conn))
+        "INSERT INTO acessos_paciente (paciente_id, cpf_tentado, ip, sucesso) VALUES (@p, @c, @ip::inet, @s);", conn))
     {
         log.Parameters.Add(new NpgsqlParameter("p", NpgsqlTypes.NpgsqlDbType.Integer) { Value = achou ? pid : DBNull.Value });
         log.Parameters.AddWithValue("c", cpf);
