@@ -1,8 +1,10 @@
         // Usa ENV_API_URL definido no index.html (configurável via Vercel: VITE_API_URL)
 // Adiciona /api se não terminar com ele
-const ENV_API_URL = window.ENV_API_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ? 'http://localhost:5290'
-  : 'https://acnut-sistema-nutricional.onrender.com';
+const ENV_API_URL = window.ENV_API_URL
+  ? window.ENV_API_URL
+  : (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://localhost:5290'
+    : 'https://acnut-sistema-nutricional.onrender.com';
 const API_URL = ENV_API_URL.endsWith('/api') ? ENV_API_URL : ENV_API_URL + '/api';
         const TOKEN_KEY = "bybar_token";
 const getToken = () => sessionStorage.getItem(TOKEN_KEY);
