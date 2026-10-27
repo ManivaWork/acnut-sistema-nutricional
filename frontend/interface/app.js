@@ -378,7 +378,19 @@ function calcularMassaMagraAutomatica() {
         const gorduraInput = document.getElementById("a-gordura");
         if (pesoInput) pesoInput.addEventListener("input", calcularMassaMagraAutomatica);
         if (gorduraInput) gorduraInput.addEventListener("input", calcularMassaMagraAutomatica);
-        });
+
+        // Avaliação: auto-buscar dados do paciente ao digitar ID (com debounce)
+        const pacienteIdInput = document.getElementById("a-paciente-id");
+        if (pacienteIdInput) {
+                let timeoutId;
+                pacienteIdInput.addEventListener("input", (e) => {
+                        clearTimeout(timeoutId);
+                        timeoutId = setTimeout(() => {
+                                carregarDadosPacienteAvaliacao(e.target.value);
+                        }, 500);
+                });
+        }
+});
 async function salvarAnamneseProntuario() {
         const pacienteId = parseInt(document.getElementById("prontuario-paciente-id").value) || window.pacienteIdAtivo;
         if (!pacienteId) {
