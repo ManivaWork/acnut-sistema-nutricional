@@ -1,7 +1,7 @@
 {
-  "buildCommand": "echo skip",
-  "installCommand": "echo skip",
-  "outputDirectory": "frontend",
+  "buildCommand": "cd frontend/interface && npm run build",
+  "installCommand": "cd frontend/interface && npm install",
+  "outputDirectory": "frontend/interface",
   "framework": null,
   "redirects": [
     { "source": "/", "destination": "/interface/index.html", "permanent": false }
