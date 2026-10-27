@@ -274,6 +274,7 @@ async function gerarAvaliacao(e) {
 
 // ===================== AVALIAÇÃO: AUTO-PREENCHER IDADE =====================
 async function carregarDadosPacienteAvaliacao(pacienteId) {
+        alert("[DEBUG] carregarDadosPacienteAvaliacao CHAMADA com: " + pacienteId);
         if (!pacienteId) return;
         const id = parseInt(pacienteId);
         if (isNaN(id)) return;
@@ -384,8 +385,10 @@ function calcularMassaMagraAutomatica() {
         if (pacienteIdInput) {
                 let timeoutId;
                 pacienteIdInput.addEventListener("input", (e) => {
+                        console.log("[DEBUG] Input event disparou, valor:", e.target.value);
                         clearTimeout(timeoutId);
                         timeoutId = setTimeout(() => {
+                                console.log("[DEBUG] Debounce completou, chamando função...");
                                 carregarDadosPacienteAvaliacao(e.target.value);
                         }, 500);
                 });
