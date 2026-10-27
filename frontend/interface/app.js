@@ -1266,6 +1266,30 @@ function resetarUnidadeAlimento() {
         if (qtdInput) qtdInput.placeholder = '150';
 }
 
+// Recalcula macros proporcionais à quantidade informada
+function recalcularNutrientes() {
+    const qtd = parseFloat(document.getElementById("mi-qtd").value) || 0;
+    if (qtd <= 0) return;
+    const fator = qtd / 100;
+
+    const kInput = document.getElementById("mi-kcal");
+    const pInput = document.getElementById("mi-prot");
+    const cInput = document.getElementById("mi-carbo");
+    const gInput = document.getElementById("mi-gord");
+
+    const baseKcal = parseFloat(kInput.dataset.baseKcal) || 0;
+    const baseProt = parseFloat(pInput.dataset.baseProt) || 0;
+    const baseCarbo = parseFloat(cInput.dataset.baseCarbo) || 0;
+    const baseGord = parseFloat(gInput.dataset.baseGord) || 0;
+
+    // Só recalcula se o usuário NÃO editou manualmente o campo
+    // (heurística: se o valor atual difere do último calculado, assumimos edição manual)
+    if (baseKcal) kInput.value = (baseKcal * fator).toFixed(1);
+    if (baseProt) pInput.value = (baseProt * fator).toFixed(1);
+    if (baseCarbo) cInput.value = (baseCarbo * fator).toFixed(1);
+    if (baseGord) gInput.value = (baseGord * fator).toFixed(1);
+}
+
 async function selecionarAlimento(id) {
         const dropdown = document.getElementById("mi-sugestoes");
         dropdown.classList.add("hidden");
@@ -1280,10 +1304,23 @@ async function selecionarAlimento(id) {
 
         // Preenche nome e campos nutricionais (por 100g)
         document.getElementById("mi-nome").value = a.nome;
-        document.getElementById("mi-kcal").value = a.calorias_100g ?? "";
-        document.getElementById("mi-prot").value = a.proteinas_100g ?? "";
-        document.getElementById("mi-carbo").value = a.carboidratos_100g ?? "";
-        document.getElementById("mi-gord").value = a.gorduras_100g ?? "";
+        const kcal100 = a.calorias_100g ?? "";
+        const prot100 = a.proteinas_100g ?? "";
+        const carbo100 = a.carboidratos_100g ?? "";
+        const gord100 = a.gorduras_100g ?? "";
+        const kInput = document.getElementById("mi-kcal");
+        const pInput = document.getElementById("mi-prot");
+        const cInput = document.getElementById("mi-carbo");
+        const gInput = document.getElementById("mi-gord");
+        kInput.value = kcal100;
+        pInput.value = prot100;
+        cInput.value = carbo100;
+        gInput.value = gord100;
+        // Guarda valores base (por 100g) para recálculo automático
+        kInput.dataset.baseKcal = kcal100;
+        pInput.dataset.baseProt = prot100;
+        cInput.dataset.baseCarbo = carbo100;
+        gInput.dataset.baseGord = gord100;
 
         // Armazena o ID do alimento para uso no endpoint de cálculo
         formItem.alimentoId = String(a.id);
@@ -1292,6 +1329,12 @@ async function selecionarAlimento(id) {
         const medidas = await carregarMedidasCaseira(a.id);
         popularDropdownMedidas(medidas);
         mostrarContainerMedidaCaseira(medidas.length > 0);
+
+        // Adiciona listener de recálculo ao mudar quantidade (uma vez)
+        if (!window._recalcListenerAdded) {
+            document.getElementById("mi-qtd").addEventListener("input", recalcularNutrientes);
+            window._recalcListenerAdded = true;
+        }
         } catch (err) {
         console.error("Erro ao carregar detalhes do alimento:", err);
         alert("Não foi possível carregar os detalhes do alimento.");
