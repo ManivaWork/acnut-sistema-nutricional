@@ -1,6 +1,9 @@
-        const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ? 'http://localhost:5290/api'
-  : 'https://acnut-sistema-nutricional.onrender.com/api';
+        // Usa ENV_API_URL definido no index.html (configurável via Vercel: VITE_API_URL)
+// Adiciona /api se não terminar com ele
+const ENV_API_URL = window.ENV_API_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ? 'http://localhost:5290'
+  : 'https://acnut-sistema-nutricional.onrender.com';
+const API_URL = ENV_API_URL.endsWith('/api') ? ENV_API_URL : ENV_API_URL + '/api';
         const TOKEN_KEY = "bybar_token";
 const getToken = () => sessionStorage.getItem(TOKEN_KEY);
 const urlArquivo = id => `${API_URL}/arquivos/${id}?t=${encodeURIComponent(getToken() || "")}`;
@@ -2734,6 +2737,45 @@ async function fazerLoginPaciente(e) {
     }
 }
 
+// ---------- Login da equipe ----------
+async function fazerLogin(e) {
+    e.preventDefault();
+    const email = document.getElementById("login-usuario").value.trim();
+    const senha = document.getElementById("login-senha").value;
+    const erroDiv = document.getElementById("login-erro");
+    const msg = erroDiv.querySelector("span");
+
+    try {
+        const res = await fetch(`${API_URL}/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, senha })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            msg.innerText = data.mensagem || "E-mail ou senha incorretos.";
+            erroDiv.style.display = "flex";
+            return;
+        }
+        sessionStorage.setItem(TOKEN_KEY, data.token);
+        sessionStorage.setItem("bybar_user", JSON.stringify({ nome: data.nome, tipo: "equipe" }));
+        erroDiv.style.display = "none";
+        entrarNoSistema(data.nome);
+    } catch {
+        msg.innerText = "Não foi possível conectar ao servidor.";
+        erroDiv.style.display = "flex";
+    }
+}
+
+function entrarNoSistema(nome) {
+    document.getElementById("login-container").style.display = "none";
+    document.getElementById("main-app").style.display = "flex";
+    document.getElementById("login-erro").style.display = "none";
+    const s = document.getElementById("dash-saudacao");
+    if (s) s.innerText = nome ? `Olá, ${nome}` : "Olá";
+    navegar("dashboard");
+}
+
 // ---------- Área do paciente (somente leitura) ----------
 let dadosPaciente = null;
 
@@ -2950,6 +2992,8 @@ function alternarSenhaConvite() {
         icone.classList.remove("fa-eye-slash");
         icone.classList.add("fa-eye");
     }
+}
+
 }
 
 async function aceitarConvite(event) {
