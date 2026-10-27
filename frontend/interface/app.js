@@ -278,12 +278,23 @@ async function carregarDadosPacienteAvaliacao(pacienteId) {
         const id = parseInt(pacienteId);
         if (isNaN(id)) return;
 
+        console.log("[Avaliação] Buscando paciente ID:", id);
+
         try {
+                const token = localStorage.getItem("token");
+                console.log("[Avaliação] Token:", token ? "presente" : "AUSENTE");
+
                 const res = await fetch(`${API_URL}/pacientes/${id}`, {
-                        headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+                        headers: { "Authorization": `Bearer ${token}` }
                 });
-                if (!res.ok) return;
+                console.log("[Avaliação] Response status:", res.status);
+
+                if (!res.ok) {
+                        console.log("[Avaliação] Erro HTTP:", res.status);
+                        return;
+                }
                 const paciente = await res.json();
+                console.log("[Avaliação] Dados do paciente:", paciente);
 
                 // Calcular idade a partir da data de nascimento
                 if (paciente.data_nascimento) {
@@ -299,6 +310,9 @@ async function carregarDadosPacienteAvaliacao(pacienteId) {
                         const idadeInput = document.getElementById("a-idade");
                         idadeInput.style.borderColor = "#22b8a0";
                         setTimeout(() => { idadeInput.style.borderColor = ""; }, 1500);
+                        console.log("[Avaliação] Idade calculada:", idade);
+                } else {
+                        console.log("[Avaliação] data_nascimento NÃO encontrado no retorno");
                 }
 
                 // Opcional: preencher sexo se vier do paciente
@@ -306,7 +320,7 @@ async function carregarDadosPacienteAvaliacao(pacienteId) {
                         document.getElementById("a-sexo").value = paciente.sexo;
                 }
         } catch (err) {
-                console.debug("Não foi possível carregar dados do paciente para avaliação:", err);
+                console.error("[Avaliação] Erro ao buscar paciente:", err);
         }
 }
 
