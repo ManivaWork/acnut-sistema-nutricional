@@ -271,6 +271,46 @@ async function gerarAvaliacao(e) {
         alert("Erro de conexão com o servidor.");
         }
         }
+
+// ===================== AVALIAÇÃO: AUTO-PREENCHER IDADE =====================
+async function carregarDadosPacienteAvaliacao(pacienteId) {
+        if (!pacienteId) return;
+        const id = parseInt(pacienteId);
+        if (isNaN(id)) return;
+
+        try {
+                const res = await fetch(`${API_URL}/pacientes/${id}`, {
+                        headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+                });
+                if (!res.ok) return;
+                const paciente = await res.json();
+
+                // Calcular idade a partir da data de nascimento
+                if (paciente.data_nascimento) {
+                        const nascimento = new Date(paciente.data_nascimento);
+                        const hoje = new Date();
+                        let idade = hoje.getFullYear() - nascimento.getFullYear();
+                        const mes = hoje.getMonth() - nascimento.getMonth();
+                        if (mes < 0 || (mes === 0 && hoje.getDate() < nascimento.getDate())) {
+                                idade--;
+                        }
+                        document.getElementById("a-idade").value = idade;
+                        // Feedback visual sutil
+                        const idadeInput = document.getElementById("a-idade");
+                        idadeInput.style.borderColor = "#22b8a0";
+                        setTimeout(() => { idadeInput.style.borderColor = ""; }, 1500);
+                }
+
+                // Opcional: preencher sexo se vier do paciente
+                if (paciente.sexo) {
+                        document.getElementById("a-sexo").value = paciente.sexo;
+                }
+        } catch (err) {
+                console.debug("Não foi possível carregar dados do paciente para avaliação:", err);
+        }
+}
+
+// ===================== CHECK-IN =====================
 async function salvarCheckin(e) {
         e.preventDefault();
         const form = e.target;
