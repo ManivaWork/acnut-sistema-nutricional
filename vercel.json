@@ -1,6 +1,6 @@
 {
   "buildCommand": "cd frontend/interface && npm run build",
   "installCommand": "cd frontend/interface && npm install",
-  "outputDirectory": "frontend/interface",
+  "outputDirectory": "frontend",
   "framework": null
 }
