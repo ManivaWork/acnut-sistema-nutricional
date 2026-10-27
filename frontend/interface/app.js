@@ -170,6 +170,9 @@ function atualizarDashboard() {
         set("dash-leg-inativos", inativos);
         set("dash-data", new Date().toLocaleDateString("pt-BR",
         { weekday: "long", day: "numeric", month: "long" }));
+        // Sincroniza título mobile do dashboard
+        const mobileTitle = document.getElementById("dash-saudacao-mobile");
+        if (mobileTitle) mobileTitle.textContent = document.getElementById("dash-saudacao").textContent;
         const barA = document.getElementById("dash-ativos-bar");
         const barI = document.getElementById("dash-inativos-bar");
         if (barA) barA.style.width = pctAtivos + "%";
@@ -2280,6 +2283,10 @@ function abrirMenuMobile() {
     sidebar.classList.add("aberto-mobile");
     overlay.classList.remove("hidden");
     document.body.style.overflow = "hidden";
+    // Troca ☰ por X em todos os botões de menu mobile
+    document.querySelectorAll(".btn-menu-mobile i").forEach(icone => {
+        icone.classList.replace("fa-bars", "fa-xmark");
+    });
 }
 function fecharMenuMobile() {
     const sidebar = document.getElementById("sidebar-acnut");
@@ -2289,6 +2296,12 @@ function fecharMenuMobile() {
     sidebar.classList.remove("aberto-mobile");
     overlay.classList.add("hidden");
     document.body.style.overflow = "";
+    // Força reflow no iOS Safari para restaurar scroll corretamente
+    document.body.offsetHeight;
+    // Volta X para ☰
+    document.querySelectorAll(".btn-menu-mobile i").forEach(icone => {
+        icone.classList.replace("fa-xmark", "fa-bars");
+    });
 }
 function alternarSidebar() {
         const sidebar = document.getElementById("sidebar-acnut");

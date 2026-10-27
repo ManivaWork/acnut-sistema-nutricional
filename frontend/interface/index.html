@@ -275,8 +275,7 @@ body {
     #sec-dashboard { width: 100%; }
     #sec-dashboard > header { border-radius: 16px; }
     #sidebar-acnut {
-        width: 85vw;
-        max-width: 300px;
+        width: min(90vw, 280px);
     }
 }
  
@@ -1164,6 +1163,9 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
 <!-- ====================================================== AREA PACIENTE ======================================================= -->
 <div id="area-paciente" style="display:none;position:fixed;inset:0;z-index:9000;overflow-y:auto;background:#1b1e2c">
     <header class="sticky top-0 z-10 flex items-center justify-between px-5 md:px-8 py-3 border-b border-white/10" style="background:rgba(27,30,44,.92);backdrop-filter:blur(10px)">
+        <button type="button" onclick="abrirMenuMobile()" class="btn-menu-mobile lg:hidden p-2 rounded-xl bg-slate-800 border border-white/10 text-slate-300 hover:text-white hover:bg-white/5 transition" aria-label="Abrir menu">
+            <i class="fa-solid fa-bars text-lg"></i>
+        </button>
         <div class="flex items-center gap-3">
             <span class="w-10 h-10 rounded-xl text-white flex items-center justify-center" style="background:linear-gradient(135deg,#6c34eb,#b731b4)"><i class="fa-solid fa-leaf"></i></span>
             <div>
@@ -1280,7 +1282,15 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
 <!-- =========================================================SEÇÃO: DASHBOARD========================================================= -->
         <section id="sec-dashboard" class="space-y-6">
 <!-- Topo: saudação + busca + ação principal -->
-        <div class="flex flex-wrap items-center justify-between gap-4">
+        <header class="flex flex-wrap items-center justify-between gap-4 mb-6 lg:hidden">
+            <button type="button" onclick="abrirMenuMobile()" class="btn-menu-mobile p-2 rounded-xl bg-slate-800 border border-white/10 text-slate-300 hover:text-white hover:bg-white/5 transition" aria-label="Abrir menu">
+                <i class="fa-solid fa-bars text-lg"></i>
+            </button>
+            <div class="flex-1"></div>
+            <h2 id="dash-saudacao-mobile" class="text-xl font-bold text-white tracking-tight">Olá, Administrador</h2>
+            <div class="w-10"></div>
+        </header>
+        <div class="flex flex-wrap items-center justify-between gap-4 hidden lg:flex">
         <div>
         <h2 id="dash-saudacao" class="text-2xl font-bold text-white tracking-tight">Olá, Administrador</h2>
         <p id="dash-data" class="text-sm text-slate-400 mt-1"></p>
@@ -1417,6 +1427,9 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         border border-slate-700/60
         shadow-xl
         ">
+        <button type="button" onclick="abrirMenuMobile()" class="btn-menu-mobile lg:hidden p-2 rounded-xl bg-slate-800 border border-white/10 text-slate-300 hover:text-white hover:bg-white/5 transition" aria-label="Abrir menu">
+            <i class="fa-solid fa-bars text-lg"></i>
+        </button>
         <div>
         <div class="flex items-center gap-3">
         <div class="
@@ -1879,6 +1892,9 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         <section id="sec-avaliacao" class="hidden space-y-6">
         <!-- CABEÇALHO -->
         <header class="bg-slate-800/60 backdrop-blur-md p-6 rounded-2xl border border-slate-700/70 shadow-xl">
+        <button type="button" onclick="abrirMenuMobile()" class="btn-menu-mobile lg:hidden p-2 rounded-xl bg-slate-800 border border-white/10 text-slate-300 hover:text-white hover:bg-white/5 transition" aria-label="Abrir menu">
+            <i class="fa-solid fa-bars text-lg"></i>
+        </button>
         <div class="flex items-center gap-4">
         <div class="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/20
         flex items-center justify-center">
@@ -2235,6 +2251,9 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         <section id="sec-checkin" class="hidden space-y-6">
 <!-- CABEÇALHO -->
         <header class="bg-slate-800/40 backdrop-blur-md p-5 rounded-2xl border border-slate-700/60 shadow-xl">
+        <button type="button" onclick="abrirMenuMobile()" class="btn-menu-mobile lg:hidden p-2 rounded-xl bg-slate-800 border border-white/10 text-slate-300 hover:text-white hover:bg-white/5 transition" aria-label="Abrir menu">
+            <i class="fa-solid fa-bars text-lg"></i>
+        </button>
         <div class="flex items-center gap-4">
         <div class="w-12 h-12 rounded-2xl
         bg-gradient-to-br from-emerald-500/20 to-emerald-400/5
@@ -2563,6 +2582,9 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         rounded-2xl
         border border-slate-700/60
         shadow-xl">
+        <button type="button" onclick="abrirMenuMobile()" class="btn-menu-mobile lg:hidden p-2 rounded-xl bg-slate-800 border border-white/10 text-slate-300 hover:text-white hover:bg-white/5 transition" aria-label="Abrir menu">
+            <i class="fa-solid fa-bars text-lg"></i>
+        </button>
         <div class="flex flex-col xl:flex-row
         xl:items-center
         xl:justify-between
@@ -3803,6 +3825,9 @@ function mostrarLogin() {
         <section id="sec-billing" class="hidden space-y-6">
           <!-- Cabeçalho -->
           <header class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
+            <button type="button" onclick="abrirMenuMobile()" class="btn-menu-mobile lg:hidden p-2 rounded-xl bg-slate-800 border border-white/10 text-slate-300 hover:text-white hover:bg-white/5 transition" aria-label="Abrir menu">
+                <i class="fa-solid fa-bars text-lg"></i>
+            </button>
             <div class="flex items-center gap-4">
               <div class="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/20 flex items-center justify-center">
                 <i class="fa-solid fa-credit-card text-amber-400 text-lg"></i>
@@ -3894,6 +3919,9 @@ function mostrarLogin() {
         <section id="sec-empresas" class="hidden space-y-6">
         <!-- Cabeçalho -->
         <header class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
+          <button type="button" onclick="abrirMenuMobile()" class="btn-menu-mobile lg:hidden p-2 rounded-xl bg-slate-800 border border-white/10 text-slate-300 hover:text-white hover:bg-white/5 transition" aria-label="Abrir menu">
+              <i class="fa-solid fa-bars text-lg"></i>
+          </button>
           <div class="flex items-center gap-4">
             <div class="w-12 h-12 rounded-2xl bg-purple-500/15 border border-purple-500/20 flex items-center justify-center">
               <i class="fa-solid fa-building text-purple-400 text-lg"></i>
