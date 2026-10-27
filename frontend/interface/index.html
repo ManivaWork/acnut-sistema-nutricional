@@ -382,6 +382,29 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #2d3248; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #444b66; }
+
+/* ---------- SELETOR DE UNIDADE (g / ml) ---------- */
+.unit-btn {
+    background: transparent;
+    color: #9199b3;
+    border: 1px solid rgba(145,153,179,.3);
+    outline: none;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.unit-btn:hover {
+    color: #eef0f7;
+    background: rgba(255,255,255,.05);
+    border-color: rgba(145,153,179,.6);
+}
+.unit-btn.ativo {
+    background: linear-gradient(135deg, #6c34eb, #b731b4) !important;
+    color: #fff !important;
+    border-color: transparent !important;
+    box-shadow: 0 2px 8px -2px rgba(108,52,235,.6);
+}
+.unit-btn:first-child { border-radius: 8px 0 0 8px; }
+.unit-btn:last-child { border-radius: 0 8px 8px 0; }
  
 /* ---------- TELA INTERNA ---------- */
 #main-app .text-\[10px\], #main-app .text-\[11px\] { font-size: 12px !important; }
@@ -3281,13 +3304,20 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         </div>
 
         <div class="grid grid-cols-2 gap-3">
-        <div>
-        <label class="block text-xs font-semibold text-slate-400 mb-1.5">Quantidade (g/ml)</label>
-        <input id="mi-qtd" type="number" step="0.1" placeholder="150" class="acnut-input">
+        <div class="relative">
+        <label class="block text-xs font-semibold text-slate-400 mb-1.5">Quantidade</label>
+        <div class="flex gap-1">
+                <input id="mi-qtd" type="number" step="0.1" min="0.1" placeholder="150" class="acnut-input flex-1" aria-label="Quantidade">
+                <div class="flex items-center bg-slate-800/50 border border-slate-700 rounded-xl px-2">
+                        <button type="button" id="mi-unit-g" onclick="selecionarUnidade('g')" class="unit-btn px-3 py-2 text-sm font-semibold transition-all" data-unit="g" aria-label="Gramas">g</button>
+                        <button type="button" id="mi-unit-ml" onclick="selecionarUnidade('ml')" class="unit-btn px-3 py-2 text-sm font-semibold transition-all" data-unit="ml" aria-label="Mililitros">ml</button>
+                </div>
+        </div>
+        <p class="text-[10px] text-slate-500 mt-1">Selecione <span id="mi-unit-hint" class="font-medium text-slate-400">gramas</span> ou mililitros conforme o alimento</p>
         </div>
         <div>
         <label class="block text-xs font-semibold text-slate-400 mb-1.5">Medida caseira (manual)</label>
-        <input id="mi-medida" placeholder="Ex: 2 fatias" class="acnut-input">
+        <input id="mi-medida" placeholder="Ex: 2 fatias, 1 xícara" class="acnut-input">
         </div>
         </div>
         <div>
@@ -3681,20 +3711,6 @@ function alternarSenhaOnboarding() {
     }
 }
 
-function alternarSenhaConvite() {
-    const input = document.getElementById("cv-senha");
-    const icone = document.getElementById("icone-senha-cv");
-    if (input.type === "password") {
-        input.type = "text";
-        icone.classList.remove("fa-eye");
-        icone.classList.add("fa-eye-slash");
-    } else {
-        input.type = "password";
-        icone.classList.remove("fa-eye-slash");
-        icone.classList.add("fa-eye");
-    }
-}
-
 async function fazerOnboarding(event) {
     event.preventDefault();
     const btn = document.getElementById("btn-onboarding");
@@ -3774,105 +3790,6 @@ async function fazerOnboarding(event) {
         btn.disabled = false;
         btn.innerHTML = '<span>Criar empresa e conta</span><i class="fa-solid fa-arrow-right"></i>';
     }
-}
-
-async function aceitarConvite(event) {
-    event.preventDefault();
-    const btn = document.getElementById("btn-convite");
-    const erroDiv = document.getElementById("convite-erro");
-    const msg = erroDiv.querySelector("span");
-
-    const token = document.getElementById("convite-token").value;
-    const nome = document.getElementById("cv-nome").value.trim();
-    const senha = document.getElementById("cv-senha").value;
-    const senhaConf = document.getElementById("cv-senha-conf").value;
-
-    if (!token) {
-        msg.innerText = "Token de convite inválido.";
-        erroDiv.style.display = "flex";
-        return;
-    }
-    if (!nome || !senha) {
-        msg.innerText = "Preencha todos os campos.";
-        erroDiv.style.display = "flex";
-        return;
-    }
-    if (senha.length < 8) {
-        msg.innerText = "A senha deve ter pelo menos 8 caracteres.";
-        erroDiv.style.display = "flex";
-        return;
-    }
-    if (senha !== senhaConf) {
-        msg.innerText = "As senhas não conferem.";
-        erroDiv.style.display = "flex";
-        return;
-    }
-
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processando...';
-    erroDiv.style.display = "none";
-
-    try {
-        const res = await fetch(`${API_URL}/auth/aceitar-convite`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ token, senha, nome })
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-            throw new Error(data.mensagem || "Erro ao aceitar convite");
-        }
-
-        // Sucesso - salvar token e entrar
-        sessionStorage.setItem(TOKEN_KEY, data.token);
-        sessionStorage.setItem("bybar_user", JSON.stringify({ nome: data.nome || nome, perfil: "profissional" }));
-
-        // Redirecionar para o sistema
-        document.getElementById("convite-container").style.display = "none";
-        document.getElementById("main-app").style.display = "flex";
-        const s = document.getElementById("dash-saudacao");
-        if (s) s.innerText = `Olá, ${nome}`;
-        navegar("dashboard");
-
-    } catch (e) {
-        msg.innerText = e.message || "Erro ao aceitar convite. Tente novamente.";
-        erroDiv.style.display = "flex";
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = '<span>Aceitar convite e entrar</span><i class="fa-solid fa-arrow-right"></i>';
-    }
-}
-
-// Verificar se há token de convite na URL ao carregar a página
-function verificarConviteURL() {
-    // Verifica se a URL contém /convite/TOKEN ou ?convite=TOKEN
-    const pathMatch = window.location.pathname.match(/\/convite\/([a-f0-9]{32})/i);
-    const queryMatch = window.location.search.match(/[?&]convite=([a-f0-9]{32})/i);
-    const hashMatch = window.location.hash.match(/#convite\/([a-f0-9]{32})/i);
-
-    const token = pathMatch?.[1] || queryMatch?.[1] || hashMatch?.[1];
-
-    if (token) {
-        // Esconder login, mostrar convite
-        document.getElementById("login-container").style.display = "none";
-        document.getElementById("onboarding-container").style.display = "none";
-        document.getElementById("convite-container").style.display = "flex";
-        document.getElementById("convite-token").value = token;
-
-        // Opcional: buscar info do convite para mostrar email/empresa
-        fetch(`${API_URL}/convites/info/${token}`)
-            .then(r => r.json().catch(() => ({})))
-            .then(data => {
-                if (data.email) {
-                    document.getElementById("convite-info").innerText =
-                        `Convite para ${data.email} na empresa ${data.empresa || ""}. Configure sua senha para acessar.`;
-                }
-            })
-            .catch(() => {});
-
-        return true;
-    }
-    return false;
 }
 
 // Verificar se deve mostrar onboarding (sem empresas cadastradas)

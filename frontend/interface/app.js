@@ -552,8 +552,12 @@ async function carregarPlanoAlimentarProntuario(pacienteId) {
         }
         }
 function linhaItem(i, ehSub) {
-        const qtd = Number(i.quantidadeG) > 0 ? `${i.quantidadeG}g` : "";
-        const medida = i.medidaCaseira ? ` • ${escaparHtml(i.medidaCaseira)}` : "";
+        // Detecta se medidaCaseira é uma quantidade simples com unidade (ex: "100g", "200ml")
+        const medidaSimples = i.medidaCaseira && /^\d+(\.\d+)?\s*(g|ml)$/i.test(i.medidaCaseira.trim());
+        const qtd = medidaSimples
+            ? escaparHtml(i.medidaCaseira.trim())
+            : Number(i.quantidadeG) > 0 ? `${i.quantidadeG}g` : "";
+        const medida = i.medidaCaseira && !medidaSimples ? ` • ${escaparHtml(i.medidaCaseira)}` : "";
         const classeLinha = ehSub
         ? "ml-6 mt-1.5 pl-3 border-l-2 border-amber-500/40"
         : "py-2.5 border-b border-slate-800";
@@ -793,6 +797,16 @@ let titulo = "Adicionar alimento";
         document.getElementById("mi-prot").value = item && item.proteinas ? item.proteinas : "";
         document.getElementById("mi-carbo").value = item && item.carbos ? item.carbos : "";
         document.getElementById("mi-gord").value = item && item.gorduras ? item.gorduras : "";
+
+        // Reset seletor de unidade (g / ml)
+        resetarUnidadeAlimento();
+        // Se editando, tenta inferir a unidade a partir de medidaCaseira (ex: "100g", "200ml")
+        if (item && item.medidaCaseira) {
+            const match = item.medidaCaseira.trim().match(/^(\d+(\.\d+)?)\s*(g|ml)$/i);
+            if (match) {
+                selecionarUnidade(match[3].toLowerCase());
+            }
+        }
 
         // Reset novos campos de medida caseira
         document.getElementById("mi-medida-caseira").value = "";
@@ -1201,6 +1215,52 @@ function mostrarContainerMedidaCaseira(mostrar) {
         }
 }
 
+// ===================== SELETOR DE UNIDADE (g / ml) =====================
+let unidadeAtual = 'g'; // padrão
+
+function selecionarUnidade(unidade) {
+        unidadeAtual = unidade;
+
+        // Atualiza botões
+        document.querySelectorAll('.unit-btn').forEach(btn => {
+                btn.classList.toggle('ativo', btn.dataset.unit === unidade);
+        });
+
+        // Atualiza dica
+        const hint = document.getElementById('mi-unit-hint');
+        if (hint) {
+                hint.textContent = unidade === 'g' ? 'gramas' : 'mililitros';
+        }
+
+        // Atualiza placeholder do input
+        const qtdInput = document.getElementById('mi-qtd');
+        if (qtdInput) {
+                qtdInput.placeholder = unidade === 'g' ? '150' : '200';
+        }
+
+        // Se estiver editando um alimento que já tem unidade salva,
+        // poderíamos detectar automaticamente, mas por enquanto mantém escolha do usuário
+}
+
+// Função para obter a unidade atual (usada ao salvar)
+function getUnidadeAtual() {
+        return unidadeAtual;
+}
+
+// Reset da unidade ao abrir modal novo alimento
+function resetarUnidadeAlimento() {
+        unidadeAtual = 'g';
+        const btnG = document.getElementById('mi-unit-g');
+        const btnMl = document.getElementById('mi-unit-ml');
+        const hint = document.getElementById('mi-unit-hint');
+        const qtdInput = document.getElementById('mi-qtd');
+
+        if (btnG) btnG.classList.add('ativo');
+        if (btnMl) btnMl.classList.remove('ativo');
+        if (hint) hint.textContent = 'gramas';
+        if (qtdInput) qtdInput.placeholder = '150';
+}
+
 async function selecionarAlimento(id) {
         const dropdown = document.getElementById("mi-sugestoes");
         dropdown.classList.add("hidden");
@@ -1240,6 +1300,12 @@ async function salvarItem(e) {
         const quantidadeMedida = num("mi-qtd-medida");
         const observacaoMedida = document.getElementById("mi-obs-medida").value;
 
+        // Lê quantidade e unidade selecionada
+        const quantidadeInput = num("mi-qtd");
+        const unidade = getUnidadeAtual(); // 'g' ou 'ml'
+        // Converte ml → g (1ml ≈ 1g para líquidos)
+        const quantidadeG = unidade === 'ml' ? quantidadeInput : quantidadeInput;
+
         // Se tem medida caseira + quantidade, usa endpoint de cálculo automático
         const usaCalculo = medidaCaseira && quantidadeMedida > 0;
 
@@ -1272,8 +1338,14 @@ async function salvarItem(e) {
                 opcao: formItem.opcao,
                 substituiItemId: formItem.substituiId,
                 alimentoNome: document.getElementById("mi-nome").value,
-                quantidadeG: num("mi-qtd"),
-                medidaCaseira: medidaCaseira || document.getElementById("mi-medida").value,
+                quantidadeG: quantidadeG,
+                medidaCaseira: (() => {
+                const medidaManual = document.getElementById("mi-medida").value.trim();
+                if (!usaCalculo && !medidaCaseira && !medidaManual && quantidadeInput > 0) {
+                    return `${quantidadeInput}${unidade}`;
+                }
+                return medidaCaseira || medidaManual;
+            })(),
                 quantidadeMedida: quantidadeMedida || null,
                 observacaoMedida: observacaoMedida || "",
                 kcal: num("mi-kcal"),
@@ -2862,6 +2934,129 @@ async function cadastrarEmpresa(event) {
         btn.disabled = false;
         btn.innerHTML = originalText;
     }
+
+// ===== CONVITE =====
+
+function alternarSenhaConvite() {
+    const input = document.getElementById("cv-senha");
+    const icone = document.getElementById("icone-senha-cv");
+    if (!input || !icone) return;
+    if (input.type === "password") {
+        input.type = "text";
+        icone.classList.remove("fa-eye");
+        icone.classList.add("fa-eye-slash");
+    } else {
+        input.type = "password";
+        icone.classList.remove("fa-eye-slash");
+        icone.classList.add("fa-eye");
+    }
+}
+
+async function aceitarConvite(event) {
+    event.preventDefault();
+    const btn = document.getElementById("btn-convite");
+    const erroDiv = document.getElementById("convite-erro");
+    const msg = erroDiv?.querySelector("span");
+
+    const token = document.getElementById("convite-token")?.value;
+    const nome = document.getElementById("cv-nome")?.value?.trim();
+    const senha = document.getElementById("cv-senha")?.value;
+    const senhaConf = document.getElementById("cv-senha-conf")?.value;
+
+    if (!token) {
+        if (msg) msg.innerText = "Token de convite inválido.";
+        if (erroDiv) erroDiv.style.display = "flex";
+        return;
+    }
+    if (!nome || !senha) {
+        if (msg) msg.innerText = "Preencha todos os campos.";
+        if (erroDiv) erroDiv.style.display = "flex";
+        return;
+    }
+    if (senha.length < 8) {
+        if (msg) msg.innerText = "A senha deve ter pelo menos 8 caracteres.";
+        if (erroDiv) erroDiv.style.display = "flex";
+        return;
+    }
+    if (senha !== senhaConf) {
+        if (msg) msg.innerText = "As senhas não conferem.";
+        if (erroDiv) erroDiv.style.display = "flex";
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processando...';
+    if (erroDiv) erroDiv.style.display = "none";
+
+    try {
+        const res = await fetch(`${API_URL}/auth/aceitar-convite`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token, senha, nome })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(data.mensagem || "Erro ao aceitar convite");
+        }
+
+        // Sucesso - salvar token e entrar
+        sessionStorage.setItem(TOKEN_KEY, data.token);
+        sessionStorage.setItem("bybar_user", JSON.stringify({ nome: data.nome || nome, perfil: "profissional" }));
+
+        // Redirecionar para o sistema
+        const conviteContainer = document.getElementById("convite-container");
+        const mainApp = document.getElementById("main-app");
+        if (conviteContainer) conviteContainer.style.display = "none";
+        if (mainApp) mainApp.style.display = "flex";
+        const s = document.getElementById("dash-saudacao");
+        if (s) s.innerText = `Olá, ${nome}`;
+        navegar("dashboard");
+
+    } catch (e) {
+        if (msg) msg.innerText = e.message || "Erro ao aceitar convite. Tente novamente.";
+        if (erroDiv) erroDiv.style.display = "flex";
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>Aceitar convite e entrar</span><i class="fa-solid fa-arrow-right"></i>';
+    }
+}
+
+// Verificar se há token de convite na URL ao carregar a página
+function verificarConviteURL() {
+    // Verifica se a URL contém /convite/TOKEN ou ?convite=TOKEN
+    const pathMatch = window.location.pathname.match(/\/convite\/([a-f0-9]{32})/i);
+    const queryMatch = window.location.search.match(/[?&]convite=([a-f0-9]{32})/i);
+    const hashMatch = window.location.hash.match(/#convite\/([a-f0-9]{32})/i);
+
+    const token = pathMatch?.[1] || queryMatch?.[1] || hashMatch?.[1];
+
+    if (token) {
+        // Esconder login, mostrar convite
+        const loginContainer = document.getElementById("login-container");
+        const onboardingContainer = document.getElementById("onboarding-container");
+        const conviteContainer = document.getElementById("convite-container");
+        const conviteTokenInput = document.getElementById("convite-token");
+        const conviteInfo = document.getElementById("convite-info");
+
+        if (loginContainer) loginContainer.style.display = "none";
+        if (onboardingContainer) onboardingContainer.style.display = "none";
+        if (conviteContainer) conviteContainer.style.display = "flex";
+        if (conviteTokenInput) conviteTokenInput.value = token;
+
+        // Opcional: buscar info do convite para mostrar email/empresa
+        fetch(`${API_URL}/convites/info/${token}`)
+            .then(r => r.json().catch(() => ({})))
+            .then(data => {
+                if (data.email && conviteInfo) {
+                    conviteInfo.innerText =
+                        `Convite para ${data.email} na empresa ${data.empresa || ""}. Configure sua senha para acessar.`;
+                }
+            })
+            .catch(() => {});
+
+        return true; // Indica que está na tela de convite
+    }
+    return false;
 }
 
 // ===== INICIALIZAÇÃO =====
