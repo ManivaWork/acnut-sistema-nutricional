@@ -278,17 +278,9 @@ async function carregarDadosPacienteAvaliacao(pacienteId) {
         const id = parseInt(pacienteId);
         if (isNaN(id)) return;
 
-        console.log("[Avaliação] Buscando paciente ID:", id);
-
         // Usa lista em cache (carregada no login/dashboard) - evita 405 do endpoint individual
         const paciente = listaPacientes.find(p => p.id === id);
-
-        if (!paciente) {
-                console.log("[Avaliação] Paciente não encontrado na lista em cache");
-                return;
-        }
-
-        console.log("[Avaliação] Dados do paciente (cache):", paciente);
+        if (!paciente) return;
 
         // Calcular idade a partir da data de nascimento
         if (paciente.data_nascimento) {
@@ -303,9 +295,6 @@ async function carregarDadosPacienteAvaliacao(pacienteId) {
                 const idadeInput = document.getElementById("a-idade");
                 idadeInput.style.borderColor = "#22b8a0";
                 setTimeout(() => { idadeInput.style.borderColor = ""; }, 1500);
-                console.log("[Avaliação] Idade calculada:", idade);
-        } else {
-                console.log("[Avaliação] data_nascimento NÃO encontrado no paciente");
         }
 
         // Opcional: preencher sexo se vier do paciente
