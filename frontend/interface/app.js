@@ -760,6 +760,213 @@ let titulo = "Adicionar alimento";
         abrirModal("modal-item");
         }
 
+// ===================== SUBSTITUIÇÃO RÁPIDA (do prontuário) =====================
+function abrirModalSubstituicaoRapida() {
+        if (!exigirPaciente()) return;
+        // Limpar formulário
+        document.getElementById("msr-refeicao").innerHTML = '<option value="">Selecione uma refeição...</option>';
+        document.getElementById("msr-opcao-select").innerHTML = '<option value="">Selecione uma opção...</option>';
+        document.getElementById("msr-item-original").innerHTML = '<option value="">Selecione um alimento...</option>';
+        document.getElementById("msr-refeicao-id").value = "";
+        document.getElementById("msr-opcao").value = "";
+        document.getElementById("msr-item-id-original").value = "";
+        document.getElementById("msr-busca-taco").value = "";
+        document.getElementById("msr-alimento-manual").value = "";
+        document.getElementById("msr-kcal").value = "";
+        document.getElementById("msr-prot").value = "";
+        document.getElementById("msr-carbo").value = "";
+        document.getElementById("msr-gord").value = "";
+        document.getElementById("msr-qtd").value = "100";
+        document.getElementById("msr-medida").value = "";
+        document.getElementById("msr-resultados-taco").classList.add("hidden");
+        document.getElementById("msr-resultados-taco").innerHTML = "";
+
+        // Popular refeições
+        if (planoAtual.refeicoes && planoAtual.refeicoes.length) {
+                planoAtual.refeicoes.forEach(r => {
+                        const opt = document.createElement("option");
+                        opt.value = r.id;
+                        opt.textContent = r.nome + (r.horario ? ` (${r.horario})` : "");
+                        document.getElementById("msr-refeicao").appendChild(opt);
+                });
+        } else {
+                alert("Nenhuma refeição cadastrada. Crie uma na aba 'Plano alimentar' primeiro.");
+                return;
+        }
+
+        abrirModal("modal-substituicao-rapida");
+}
+
+function atualizarOpcoesSubstituicaoRapida() {
+        const refeicaoId = Number(document.getElementById("msr-refeicao").value);
+        const opcaoSelect = document.getElementById("msr-opcao-select");
+        const itemSelect = document.getElementById("msr-item-original");
+
+        opcaoSelect.innerHTML = '<option value="">Selecione uma opção...</option>';
+        itemSelect.innerHTML = '<option value="">Selecione um alimento...</option>';
+        document.getElementById("msr-opcao").value = "";
+        document.getElementById("msr-item-id-original").value = "";
+
+        if (!refeicaoId) return;
+
+        const refeicao = planoAtual.refeicoes.find(r => r.id === refeicaoId);
+        if (!refeicao) return;
+
+        document.getElementById("msr-refeicao-id").value = refeicaoId;
+
+        // Opções únicas
+        const opcoes = [...new Set(refeicao.itens.map(i => i.opcao))].sort((a, b) => a - b);
+        opcoes.forEach(op => {
+                const opt = document.createElement("option");
+                opt.value = op;
+                opt.textContent = `Opção ${op}`;
+                opcaoSelect.appendChild(opt);
+        });
+}
+
+function atualizarItensSubstituicaoRapida() {
+        const refeicaoId = Number(document.getElementById("msr-refeicao").value);
+        const opcao = Number(document.getElementById("msr-opcao-select").value);
+        const itemSelect = document.getElementById("msr-item-original");
+
+        itemSelect.innerHTML = '<option value="">Selecione um alimento...</option>';
+        document.getElementById("msr-item-id-original").value = "";
+
+        if (!refeicaoId || !opcao) return;
+
+        const refeicao = planoAtual.refeicoes.find(r => r.id === refeicaoId);
+        if (!refeicao) return;
+
+        document.getElementById("msr-opcao").value = opcao;
+
+        // Apenas itens principais (não substituições)
+        const itensPrincipais = refeicao.itens.filter(i => i.opcao === opcao && !i.substituiItemId);
+        itensPrincipais.forEach(item => {
+                const opt = document.createElement("option");
+                opt.value = item.id;
+                const medida = item.medidaCaseira ? ` (${item.medidaCaseira})` : "";
+                const qtd = item.quantidadeG ? ` — ${item.quantidadeG}g` : "";
+                opt.textContent = `${item.alimento}${qtd}${medida}`;
+                itemSelect.appendChild(opt);
+        });
+}
+
+async function buscarTacoSubstituicao(query) {
+        const resultadosDiv = document.getElementById("msr-resultados-taco");
+        if (query.length < 2) {
+                resultadosDiv.classList.add("hidden");
+                resultadosDiv.innerHTML = "";
+                return;
+        }
+
+        try {
+                const res = await fetch(`${API_URL}/alimentos/buscar?q=${encodeURIComponent(query)}&limite=10`, {
+                        headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+                });
+                if (!res.ok) throw new Error("Erro na busca");
+                const alimentos = await res.json();
+
+                if (alimentos.length === 0) {
+                        resultadosDiv.innerHTML = '<p class="text-xs text-slate-500 px-2 py-1">Nenhum alimento encontrado</p>';
+                        resultadosDiv.classList.remove("hidden");
+                        return;
+                }
+
+                resultadosDiv.innerHTML = alimentos.map(a => `
+                        <button type="button" onclick="selecionarTacoSubstituicao(${JSON.stringify(a).replace(/"/g, '"')})"
+                                class="w-full text-left px-2 py-1.5 rounded-lg hover:bg-slate-700 text-sm transition flex items-center justify-between">
+                                <span>${a.nome} <span class="text-slate-500">(${a.quantidade}g)</span></span>
+                                <span class="text-xs text-amber-400">${a.calorias}kcal</span>
+                        </button>
+                `).join("");
+                resultadosDiv.classList.remove("hidden");
+        } catch (err) {
+                console.error("Erro busca TACO:", err);
+        }
+}
+
+function selecionarTacoSubstituicao(alimento) {
+        document.getElementById("msr-alimento-manual").value = alimento.nome;
+        document.getElementById("msr-kcal").value = alimento.calorias || "";
+        document.getElementById("msr-prot").value = alimento.proteinas || "";
+        document.getElementById("msr-carbo").value = alimento.carbos || "";
+        document.getElementById("msr-gord").value = alimento.gorduras || "";
+        document.getElementById("msr-qtd").value = alimento.quantidade || 100;
+        document.getElementById("msr-resultados-taco").classList.add("hidden");
+        document.getElementById("msr-busca-taco").value = "";
+}
+
+async function salvarSubstituicaoRapida(e) {
+        e.preventDefault();
+        if (!exigirPaciente()) return;
+
+        const itemIdOriginal = Number(document.getElementById("msr-item-id-original").value);
+        const refeicaoId = Number(document.getElementById("msr-refeicao-id").value);
+        const opcao = Number(document.getElementById("msr-opcao").value);
+        const alimentoSubstituto = document.getElementById("msr-alimento-manual").value.trim();
+        const qtd = Number(document.getElementById("msr-qtd").value);
+        const medida = document.getElementById("msr-medida").value.trim();
+        const kcal = Number(document.getElementById("msr-kcal").value) || null;
+        const prot = Number(document.getElementById("msr-prot").value) || null;
+        const carbo = Number(document.getElementById("msr-carbo").value) || null;
+        const gord = Number(document.getElementById("msr-gord").value) || null;
+
+        if (!itemIdOriginal || !refeicaoId || !opcao) {
+                alert("Selecione a refeição, opção e o alimento original.");
+                return;
+        }
+        if (!alimentoSubstituto) {
+                alert("Informe o alimento substituto (busque no TACO ou digite manualmente).");
+                return;
+        }
+        if (!qtd || qtd <= 0) {
+                alert("Informe a quantidade em gramas/ml.");
+                return;
+        }
+
+        const btn = e.target.querySelector('button[type="submit"]');
+        const txtOriginal = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Salvando...';
+
+        try {
+                const body = {
+                        pacienteId: window.pacienteIdAtivo,
+                        refeicaoId,
+                        opcao,
+                        substituiItemId: itemIdOriginal,
+                        alimento: alimentoSubstituto,
+                        quantidadeG: qtd,
+                        medidaCaseira: medida || null,
+                        kcal,
+                        proteinas: prot,
+                        carbos: carbo,
+                        gorduras: gord
+                };
+
+                const res = await fetch(`${API_URL}/planos/item`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(body)
+                });
+
+                if (res.ok) {
+                        fecharModal("modal-substituicao-rapida");
+                        await carregarPlanoAlimentarProntuario(window.pacienteIdAtivo);
+                        // Atualizar a aba de substituições
+                        renderizarSubstituicoes();
+                } else {
+                        alert(await lerErro(res));
+                }
+        } catch (err) {
+                console.error(err);
+                alert("Erro de conexão com o servidor.");
+        } finally {
+                btn.disabled = false;
+                btn.innerHTML = txtOriginal;
+        }
+}
+
 let alimentoAutocompleteTimer = null;
 let alimentoAutocompleteAbort = null;
 
