@@ -1,0 +1,4916 @@
+[
+  {
+    "id": "32",
+    "nome": "Farinha, de centeio, integral",
+    "categoria": "Grupo 13",
+    "kcal_100g": 336.0,
+    "proteina_100g": 12.5,
+    "gordura_100g": 1.8,
+    "carbo_100g": 73.3
+  },
+  {
+    "id": "33",
+    "nome": "Farinha, de milho, amarela",
+    "categoria": "Grupo 13",
+    "kcal_100g": 351.0,
+    "proteina_100g": 7.2,
+    "gordura_100g": 1.5,
+    "carbo_100g": 79.1
+  },
+  {
+    "id": "34",
+    "nome": "Farinha, de rosca",
+    "categoria": "Grupo 13",
+    "kcal_100g": 371.0,
+    "proteina_100g": 11.4,
+    "gordura_100g": 1.5,
+    "carbo_100g": 75.8
+  },
+  {
+    "id": "35",
+    "nome": "Farinha, de trigo",
+    "categoria": "Grupo 13",
+    "kcal_100g": 360.0,
+    "proteina_100g": 9.8,
+    "gordura_100g": 1.4,
+    "carbo_100g": 75.1
+  },
+  {
+    "id": "36",
+    "nome": "Farinha, láctea, de cereais",
+    "categoria": "Grupo 13",
+    "kcal_100g": 415.0,
+    "proteina_100g": 11.9,
+    "gordura_100g": 5.8,
+    "carbo_100g": 77.8
+  },
+  {
+    "id": "37",
+    "nome": "Lasanha, massa fresca, cozida",
+    "categoria": "Grupo 13",
+    "kcal_100g": 164.0,
+    "proteina_100g": 5.8,
+    "gordura_100g": 1.2,
+    "carbo_100g": 32.5
+  },
+  {
+    "id": "38",
+    "nome": "Lasanha, massa fresca, crua",
+    "categoria": "Grupo 13",
+    "kcal_100g": 220.0,
+    "proteina_100g": 7.0,
+    "gordura_100g": 1.3,
+    "carbo_100g": 45.1
+  },
+  {
+    "id": "39",
+    "nome": "Macarrão, instantâneo",
+    "categoria": "Grupo 13",
+    "kcal_100g": 436.0,
+    "proteina_100g": 8.8,
+    "gordura_100g": 17.2,
+    "carbo_100g": 62.4
+  },
+  {
+    "id": "40",
+    "nome": "Macarrão, trigo, cru",
+    "categoria": "Grupo 13",
+    "kcal_100g": 371.0,
+    "proteina_100g": 10.0,
+    "gordura_100g": 1.3,
+    "carbo_100g": 77.9
+  },
+  {
+    "id": "41",
+    "nome": "Macarrão, trigo, cru, com ovos",
+    "categoria": "Grupo 13",
+    "kcal_100g": 371.0,
+    "proteina_100g": 10.3,
+    "gordura_100g": 2.0,
+    "carbo_100g": 76.6
+  },
+  {
+    "id": "42",
+    "nome": "Milho, amido, cru",
+    "categoria": "Grupo 13",
+    "kcal_100g": 361.0,
+    "proteina_100g": 0.6,
+    "gordura_100g": 0.0,
+    "carbo_100g": 87.1
+  },
+  {
+    "id": "43",
+    "nome": "Milho, fubá, cru",
+    "categoria": "Grupo 13",
+    "kcal_100g": 353.0,
+    "proteina_100g": 7.2,
+    "gordura_100g": 1.9,
+    "carbo_100g": 78.9
+  },
+  {
+    "id": "44",
+    "nome": "Milho, verde, cru",
+    "categoria": "Grupo 13",
+    "kcal_100g": 138.0,
+    "proteina_100g": 6.6,
+    "gordura_100g": 0.6,
+    "carbo_100g": 28.6
+  },
+  {
+    "id": "45",
+    "nome": "Milho, verde, enlatado, drenado",
+    "categoria": "Grupo 13",
+    "kcal_100g": 98.0,
+    "proteina_100g": 3.2,
+    "gordura_100g": 2.4,
+    "carbo_100g": 17.1
+  },
+  {
+    "id": "46",
+    "nome": "Mingau tradicional, pó",
+    "categoria": "Grupo 13",
+    "kcal_100g": 373.0,
+    "proteina_100g": 0.6,
+    "gordura_100g": 0.4,
+    "carbo_100g": 89.3
+  },
+  {
+    "id": "47",
+    "nome": "Pamonha, barra para cozimento, pré-cozida",
+    "categoria": "Grupo 13",
+    "kcal_100g": 171.0,
+    "proteina_100g": 2.6,
+    "gordura_100g": 4.8,
+    "carbo_100g": 30.7
+  },
+  {
+    "id": "48",
+    "nome": "Pão, aveia, forma",
+    "categoria": "Grupo 13",
+    "kcal_100g": 343.0,
+    "proteina_100g": 12.4,
+    "gordura_100g": 5.7,
+    "carbo_100g": 59.6
+  },
+  {
+    "id": "49",
+    "nome": "Pão, de soja",
+    "categoria": "Grupo 13",
+    "kcal_100g": 309.0,
+    "proteina_100g": 11.3,
+    "gordura_100g": 3.6,
+    "carbo_100g": 56.5
+  },
+  {
+    "id": "50",
+    "nome": "Pão, glúten, forma",
+    "categoria": "Grupo 13",
+    "kcal_100g": 253.0,
+    "proteina_100g": 12.0,
+    "gordura_100g": 2.7,
+    "carbo_100g": 44.1
+  },
+  {
+    "id": "51",
+    "nome": "Pão, milho, forma",
+    "categoria": "Grupo 13",
+    "kcal_100g": 292.0,
+    "proteina_100g": 8.3,
+    "gordura_100g": 3.1,
+    "carbo_100g": 56.4
+  },
+  {
+    "id": "52",
+    "nome": "Pão, trigo, forma, integral",
+    "categoria": "Grupo 13",
+    "kcal_100g": 253.0,
+    "proteina_100g": 9.4,
+    "gordura_100g": 3.7,
+    "carbo_100g": 49.9
+  },
+  {
+    "id": "53",
+    "nome": "Pão, trigo, francês",
+    "categoria": "Grupo 13",
+    "kcal_100g": 300.0,
+    "proteina_100g": 8.0,
+    "gordura_100g": 3.1,
+    "carbo_100g": 58.6
+  },
+  {
+    "id": "54",
+    "nome": "Pão, trigo, sovado",
+    "categoria": "Grupo 13",
+    "kcal_100g": 311.0,
+    "proteina_100g": 8.4,
+    "gordura_100g": 2.8,
+    "carbo_100g": 61.5
+  },
+  {
+    "id": "55",
+    "nome": "Pastel, de carne, cru",
+    "categoria": "Grupo 13",
+    "kcal_100g": 289.0,
+    "proteina_100g": 10.7,
+    "gordura_100g": 8.8,
+    "carbo_100g": 42.0
+  },
+  {
+    "id": "56",
+    "nome": "Pastel, de carne, frito",
+    "categoria": "Grupo 13",
+    "kcal_100g": 388.0,
+    "proteina_100g": 10.1,
+    "gordura_100g": 20.1,
+    "carbo_100g": 43.8
+  },
+  {
+    "id": "57",
+    "nome": "Pastel, de queijo, cru",
+    "categoria": "Grupo 13",
+    "kcal_100g": 308.0,
+    "proteina_100g": 9.9,
+    "gordura_100g": 9.6,
+    "carbo_100g": 45.9
+  },
+  {
+    "id": "58",
+    "nome": "Pastel, de queijo, frito",
+    "categoria": "Grupo 13",
+    "kcal_100g": 422.0,
+    "proteina_100g": 8.7,
+    "gordura_100g": 22.7,
+    "carbo_100g": 48.1
+  },
+  {
+    "id": "59",
+    "nome": "Pastel, massa, crua",
+    "categoria": "Grupo 13",
+    "kcal_100g": 310.0,
+    "proteina_100g": 6.9,
+    "gordura_100g": 5.5,
+    "carbo_100g": 57.4
+  },
+  {
+    "id": "60",
+    "nome": "Pastel, massa, frita",
+    "categoria": "Grupo 13",
+    "kcal_100g": 570.0,
+    "proteina_100g": 6.0,
+    "gordura_100g": 40.9,
+    "carbo_100g": 49.3
+  },
+  {
+    "id": "61",
+    "nome": "Pipoca, com óleo de soja, sem sal",
+    "categoria": "Grupo 13",
+    "kcal_100g": 448.0,
+    "proteina_100g": 9.9,
+    "gordura_100g": 15.9,
+    "carbo_100g": 70.3
+  },
+  {
+    "id": "62",
+    "nome": "Polenta, pré-cozida",
+    "categoria": "Grupo 13",
+    "kcal_100g": 103.0,
+    "proteina_100g": 2.3,
+    "gordura_100g": 0.3,
+    "carbo_100g": 23.3
+  },
+  {
+    "id": "63",
+    "nome": "Torrada, pão francês",
+    "categoria": "Grupo 13",
+    "kcal_100g": 377.0,
+    "proteina_100g": 10.5,
+    "gordura_100g": 3.3,
+    "carbo_100g": 74.6
+  },
+  {
+    "id": "64",
+    "nome": "Abóbora, cabotian, cozida",
+    "categoria": "Grupo 15",
+    "kcal_100g": 48.0,
+    "proteina_100g": 1.4,
+    "gordura_100g": 0.7,
+    "carbo_100g": 10.8
+  },
+  {
+    "id": "65",
+    "nome": "Abóbora, cabotian, crua",
+    "categoria": "Grupo 15",
+    "kcal_100g": 39.0,
+    "proteina_100g": 1.7,
+    "gordura_100g": 0.5,
+    "carbo_100g": 8.4
+  },
+  {
+    "id": "66",
+    "nome": "Abóbora, menina brasileira, crua",
+    "categoria": "Grupo 15",
+    "kcal_100g": 14.0,
+    "proteina_100g": 0.6,
+    "gordura_100g": 0.0,
+    "carbo_100g": 3.3
+  },
+  {
+    "id": "67",
+    "nome": "Abóbora, moranga, crua",
+    "categoria": "Grupo 15",
+    "kcal_100g": 12.0,
+    "proteina_100g": 1.0,
+    "gordura_100g": 0.1,
+    "carbo_100g": 2.7
+  },
+  {
+    "id": "68",
+    "nome": "Abóbora, moranga, refogada",
+    "categoria": "Grupo 15",
+    "kcal_100g": 29.0,
+    "proteina_100g": 0.4,
+    "gordura_100g": 0.8,
+    "carbo_100g": 6.0
+  },
+  {
+    "id": "69",
+    "nome": "Abobora, pescoço, crua",
+    "categoria": "Grupo 15",
+    "kcal_100g": 24.0,
+    "proteina_100g": 0.7,
+    "gordura_100g": 0.1,
+    "carbo_100g": 6.1
+  },
+  {
+    "id": "70",
+    "nome": "Abobrinha, italiana, cozida",
+    "categoria": "Grupo 15",
+    "kcal_100g": 15.0,
+    "proteina_100g": 1.1,
+    "gordura_100g": 0.2,
+    "carbo_100g": 3.0
+  },
+  {
+    "id": "71",
+    "nome": "Abobrinha, italiana, crua",
+    "categoria": "Grupo 15",
+    "kcal_100g": 19.0,
+    "proteina_100g": 1.1,
+    "gordura_100g": 0.1,
+    "carbo_100g": 4.3
+  },
+  {
+    "id": "72",
+    "nome": "Abobrinha, italiana, refogada",
+    "categoria": "Grupo 15",
+    "kcal_100g": 24.0,
+    "proteina_100g": 1.1,
+    "gordura_100g": 0.8,
+    "carbo_100g": 4.2
+  },
+  {
+    "id": "73",
+    "nome": "Abobrinha, paulista, crua",
+    "categoria": "Grupo 15",
+    "kcal_100g": 31.0,
+    "proteina_100g": 0.6,
+    "gordura_100g": 0.1,
+    "carbo_100g": 7.9
+  },
+  {
+    "id": "74",
+    "nome": "Acelga, crua",
+    "categoria": "Grupo 15",
+    "kcal_100g": 21.0,
+    "proteina_100g": 1.4,
+    "gordura_100g": 0.1,
+    "carbo_100g": 4.6
+  },
+  {
+    "id": "75",
+    "nome": "Agrião, cru",
+    "categoria": "Grupo 15",
+    "kcal_100g": 17.0,
+    "proteina_100g": 2.7,
+    "gordura_100g": 0.2,
+    "carbo_100g": 2.3
+  },
+  {
+    "id": "76",
+    "nome": "Aipo, cru",
+    "categoria": "Grupo 15",
+    "kcal_100g": 19.0,
+    "proteina_100g": 0.8,
+    "gordura_100g": 0.1,
+    "carbo_100g": 4.3
+  },
+  {
+    "id": "77",
+    "nome": "Alface, americana, crua",
+    "categoria": "Grupo 15",
+    "kcal_100g": 9.0,
+    "proteina_100g": 0.6,
+    "gordura_100g": 0.1,
+    "carbo_100g": 1.7
+  },
+  {
+    "id": "78",
+    "nome": "Alface, crespa, crua",
+    "categoria": "Grupo 15",
+    "kcal_100g": 11.0,
+    "proteina_100g": 1.3,
+    "gordura_100g": 0.2,
+    "carbo_100g": 1.7
+  },
+  {
+    "id": "79",
+    "nome": "Alface, lisa, crua",
+    "categoria": "Grupo 15",
+    "kcal_100g": 14.0,
+    "proteina_100g": 1.7,
+    "gordura_100g": 0.1,
+    "carbo_100g": 2.4
+  },
+  {
+    "id": "80",
+    "nome": "Alface, roxa, crua",
+    "categoria": "Grupo 15",
+    "kcal_100g": 13.0,
+    "proteina_100g": 0.9,
+    "gordura_100g": 0.2,
+    "carbo_100g": 2.5
+  },
+  {
+    "id": "81",
+    "nome": "Alfavaca, crua",
+    "categoria": "Grupo 15",
+    "kcal_100g": 29.0,
+    "proteina_100g": 2.7,
+    "gordura_100g": 0.5,
+    "carbo_100g": 5.2
+  },
+  {
+    "id": "82",
+    "nome": "Alho, cru",
+    "categoria": "Grupo 15",
+    "kcal_100g": 113.0,
+    "proteina_100g": 7.0,
+    "gordura_100g": 0.2,
+    "carbo_100g": 23.9
+  },
+  {
+    "id": "83",
+    "nome": "Alho-poró, cru",
+    "categoria": "Grupo 15",
+    "kcal_100g": 32.0,
+    "proteina_100g": 1.4,
+    "gordura_100g": 0.1,
+    "carbo_100g": 6.9
+  },
+  {
+    "id": "84",
+    "nome": "Almeirão, cru",
+    "categoria": "Grupo 15",
+    "kcal_100g": 18.0,
+    "proteina_100g": 1.8,
+    "gordura_100g": 0.2,
+    "carbo_100g": 3.3
+  },
+  {
+    "id": "85",
+    "nome": "Almeirão, refogado",
+    "categoria": "Grupo 15",
+    "kcal_100g": 65.0,
+    "proteina_100g": 1.7,
+    "gordura_100g": 4.8,
+    "carbo_100g": 5.7
+  },
+  {
+    "id": "86",
+    "nome": "Batata, baroa, cozida",
+    "categoria": "Grupo 15",
+    "kcal_100g": 80.0,
+    "proteina_100g": 0.9,
+    "gordura_100g": 0.2,
+    "carbo_100g": 18.9
+  },
+  {
+    "id": "87",
+    "nome": "Batata, baroa, crua",
+    "categoria": "Grupo 15",
+    "kcal_100g": 101.0,
+    "proteina_100g": 1.0,
+    "gordura_100g": 0.2,
+    "carbo_100g": 24.0
+  },
+  {
+    "id": "88",
+    "nome": "Batata, doce, cozida",
+    "categoria": "Grupo 15",
+    "kcal_100g": 77.0,
+    "proteina_100g": 0.6,
+    "gordura_100g": 0.1,
+    "carbo_100g": 18.4
+  },
+  {
+    "id": "89",
+    "nome": "Batata, doce, crua",
+    "categoria": "Grupo 15",
+    "kcal_100g": 118.0,
+    "proteina_100g": 1.3,
+    "gordura_100g": 0.1,
+    "carbo_100g": 28.2
+  },
+  {
+    "id": "90",
+    "nome": "Batata, frita, tipo chips, industrializada",
+    "categoria": "Grupo 15",
+    "kcal_100g": 543.0,
+    "proteina_100g": 5.6,
+    "gordura_100g": 36.6,
+    "carbo_100g": 51.2
+  },
+  {
+    "id": "91",
+    "nome": "Batata, inglesa, cozida",
+    "categoria": "Grupo 15",
+    "kcal_100g": 52.0,
+    "proteina_100g": 1.2,
+    "gordura_100g": 0.0,
+    "carbo_100g": 11.9
+  },
+  {
+    "id": "92",
+    "nome": "Batata, inglesa, crua",
+    "categoria": "Grupo 15",
+    "kcal_100g": 64.0,
+    "proteina_100g": 1.8,
+    "gordura_100g": 0.0,
+    "carbo_100g": 14.7
+  },
+  {
+    "id": "93",
+    "nome": "Batata, inglesa, frita",
+    "categoria": "Grupo 15",
+    "kcal_100g": 267.0,
+    "proteina_100g": 5.0,
+    "gordura_100g": 13.1,
+    "carbo_100g": 35.6
+  },
+  {
+    "id": "94",
+    "nome": "Batata, inglesa, sauté",
+    "categoria": "Grupo 17",
+    "kcal_100g": 68.0,
+    "proteina_100g": 1.3,
+    "gordura_100g": 0.9,
+    "carbo_100g": 14.1
+  },
+  {
+    "id": "95",
+    "nome": "Berinjela, cozida",
+    "categoria": "Grupo 17",
+    "kcal_100g": 19.0,
+    "proteina_100g": 0.7,
+    "gordura_100g": 0.1,
+    "carbo_100g": 4.5
+  },
+  {
+    "id": "96",
+    "nome": "Berinjela, crua",
+    "categoria": "Grupo 17",
+    "kcal_100g": 20.0,
+    "proteina_100g": 1.2,
+    "gordura_100g": 0.1,
+    "carbo_100g": 4.4
+  },
+  {
+    "id": "97",
+    "nome": "Beterraba, cozida",
+    "categoria": "Grupo 17",
+    "kcal_100g": 32.0,
+    "proteina_100g": 1.3,
+    "gordura_100g": 0.1,
+    "carbo_100g": 7.2
+  },
+  {
+    "id": "98",
+    "nome": "Beterraba, crua",
+    "categoria": "Grupo 17",
+    "kcal_100g": 49.0,
+    "proteina_100g": 1.9,
+    "gordura_100g": 0.1,
+    "carbo_100g": 11.1
+  },
+  {
+    "id": "99",
+    "nome": "Biscoito, polvilho doce",
+    "categoria": "Grupo 17",
+    "kcal_100g": 438.0,
+    "proteina_100g": 1.3,
+    "gordura_100g": 12.2,
+    "carbo_100g": 80.5
+  },
+  {
+    "id": "100",
+    "nome": "Brócolis, cozido",
+    "categoria": "Grupo 17",
+    "kcal_100g": 25.0,
+    "proteina_100g": 2.1,
+    "gordura_100g": 0.5,
+    "carbo_100g": 4.4
+  },
+  {
+    "id": "101",
+    "nome": "Brócolis, cru",
+    "categoria": "Grupo 17",
+    "kcal_100g": 25.0,
+    "proteina_100g": 3.6,
+    "gordura_100g": 0.3,
+    "carbo_100g": 4.0
+  },
+  {
+    "id": "102",
+    "nome": "Cará, cozido",
+    "categoria": "Grupo 17",
+    "kcal_100g": 78.0,
+    "proteina_100g": 1.5,
+    "gordura_100g": 0.1,
+    "carbo_100g": 18.9
+  },
+  {
+    "id": "103",
+    "nome": "Cará, cru",
+    "categoria": "Grupo 17",
+    "kcal_100g": 96.0,
+    "proteina_100g": 2.3,
+    "gordura_100g": 0.1,
+    "carbo_100g": 23.0
+  },
+  {
+    "id": "104",
+    "nome": "Caruru, cru",
+    "categoria": "Grupo 17",
+    "kcal_100g": 34.0,
+    "proteina_100g": 3.2,
+    "gordura_100g": 0.6,
+    "carbo_100g": 6.0
+  },
+  {
+    "id": "105",
+    "nome": "Catalonha, crua",
+    "categoria": "Grupo 17",
+    "kcal_100g": 24.0,
+    "proteina_100g": 1.9,
+    "gordura_100g": 0.3,
+    "carbo_100g": 4.8
+  },
+  {
+    "id": "106",
+    "nome": "Catalonha, refogada",
+    "categoria": "Grupo 17",
+    "kcal_100g": 63.0,
+    "proteina_100g": 2.0,
+    "gordura_100g": 4.8,
+    "carbo_100g": 4.8
+  },
+  {
+    "id": "107",
+    "nome": "Cebola, crua",
+    "categoria": "Grupo 17",
+    "kcal_100g": 39.0,
+    "proteina_100g": 1.7,
+    "gordura_100g": 0.1,
+    "carbo_100g": 8.9
+  },
+  {
+    "id": "108",
+    "nome": "Cebolinha, crua",
+    "categoria": "Grupo 17",
+    "kcal_100g": 20.0,
+    "proteina_100g": 1.9,
+    "gordura_100g": 0.4,
+    "carbo_100g": 3.4
+  },
+  {
+    "id": "109",
+    "nome": "Cenoura, cozida",
+    "categoria": "Grupo 17",
+    "kcal_100g": 30.0,
+    "proteina_100g": 0.8,
+    "gordura_100g": 0.2,
+    "carbo_100g": 6.7
+  },
+  {
+    "id": "110",
+    "nome": "Cenoura, crua",
+    "categoria": "Grupo 17",
+    "kcal_100g": 34.0,
+    "proteina_100g": 1.3,
+    "gordura_100g": 0.2,
+    "carbo_100g": 7.7
+  },
+  {
+    "id": "111",
+    "nome": "Chicória, crua",
+    "categoria": "Grupo 17",
+    "kcal_100g": 14.0,
+    "proteina_100g": 1.1,
+    "gordura_100g": 0.1,
+    "carbo_100g": 2.9
+  },
+  {
+    "id": "112",
+    "nome": "Chuchu, cozido",
+    "categoria": "Grupo 17",
+    "kcal_100g": 19.0,
+    "proteina_100g": 0.4,
+    "gordura_100g": 0.0,
+    "carbo_100g": 4.8
+  },
+  {
+    "id": "113",
+    "nome": "Chuchu, cru",
+    "categoria": "Grupo 17",
+    "kcal_100g": 17.0,
+    "proteina_100g": 0.7,
+    "gordura_100g": 0.1,
+    "carbo_100g": 4.1
+  },
+  {
+    "id": "114",
+    "nome": "Coentro, folhas desidratadas",
+    "categoria": "Grupo 17",
+    "kcal_100g": 309.0,
+    "proteina_100g": 20.9,
+    "gordura_100g": 10.4,
+    "carbo_100g": 48.0
+  },
+  {
+    "id": "115",
+    "nome": "Couve, manteiga, crua",
+    "categoria": "Grupo 17",
+    "kcal_100g": 27.0,
+    "proteina_100g": 2.9,
+    "gordura_100g": 0.5,
+    "carbo_100g": 4.3
+  },
+  {
+    "id": "116",
+    "nome": "Couve, manteiga, refogada",
+    "categoria": "Grupo 17",
+    "kcal_100g": 90.0,
+    "proteina_100g": 1.7,
+    "gordura_100g": 6.6,
+    "carbo_100g": 8.7
+  },
+  {
+    "id": "117",
+    "nome": "Couve-flor, crua",
+    "categoria": "Grupo 17",
+    "kcal_100g": 23.0,
+    "proteina_100g": 1.9,
+    "gordura_100g": 0.2,
+    "carbo_100g": 4.5
+  },
+  {
+    "id": "118",
+    "nome": "Couve-flor, cozida",
+    "categoria": "Grupo 17",
+    "kcal_100g": 19.0,
+    "proteina_100g": 1.2,
+    "gordura_100g": 0.3,
+    "carbo_100g": 3.9
+  },
+  {
+    "id": "119",
+    "nome": "Espinafre,  Nova Zelândia, cru",
+    "categoria": "Grupo 17",
+    "kcal_100g": 16.0,
+    "proteina_100g": 2.0,
+    "gordura_100g": 0.2,
+    "carbo_100g": 2.6
+  },
+  {
+    "id": "120",
+    "nome": "Espinafre, Nova Zelândia, refogado",
+    "categoria": "Grupo 17",
+    "kcal_100g": 67.0,
+    "proteina_100g": 2.7,
+    "gordura_100g": 5.4,
+    "carbo_100g": 4.2
+  },
+  {
+    "id": "121",
+    "nome": "Farinha, de mandioca, crua",
+    "categoria": "Grupo 17",
+    "kcal_100g": 361.0,
+    "proteina_100g": 1.6,
+    "gordura_100g": 0.3,
+    "carbo_100g": 87.9
+  },
+  {
+    "id": "122",
+    "nome": "Farinha, de mandioca, torrada",
+    "categoria": "Grupo 17",
+    "kcal_100g": 365.0,
+    "proteina_100g": 1.2,
+    "gordura_100g": 0.3,
+    "carbo_100g": 89.2
+  },
+  {
+    "id": "123",
+    "nome": "Farinha, de puba",
+    "categoria": "Grupo 17",
+    "kcal_100g": 360.0,
+    "proteina_100g": 1.6,
+    "gordura_100g": 0.5,
+    "carbo_100g": 87.3
+  },
+  {
+    "id": "124",
+    "nome": "Fécula, de mandioca",
+    "categoria": "Grupo 17",
+    "kcal_100g": 331.0,
+    "proteina_100g": 0.5,
+    "gordura_100g": 0.3,
+    "carbo_100g": 81.1
+  },
+  {
+    "id": "125",
+    "nome": "Feijão, broto, cru",
+    "categoria": "Grupo 17",
+    "kcal_100g": 39.0,
+    "proteina_100g": 4.2,
+    "gordura_100g": 0.1,
+    "carbo_100g": 7.8
+  },
+  {
+    "id": "126",
+    "nome": "Inhame, cru",
+    "categoria": "Grupo 19",
+    "kcal_100g": 97.0,
+    "proteina_100g": 2.1,
+    "gordura_100g": 0.2,
+    "carbo_100g": 23.2
+  },
+  {
+    "id": "127",
+    "nome": "Jiló, cru",
+    "categoria": "Grupo 19",
+    "kcal_100g": 27.0,
+    "proteina_100g": 1.4,
+    "gordura_100g": 0.2,
+    "carbo_100g": 6.2
+  },
+  {
+    "id": "128",
+    "nome": "Jurubeba, crua",
+    "categoria": "Grupo 19",
+    "kcal_100g": 126.0,
+    "proteina_100g": 4.4,
+    "gordura_100g": 3.9,
+    "carbo_100g": 23.1
+  },
+  {
+    "id": "129",
+    "nome": "Mandioca, cozida",
+    "categoria": "Grupo 19",
+    "kcal_100g": 125.0,
+    "proteina_100g": 0.6,
+    "gordura_100g": 0.3,
+    "carbo_100g": 30.1
+  },
+  {
+    "id": "130",
+    "nome": "Mandioca, crua",
+    "categoria": "Grupo 19",
+    "kcal_100g": 151.0,
+    "proteina_100g": 1.1,
+    "gordura_100g": 0.3,
+    "carbo_100g": 36.2
+  },
+  {
+    "id": "131",
+    "nome": "Mandioca, farofa, temperada",
+    "categoria": "Grupo 19",
+    "kcal_100g": 406.0,
+    "proteina_100g": 2.1,
+    "gordura_100g": 9.1,
+    "carbo_100g": 80.3
+  },
+  {
+    "id": "132",
+    "nome": "Mandioca, frita",
+    "categoria": "Grupo 19",
+    "kcal_100g": 300.0,
+    "proteina_100g": 1.4,
+    "gordura_100g": 11.2,
+    "carbo_100g": 50.3
+  },
+  {
+    "id": "133",
+    "nome": "Manjericão, cru",
+    "categoria": "Grupo 19",
+    "kcal_100g": 21.0,
+    "proteina_100g": 2.0,
+    "gordura_100g": 0.4,
+    "carbo_100g": 3.6
+  },
+  {
+    "id": "134",
+    "nome": "Maxixe, cru",
+    "categoria": "Grupo 19",
+    "kcal_100g": 14.0,
+    "proteina_100g": 1.4,
+    "gordura_100g": 0.1,
+    "carbo_100g": 2.7
+  },
+  {
+    "id": "135",
+    "nome": "Mostarda, folha, crua",
+    "categoria": "Grupo 19",
+    "kcal_100g": 18.0,
+    "proteina_100g": 2.1,
+    "gordura_100g": 0.2,
+    "carbo_100g": 3.2
+  },
+  {
+    "id": "136",
+    "nome": "Nhoque, batata, cozido",
+    "categoria": "Grupo 19",
+    "kcal_100g": 181.0,
+    "proteina_100g": 5.9,
+    "gordura_100g": 1.9,
+    "carbo_100g": 36.8
+  },
+  {
+    "id": "137",
+    "nome": "Nabo, cru",
+    "categoria": "Grupo 19",
+    "kcal_100g": 18.0,
+    "proteina_100g": 1.2,
+    "gordura_100g": 0.1,
+    "carbo_100g": 4.1
+  },
+  {
+    "id": "138",
+    "nome": "Palmito, juçara, em conserva",
+    "categoria": "Grupo 19",
+    "kcal_100g": 23.0,
+    "proteina_100g": 1.8,
+    "gordura_100g": 0.4,
+    "carbo_100g": 4.3
+  },
+  {
+    "id": "139",
+    "nome": "Palmito, pupunha, em conserva",
+    "categoria": "Grupo 19",
+    "kcal_100g": 29.0,
+    "proteina_100g": 2.5,
+    "gordura_100g": 0.5,
+    "carbo_100g": 5.5
+  },
+  {
+    "id": "140",
+    "nome": "Pão, de queijo, assado",
+    "categoria": "Grupo 19",
+    "kcal_100g": 363.0,
+    "proteina_100g": 5.1,
+    "gordura_100g": 24.6,
+    "carbo_100g": 34.2
+  },
+  {
+    "id": "141",
+    "nome": "Pão, de queijo, cru",
+    "categoria": "Grupo 19",
+    "kcal_100g": 295.0,
+    "proteina_100g": 3.6,
+    "gordura_100g": 14.0,
+    "carbo_100g": 38.5
+  },
+  {
+    "id": "142",
+    "nome": "Pepino, cru",
+    "categoria": "Grupo 19",
+    "kcal_100g": 10.0,
+    "proteina_100g": 0.9,
+    "gordura_100g": 0.0,
+    "carbo_100g": 2.0
+  },
+  {
+    "id": "143",
+    "nome": "Pimentão, amarelo, cru",
+    "categoria": "Grupo 19",
+    "kcal_100g": 28.0,
+    "proteina_100g": 1.2,
+    "gordura_100g": 0.4,
+    "carbo_100g": 6.0
+  },
+  {
+    "id": "144",
+    "nome": "Pimentão, verde, cru",
+    "categoria": "Grupo 19",
+    "kcal_100g": 21.0,
+    "proteina_100g": 1.1,
+    "gordura_100g": 0.2,
+    "carbo_100g": 4.9
+  },
+  {
+    "id": "145",
+    "nome": "Pimentão, vermelho, cru",
+    "categoria": "Grupo 19",
+    "kcal_100g": 23.0,
+    "proteina_100g": 1.0,
+    "gordura_100g": 0.1,
+    "carbo_100g": 5.5
+  },
+  {
+    "id": "146",
+    "nome": "Polvilho, doce",
+    "categoria": "Grupo 19",
+    "kcal_100g": 351.0,
+    "proteina_100g": 0.4,
+    "gordura_100g": 0.0,
+    "carbo_100g": 86.8
+  },
+  {
+    "id": "147",
+    "nome": "Quiabo, cru",
+    "categoria": "Grupo 19",
+    "kcal_100g": 30.0,
+    "proteina_100g": 1.9,
+    "gordura_100g": 0.3,
+    "carbo_100g": 6.4
+  },
+  {
+    "id": "148",
+    "nome": "Rabanete, cru",
+    "categoria": "Grupo 19",
+    "kcal_100g": 14.0,
+    "proteina_100g": 1.4,
+    "gordura_100g": 0.1,
+    "carbo_100g": 2.7
+  },
+  {
+    "id": "149",
+    "nome": "Repolho, branco, cru",
+    "categoria": "Grupo 19",
+    "kcal_100g": 17.0,
+    "proteina_100g": 0.9,
+    "gordura_100g": 0.1,
+    "carbo_100g": 3.9
+  },
+  {
+    "id": "150",
+    "nome": "Repolho, roxo, cru",
+    "categoria": "Grupo 19",
+    "kcal_100g": 31.0,
+    "proteina_100g": 1.9,
+    "gordura_100g": 0.1,
+    "carbo_100g": 7.2
+  },
+  {
+    "id": "151",
+    "nome": "Repolho, roxo, refogado",
+    "categoria": "Grupo 19",
+    "kcal_100g": 42.0,
+    "proteina_100g": 1.8,
+    "gordura_100g": 1.2,
+    "carbo_100g": 7.6
+  },
+  {
+    "id": "152",
+    "nome": "Rúcula, crua",
+    "categoria": "Grupo 19",
+    "kcal_100g": 13.0,
+    "proteina_100g": 1.8,
+    "gordura_100g": 0.1,
+    "carbo_100g": 2.2
+  },
+  {
+    "id": "153",
+    "nome": "Salsa, crua",
+    "categoria": "Grupo 19",
+    "kcal_100g": 33.0,
+    "proteina_100g": 3.3,
+    "gordura_100g": 0.6,
+    "carbo_100g": 5.7
+  },
+  {
+    "id": "154",
+    "nome": "Seleta de legumes, enlatada",
+    "categoria": "Grupo 19",
+    "kcal_100g": 57.0,
+    "proteina_100g": 3.4,
+    "gordura_100g": 0.4,
+    "carbo_100g": 12.7
+  },
+  {
+    "id": "155",
+    "nome": "Serralha, crua",
+    "categoria": "Grupo 19",
+    "kcal_100g": 30.0,
+    "proteina_100g": 2.7,
+    "gordura_100g": 0.7,
+    "carbo_100g": 4.9
+  },
+  {
+    "id": "156",
+    "nome": "Taioba, crua",
+    "categoria": "Grupo 19",
+    "kcal_100g": 34.0,
+    "proteina_100g": 2.9,
+    "gordura_100g": 0.9,
+    "carbo_100g": 5.4
+  },
+  {
+    "id": "157",
+    "nome": "Tomate, com semente, cru",
+    "categoria": "Grupo 19",
+    "kcal_100g": 15.0,
+    "proteina_100g": 1.1,
+    "gordura_100g": 0.2,
+    "carbo_100g": 3.1
+  },
+  {
+    "id": "158",
+    "nome": "Tomate, extrato",
+    "categoria": "Grupo 21",
+    "kcal_100g": 61.0,
+    "proteina_100g": 2.4,
+    "gordura_100g": 0.2,
+    "carbo_100g": 15.0
+  },
+  {
+    "id": "159",
+    "nome": "Tomate, molho industrializado",
+    "categoria": "Grupo 21",
+    "kcal_100g": 38.0,
+    "proteina_100g": 1.4,
+    "gordura_100g": 0.9,
+    "carbo_100g": 7.7
+  },
+  {
+    "id": "160",
+    "nome": "Tomate, purê",
+    "categoria": "Grupo 21",
+    "kcal_100g": 28.0,
+    "proteina_100g": 1.4,
+    "gordura_100g": 0.0,
+    "carbo_100g": 6.9
+  },
+  {
+    "id": "161",
+    "nome": "Tomate, salada",
+    "categoria": "Grupo 21",
+    "kcal_100g": 21.0,
+    "proteina_100g": 0.8,
+    "gordura_100g": 0.0,
+    "carbo_100g": 5.1
+  },
+  {
+    "id": "162",
+    "nome": "Vagem, crua",
+    "categoria": "Grupo 21",
+    "kcal_100g": 25.0,
+    "proteina_100g": 1.8,
+    "gordura_100g": 0.2,
+    "carbo_100g": 5.3
+  },
+  {
+    "id": "163",
+    "nome": "Abacate, cru",
+    "categoria": "Grupo 21",
+    "kcal_100g": 96.0,
+    "proteina_100g": 1.2,
+    "gordura_100g": 8.4,
+    "carbo_100g": 6.0
+  },
+  {
+    "id": "164",
+    "nome": "Abacaxi, cru",
+    "categoria": "Grupo 21",
+    "kcal_100g": 48.0,
+    "proteina_100g": 0.9,
+    "gordura_100g": 0.1,
+    "carbo_100g": 12.3
+  },
+  {
+    "id": "165",
+    "nome": "Abacaxi, polpa, congelada",
+    "categoria": "Grupo 21",
+    "kcal_100g": 31.0,
+    "proteina_100g": 0.5,
+    "gordura_100g": 0.1,
+    "carbo_100g": 7.8
+  },
+  {
+    "id": "166",
+    "nome": "Abiu, cru",
+    "categoria": "Grupo 21",
+    "kcal_100g": 62.0,
+    "proteina_100g": 0.8,
+    "gordura_100g": 0.7,
+    "carbo_100g": 14.9
+  },
+  {
+    "id": "167",
+    "nome": "Açaí, polpa, com xarope de guaraná e glucose",
+    "categoria": "Grupo 21",
+    "kcal_100g": 110.0,
+    "proteina_100g": 0.7,
+    "gordura_100g": 3.7,
+    "carbo_100g": 21.5
+  },
+  {
+    "id": "168",
+    "nome": "Açaí, polpa, congelada",
+    "categoria": "Grupo 21",
+    "kcal_100g": 58.0,
+    "proteina_100g": 0.8,
+    "gordura_100g": 3.9,
+    "carbo_100g": 6.2
+  },
+  {
+    "id": "169",
+    "nome": "Acerola, crua",
+    "categoria": "Grupo 21",
+    "kcal_100g": 33.0,
+    "proteina_100g": 0.9,
+    "gordura_100g": 0.2,
+    "carbo_100g": 8.0
+  },
+  {
+    "id": "170",
+    "nome": "Acerola, polpa, congelada",
+    "categoria": "Grupo 21",
+    "kcal_100g": 22.0,
+    "proteina_100g": 0.6,
+    "gordura_100g": 0.0,
+    "carbo_100g": 5.5
+  },
+  {
+    "id": "171",
+    "nome": "Ameixa, calda, enlatada",
+    "categoria": "Grupo 21",
+    "kcal_100g": 183.0,
+    "proteina_100g": 0.4,
+    "gordura_100g": 0.0,
+    "carbo_100g": 46.9
+  },
+  {
+    "id": "172",
+    "nome": "Ameixa, crua",
+    "categoria": "Grupo 21",
+    "kcal_100g": 53.0,
+    "proteina_100g": 0.8,
+    "gordura_100g": 0.0,
+    "carbo_100g": 13.9
+  },
+  {
+    "id": "173",
+    "nome": "Ameixa, em calda, enlatada, drenada",
+    "categoria": "Grupo 21",
+    "kcal_100g": 177.0,
+    "proteina_100g": 1.0,
+    "gordura_100g": 0.3,
+    "carbo_100g": 47.7
+  },
+  {
+    "id": "174",
+    "nome": "Atemóia, crua",
+    "categoria": "Grupo 21",
+    "kcal_100g": 97.0,
+    "proteina_100g": 1.0,
+    "gordura_100g": 0.3,
+    "carbo_100g": 25.3
+  },
+  {
+    "id": "175",
+    "nome": "Banana, da terra, crua",
+    "categoria": "Grupo 21",
+    "kcal_100g": 128.0,
+    "proteina_100g": 1.4,
+    "gordura_100g": 0.2,
+    "carbo_100g": 33.7
+  },
+  {
+    "id": "176",
+    "nome": "Banana, doce em barra",
+    "categoria": "Grupo 21",
+    "kcal_100g": 280.0,
+    "proteina_100g": 2.2,
+    "gordura_100g": 0.1,
+    "carbo_100g": 75.7
+  },
+  {
+    "id": "177",
+    "nome": "Banana, figo, crua",
+    "categoria": "Grupo 21",
+    "kcal_100g": 105.0,
+    "proteina_100g": 1.1,
+    "gordura_100g": 0.1,
+    "carbo_100g": 27.8
+  },
+  {
+    "id": "178",
+    "nome": "Banana, maçã, crua",
+    "categoria": "Grupo 21",
+    "kcal_100g": 87.0,
+    "proteina_100g": 1.8,
+    "gordura_100g": 0.1,
+    "carbo_100g": 22.3
+  },
+  {
+    "id": "179",
+    "nome": "Banana, nanica, crua",
+    "categoria": "Grupo 21",
+    "kcal_100g": 92.0,
+    "proteina_100g": 1.4,
+    "gordura_100g": 0.1,
+    "carbo_100g": 23.8
+  },
+  {
+    "id": "180",
+    "nome": "Banana, ouro, crua",
+    "categoria": "Grupo 21",
+    "kcal_100g": 112.0,
+    "proteina_100g": 1.5,
+    "gordura_100g": 0.2,
+    "carbo_100g": 29.3
+  },
+  {
+    "id": "181",
+    "nome": "Banana, pacova, crua",
+    "categoria": "Grupo 21",
+    "kcal_100g": 78.0,
+    "proteina_100g": 1.2,
+    "gordura_100g": 0.1,
+    "carbo_100g": 20.3
+  },
+  {
+    "id": "182",
+    "nome": "Banana, prata, crua",
+    "categoria": "Grupo 21",
+    "kcal_100g": 98.0,
+    "proteina_100g": 1.3,
+    "gordura_100g": 0.1,
+    "carbo_100g": 26.0
+  },
+  {
+    "id": "183",
+    "nome": "Cacau, cru",
+    "categoria": "Grupo 21",
+    "kcal_100g": 74.0,
+    "proteina_100g": 1.0,
+    "gordura_100g": 0.1,
+    "carbo_100g": 19.4
+  },
+  {
+    "id": "184",
+    "nome": "Cajá-Manga, cru",
+    "categoria": "Grupo 21",
+    "kcal_100g": 46.0,
+    "proteina_100g": 1.3,
+    "gordura_100g": 0.0,
+    "carbo_100g": 11.4
+  },
+  {
+    "id": "185",
+    "nome": "Cajá, polpa, congelada",
+    "categoria": "Grupo 21",
+    "kcal_100g": 26.0,
+    "proteina_100g": 0.6,
+    "gordura_100g": 0.2,
+    "carbo_100g": 6.4
+  },
+  {
+    "id": "186",
+    "nome": "Caju, cru",
+    "categoria": "Grupo 21",
+    "kcal_100g": 43.0,
+    "proteina_100g": 1.0,
+    "gordura_100g": 0.3,
+    "carbo_100g": 10.3
+  },
+  {
+    "id": "187",
+    "nome": "Caju, polpa, congelada",
+    "categoria": "Grupo 21",
+    "kcal_100g": 37.0,
+    "proteina_100g": 0.5,
+    "gordura_100g": 0.2,
+    "carbo_100g": 9.4
+  },
+  {
+    "id": "188",
+    "nome": "Caju, suco concentrado, envasado",
+    "categoria": "Grupo 23",
+    "kcal_100g": 45.0,
+    "proteina_100g": 0.4,
+    "gordura_100g": 0.2,
+    "carbo_100g": 10.7
+  },
+  {
+    "id": "189",
+    "nome": "Caqui, chocolate, cru",
+    "categoria": "Grupo 23",
+    "kcal_100g": 71.0,
+    "proteina_100g": 0.4,
+    "gordura_100g": 0.1,
+    "carbo_100g": 19.3
+  },
+  {
+    "id": "190",
+    "nome": "Carambola, crua",
+    "categoria": "Grupo 23",
+    "kcal_100g": 46.0,
+    "proteina_100g": 0.9,
+    "gordura_100g": 0.2,
+    "carbo_100g": 11.5
+  },
+  {
+    "id": "191",
+    "nome": "Ciriguela, crua",
+    "categoria": "Grupo 23",
+    "kcal_100g": 76.0,
+    "proteina_100g": 1.4,
+    "gordura_100g": 0.4,
+    "carbo_100g": 18.9
+  },
+  {
+    "id": "192",
+    "nome": "Cupuaçu, cru",
+    "categoria": "Grupo 23",
+    "kcal_100g": 49.0,
+    "proteina_100g": 1.2,
+    "gordura_100g": 1.0,
+    "carbo_100g": 10.4
+  },
+  {
+    "id": "193",
+    "nome": "Cupuaçu, polpa, congelada",
+    "categoria": "Grupo 23",
+    "kcal_100g": 49.0,
+    "proteina_100g": 0.8,
+    "gordura_100g": 0.6,
+    "carbo_100g": 11.4
+  },
+  {
+    "id": "194",
+    "nome": "Figo, cru",
+    "categoria": "Grupo 23",
+    "kcal_100g": 41.0,
+    "proteina_100g": 1.0,
+    "gordura_100g": 0.2,
+    "carbo_100g": 10.2
+  },
+  {
+    "id": "195",
+    "nome": "Figo, enlatado, em calda",
+    "categoria": "Grupo 23",
+    "kcal_100g": 184.0,
+    "proteina_100g": 0.6,
+    "gordura_100g": 0.2,
+    "carbo_100g": 50.3
+  },
+  {
+    "id": "196",
+    "nome": "Fruta-pão, crua",
+    "categoria": "Grupo 23",
+    "kcal_100g": 67.0,
+    "proteina_100g": 1.1,
+    "gordura_100g": 0.2,
+    "carbo_100g": 17.2
+  },
+  {
+    "id": "197",
+    "nome": "Goiaba, branca, com casca, crua",
+    "categoria": "Grupo 23",
+    "kcal_100g": 52.0,
+    "proteina_100g": 0.9,
+    "gordura_100g": 0.5,
+    "carbo_100g": 12.4
+  },
+  {
+    "id": "198",
+    "nome": "Goiaba, doce em pasta",
+    "categoria": "Grupo 23",
+    "kcal_100g": 269.0,
+    "proteina_100g": 0.6,
+    "gordura_100g": 0.0,
+    "carbo_100g": 74.1
+  },
+  {
+    "id": "199",
+    "nome": "Goiaba, doce, cascão",
+    "categoria": "Grupo 23",
+    "kcal_100g": 286.0,
+    "proteina_100g": 0.4,
+    "gordura_100g": 0.1,
+    "carbo_100g": 78.7
+  },
+  {
+    "id": "200",
+    "nome": "Goiaba, vermelha, com casca, crua",
+    "categoria": "Grupo 23",
+    "kcal_100g": 54.0,
+    "proteina_100g": 1.1,
+    "gordura_100g": 0.4,
+    "carbo_100g": 13.0
+  },
+  {
+    "id": "201",
+    "nome": "Graviola, crua",
+    "categoria": "Grupo 23",
+    "kcal_100g": 62.0,
+    "proteina_100g": 0.8,
+    "gordura_100g": 0.2,
+    "carbo_100g": 15.8
+  },
+  {
+    "id": "202",
+    "nome": "Graviola, polpa, congelada",
+    "categoria": "Grupo 23",
+    "kcal_100g": 38.0,
+    "proteina_100g": 0.6,
+    "gordura_100g": 0.1,
+    "carbo_100g": 9.8
+  },
+  {
+    "id": "203",
+    "nome": "Jabuticaba, crua",
+    "categoria": "Grupo 23",
+    "kcal_100g": 58.0,
+    "proteina_100g": 0.6,
+    "gordura_100g": 0.1,
+    "carbo_100g": 15.3
+  },
+  {
+    "id": "204",
+    "nome": "Jaca, crua",
+    "categoria": "Grupo 23",
+    "kcal_100g": 88.0,
+    "proteina_100g": 1.4,
+    "gordura_100g": 0.3,
+    "carbo_100g": 22.5
+  },
+  {
+    "id": "205",
+    "nome": "Jambo, cru",
+    "categoria": "Grupo 23",
+    "kcal_100g": 27.0,
+    "proteina_100g": 0.9,
+    "gordura_100g": 0.1,
+    "carbo_100g": 6.5
+  },
+  {
+    "id": "206",
+    "nome": "Jamelão, cru",
+    "categoria": "Grupo 23",
+    "kcal_100g": 41.0,
+    "proteina_100g": 0.5,
+    "gordura_100g": 0.1,
+    "carbo_100g": 10.6
+  },
+  {
+    "id": "207",
+    "nome": "Kiwi, cru",
+    "categoria": "Grupo 23",
+    "kcal_100g": 51.0,
+    "proteina_100g": 1.3,
+    "gordura_100g": 0.6,
+    "carbo_100g": 11.5
+  },
+  {
+    "id": "208",
+    "nome": "Laranja, baía, crua",
+    "categoria": "Grupo 23",
+    "kcal_100g": 45.0,
+    "proteina_100g": 1.0,
+    "gordura_100g": 0.1,
+    "carbo_100g": 11.5
+  },
+  {
+    "id": "209",
+    "nome": "Laranja, baía, suco",
+    "categoria": "Grupo 23",
+    "kcal_100g": 37.0,
+    "proteina_100g": 0.7,
+    "gordura_100g": 0.0,
+    "carbo_100g": 8.7
+  },
+  {
+    "id": "210",
+    "nome": "Laranja, da terra, crua",
+    "categoria": "Grupo 23",
+    "kcal_100g": 51.0,
+    "proteina_100g": 1.1,
+    "gordura_100g": 0.2,
+    "carbo_100g": 12.9
+  },
+  {
+    "id": "211",
+    "nome": "Laranja, da terra, suco",
+    "categoria": "Grupo 23",
+    "kcal_100g": 41.0,
+    "proteina_100g": 0.7,
+    "gordura_100g": 0.1,
+    "carbo_100g": 9.6
+  },
+  {
+    "id": "212",
+    "nome": "Laranja, lima, crua",
+    "categoria": "Grupo 23",
+    "kcal_100g": 46.0,
+    "proteina_100g": 1.1,
+    "gordura_100g": 0.1,
+    "carbo_100g": 11.5
+  },
+  {
+    "id": "213",
+    "nome": "Laranja, lima, suco",
+    "categoria": "Grupo 23",
+    "kcal_100g": 39.0,
+    "proteina_100g": 0.7,
+    "gordura_100g": 0.1,
+    "carbo_100g": 9.2
+  },
+  {
+    "id": "214",
+    "nome": "Laranja, pêra, crua",
+    "categoria": "Grupo 23",
+    "kcal_100g": 37.0,
+    "proteina_100g": 1.0,
+    "gordura_100g": 0.1,
+    "carbo_100g": 8.9
+  },
+  {
+    "id": "215",
+    "nome": "Laranja, pêra, suco",
+    "categoria": "Grupo 23",
+    "kcal_100g": 33.0,
+    "proteina_100g": 0.7,
+    "gordura_100g": 0.1,
+    "carbo_100g": 7.6
+  },
+  {
+    "id": "216",
+    "nome": "Laranja, valência, crua",
+    "categoria": "Grupo 23",
+    "kcal_100g": 46.0,
+    "proteina_100g": 0.8,
+    "gordura_100g": 0.2,
+    "carbo_100g": 11.7
+  },
+  {
+    "id": "217",
+    "nome": "Laranja, valência, suco",
+    "categoria": "Grupo 23",
+    "kcal_100g": 36.0,
+    "proteina_100g": 0.5,
+    "gordura_100g": 0.1,
+    "carbo_100g": 8.6
+  },
+  {
+    "id": "218",
+    "nome": "Limão, cravo, suco",
+    "categoria": "Grupo 23",
+    "kcal_100g": 14.0,
+    "proteina_100g": 0.3,
+    "gordura_100g": 0.0,
+    "carbo_100g": 5.2
+  },
+  {
+    "id": "219",
+    "nome": "Limão, galego, suco",
+    "categoria": "Grupo 23",
+    "kcal_100g": 22.0,
+    "proteina_100g": 0.6,
+    "gordura_100g": 0.1,
+    "carbo_100g": 7.3
+  },
+  {
+    "id": "220",
+    "nome": "Limão, tahiti, cru",
+    "categoria": "Grupo 25",
+    "kcal_100g": 32.0,
+    "proteina_100g": 0.9,
+    "gordura_100g": 0.1,
+    "carbo_100g": 11.1
+  },
+  {
+    "id": "221",
+    "nome": "Maçã, Argentina, com casca, crua",
+    "categoria": "Grupo 25",
+    "kcal_100g": 63.0,
+    "proteina_100g": 0.2,
+    "gordura_100g": 0.2,
+    "carbo_100g": 16.6
+  },
+  {
+    "id": "222",
+    "nome": "Maçã, Fuji, com casca, crua",
+    "categoria": "Grupo 25",
+    "kcal_100g": 56.0,
+    "proteina_100g": 0.3,
+    "gordura_100g": 0.0,
+    "carbo_100g": 15.2
+  },
+  {
+    "id": "223",
+    "nome": "Macaúba, crua",
+    "categoria": "Grupo 25",
+    "kcal_100g": 404.0,
+    "proteina_100g": 2.1,
+    "gordura_100g": 40.7,
+    "carbo_100g": 13.9
+  },
+  {
+    "id": "224",
+    "nome": "Mamão, doce em calda, drenado",
+    "categoria": "Grupo 25",
+    "kcal_100g": 196.0,
+    "proteina_100g": 0.2,
+    "gordura_100g": 0.1,
+    "carbo_100g": 54.0
+  },
+  {
+    "id": "225",
+    "nome": "Mamão, Formosa, cru",
+    "categoria": "Grupo 25",
+    "kcal_100g": 45.0,
+    "proteina_100g": 0.8,
+    "gordura_100g": 0.1,
+    "carbo_100g": 11.6
+  },
+  {
+    "id": "226",
+    "nome": "Mamão, Papaia, cru",
+    "categoria": "Grupo 25",
+    "kcal_100g": 40.0,
+    "proteina_100g": 0.5,
+    "gordura_100g": 0.1,
+    "carbo_100g": 10.4
+  },
+  {
+    "id": "227",
+    "nome": "Mamão verde, doce em calda, drenado",
+    "categoria": "Grupo 25",
+    "kcal_100g": 209.0,
+    "proteina_100g": 0.3,
+    "gordura_100g": 0.1,
+    "carbo_100g": 57.6
+  },
+  {
+    "id": "228",
+    "nome": "Manga, Haden, crua",
+    "categoria": "Grupo 25",
+    "kcal_100g": 64.0,
+    "proteina_100g": 0.4,
+    "gordura_100g": 0.3,
+    "carbo_100g": 16.7
+  },
+  {
+    "id": "229",
+    "nome": "Manga, Palmer, crua",
+    "categoria": "Grupo 25",
+    "kcal_100g": 72.0,
+    "proteina_100g": 0.4,
+    "gordura_100g": 0.2,
+    "carbo_100g": 19.4
+  },
+  {
+    "id": "230",
+    "nome": "Manga, polpa, congelada",
+    "categoria": "Grupo 25",
+    "kcal_100g": 48.0,
+    "proteina_100g": 0.4,
+    "gordura_100g": 0.2,
+    "carbo_100g": 12.5
+  },
+  {
+    "id": "231",
+    "nome": "Manga, Tommy Atkins, crua",
+    "categoria": "Grupo 25",
+    "kcal_100g": 51.0,
+    "proteina_100g": 0.9,
+    "gordura_100g": 0.2,
+    "carbo_100g": 12.8
+  },
+  {
+    "id": "232",
+    "nome": "Maracujá, cru",
+    "categoria": "Grupo 25",
+    "kcal_100g": 68.0,
+    "proteina_100g": 2.0,
+    "gordura_100g": 2.1,
+    "carbo_100g": 12.3
+  },
+  {
+    "id": "233",
+    "nome": "Maracujá, polpa, congelada",
+    "categoria": "Grupo 25",
+    "kcal_100g": 39.0,
+    "proteina_100g": 0.8,
+    "gordura_100g": 0.2,
+    "carbo_100g": 9.6
+  },
+  {
+    "id": "234",
+    "nome": "Maracujá, suco concentrado, envasado",
+    "categoria": "Grupo 25",
+    "kcal_100g": 42.0,
+    "proteina_100g": 0.8,
+    "gordura_100g": 0.2,
+    "carbo_100g": 9.6
+  },
+  {
+    "id": "235",
+    "nome": "Melancia, crua",
+    "categoria": "Grupo 25",
+    "kcal_100g": 33.0,
+    "proteina_100g": 0.9,
+    "gordura_100g": 0.0,
+    "carbo_100g": 8.1
+  },
+  {
+    "id": "236",
+    "nome": "Melão, cru",
+    "categoria": "Grupo 25",
+    "kcal_100g": 29.0,
+    "proteina_100g": 0.7,
+    "gordura_100g": 0.0,
+    "carbo_100g": 7.5
+  },
+  {
+    "id": "237",
+    "nome": "Mexerica, Murcote, crua",
+    "categoria": "Grupo 25",
+    "kcal_100g": 58.0,
+    "proteina_100g": 0.9,
+    "gordura_100g": 0.1,
+    "carbo_100g": 14.9
+  },
+  {
+    "id": "238",
+    "nome": "Mexerica, Rio, crua",
+    "categoria": "Grupo 25",
+    "kcal_100g": 37.0,
+    "proteina_100g": 0.7,
+    "gordura_100g": 0.1,
+    "carbo_100g": 9.3
+  },
+  {
+    "id": "239",
+    "nome": "Morango, cru",
+    "categoria": "Grupo 25",
+    "kcal_100g": 30.0,
+    "proteina_100g": 0.9,
+    "gordura_100g": 0.3,
+    "carbo_100g": 6.8
+  },
+  {
+    "id": "240",
+    "nome": "Nêspera, crua",
+    "categoria": "Grupo 25",
+    "kcal_100g": 43.0,
+    "proteina_100g": 0.3,
+    "gordura_100g": 0.0,
+    "carbo_100g": 11.5
+  },
+  {
+    "id": "241",
+    "nome": "Pequi, cru",
+    "categoria": "Grupo 25",
+    "kcal_100g": 205.0,
+    "proteina_100g": 2.3,
+    "gordura_100g": 18.0,
+    "carbo_100g": 13.0
+  },
+  {
+    "id": "242",
+    "nome": "Pêra, Park, crua",
+    "categoria": "Grupo 25",
+    "kcal_100g": 61.0,
+    "proteina_100g": 0.2,
+    "gordura_100g": 0.2,
+    "carbo_100g": 16.1
+  },
+  {
+    "id": "243",
+    "nome": "Pêra, Williams, crua",
+    "categoria": "Grupo 25",
+    "kcal_100g": 53.0,
+    "proteina_100g": 0.6,
+    "gordura_100g": 0.1,
+    "carbo_100g": 14.0
+  },
+  {
+    "id": "244",
+    "nome": "Pêssego, Aurora, cru",
+    "categoria": "Grupo 25",
+    "kcal_100g": 36.0,
+    "proteina_100g": 0.8,
+    "gordura_100g": 0.0,
+    "carbo_100g": 9.3
+  },
+  {
+    "id": "245",
+    "nome": "Pêssego, enlatado, em calda",
+    "categoria": "Grupo 25",
+    "kcal_100g": 63.0,
+    "proteina_100g": 0.7,
+    "gordura_100g": 0.0,
+    "carbo_100g": 16.9
+  },
+  {
+    "id": "246",
+    "nome": "Pinha, crua",
+    "categoria": "Grupo 25",
+    "kcal_100g": 88.0,
+    "proteina_100g": 1.5,
+    "gordura_100g": 0.3,
+    "carbo_100g": 22.4
+  },
+  {
+    "id": "247",
+    "nome": "Pitanga, crua",
+    "categoria": "Grupo 25",
+    "kcal_100g": 41.0,
+    "proteina_100g": 0.9,
+    "gordura_100g": 0.2,
+    "carbo_100g": 10.2
+  },
+  {
+    "id": "248",
+    "nome": "Pitanga, polpa, congelada",
+    "categoria": "Grupo 25",
+    "kcal_100g": 19.0,
+    "proteina_100g": 0.3,
+    "gordura_100g": 0.1,
+    "carbo_100g": 4.8
+  },
+  {
+    "id": "249",
+    "nome": "Romã, crua",
+    "categoria": "Grupo 25",
+    "kcal_100g": 56.0,
+    "proteina_100g": 0.4,
+    "gordura_100g": 0.0,
+    "carbo_100g": 15.1
+  },
+  {
+    "id": "250",
+    "nome": "Tamarindo, cru",
+    "categoria": "Grupo 25",
+    "kcal_100g": 276.0,
+    "proteina_100g": 3.2,
+    "gordura_100g": 0.5,
+    "carbo_100g": 72.5
+  },
+  {
+    "id": "251",
+    "nome": "Tangerina, Poncã, crua",
+    "categoria": "Grupo 25",
+    "kcal_100g": 38.0,
+    "proteina_100g": 0.8,
+    "gordura_100g": 0.1,
+    "carbo_100g": 9.6
+  },
+  {
+    "id": "252",
+    "nome": "Tangerina, Poncã, suco",
+    "categoria": "Grupo 27",
+    "kcal_100g": 36.0,
+    "proteina_100g": 0.5,
+    "gordura_100g": 0.0,
+    "carbo_100g": 8.8
+  },
+  {
+    "id": "253",
+    "nome": "Tucumã, cru",
+    "categoria": "Grupo 27",
+    "kcal_100g": 262.0,
+    "proteina_100g": 2.1,
+    "gordura_100g": 19.1,
+    "carbo_100g": 26.5
+  },
+  {
+    "id": "254",
+    "nome": "Umbu, cru",
+    "categoria": "Grupo 27",
+    "kcal_100g": 37.0,
+    "proteina_100g": 0.8,
+    "gordura_100g": 0.0,
+    "carbo_100g": 9.4
+  },
+  {
+    "id": "255",
+    "nome": "Umbu, polpa, congelada",
+    "categoria": "Grupo 27",
+    "kcal_100g": 34.0,
+    "proteina_100g": 0.5,
+    "gordura_100g": 0.1,
+    "carbo_100g": 8.8
+  },
+  {
+    "id": "256",
+    "nome": "Uva, Itália, crua",
+    "categoria": "Grupo 27",
+    "kcal_100g": 53.0,
+    "proteina_100g": 0.7,
+    "gordura_100g": 0.2,
+    "carbo_100g": 13.6
+  },
+  {
+    "id": "257",
+    "nome": "Uva, Rubi, crua",
+    "categoria": "Grupo 27",
+    "kcal_100g": 49.0,
+    "proteina_100g": 0.6,
+    "gordura_100g": 0.2,
+    "carbo_100g": 12.7
+  },
+  {
+    "id": "258",
+    "nome": "Uva, suco concentrado, envasado",
+    "categoria": "Grupo 27",
+    "kcal_100g": 58.0,
+    "proteina_100g": 0.0,
+    "gordura_100g": 0.0,
+    "carbo_100g": 14.7
+  },
+  {
+    "id": "279",
+    "nome": "Bacalhau, salgado, cru",
+    "categoria": "Grupo 29",
+    "kcal_100g": 136.0,
+    "proteina_100g": 29.0,
+    "gordura_100g": 1.3,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "280",
+    "nome": "Bacalhau, salgado, refogado",
+    "categoria": "Grupo 29",
+    "kcal_100g": 140.0,
+    "proteina_100g": 24.0,
+    "gordura_100g": 3.6,
+    "carbo_100g": 1.2
+  },
+  {
+    "id": "281",
+    "nome": "Cação, posta, com farinha de trigo, frita",
+    "categoria": "Grupo 29",
+    "kcal_100g": 208.0,
+    "proteina_100g": 25.0,
+    "gordura_100g": 10.0,
+    "carbo_100g": 3.1
+  },
+  {
+    "id": "282",
+    "nome": "Cação, posta, cozida",
+    "categoria": "Grupo 29",
+    "kcal_100g": 116.0,
+    "proteina_100g": 25.6,
+    "gordura_100g": 0.7,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "283",
+    "nome": "Cação, posta, crua",
+    "categoria": "Grupo 29",
+    "kcal_100g": 83.0,
+    "proteina_100g": 17.9,
+    "gordura_100g": 0.8,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "284",
+    "nome": "Camarão, Rio Grande, grande, cozido",
+    "categoria": "Grupo 29",
+    "kcal_100g": 90.0,
+    "proteina_100g": 19.0,
+    "gordura_100g": 1.0,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "285",
+    "nome": "Camarão, Rio Grande, grande, cru",
+    "categoria": "Grupo 29",
+    "kcal_100g": 47.0,
+    "proteina_100g": 10.0,
+    "gordura_100g": 0.5,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "286",
+    "nome": "Camarão, Sete Barbas, sem cabeça, com casca, frito",
+    "categoria": "Grupo 29",
+    "kcal_100g": 231.0,
+    "proteina_100g": 18.4,
+    "gordura_100g": 15.6,
+    "carbo_100g": 2.9
+  },
+  {
+    "id": "287",
+    "nome": "Caranguejo, cozido",
+    "categoria": "Grupo 29",
+    "kcal_100g": 83.0,
+    "proteina_100g": 18.5,
+    "gordura_100g": 0.4,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "288",
+    "nome": "Corimba, cru",
+    "categoria": "Grupo 29",
+    "kcal_100g": 128.0,
+    "proteina_100g": 17.4,
+    "gordura_100g": 6.0,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "289",
+    "nome": "Corimbatá, assado",
+    "categoria": "Grupo 29",
+    "kcal_100g": 261.0,
+    "proteina_100g": 19.9,
+    "gordura_100g": 19.6,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "290",
+    "nome": "Corimbatá, cozido",
+    "categoria": "Grupo 29",
+    "kcal_100g": 239.0,
+    "proteina_100g": 20.1,
+    "gordura_100g": 16.9,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "291",
+    "nome": "Corvina de água doce, crua",
+    "categoria": "Grupo 29",
+    "kcal_100g": 101.0,
+    "proteina_100g": 18.9,
+    "gordura_100g": 2.2,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "292",
+    "nome": "Corvina do mar, crua",
+    "categoria": "Grupo 29",
+    "kcal_100g": 94.0,
+    "proteina_100g": 18.6,
+    "gordura_100g": 1.6,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "293",
+    "nome": "Corvina grande, assada",
+    "categoria": "Grupo 29",
+    "kcal_100g": 147.0,
+    "proteina_100g": 26.8,
+    "gordura_100g": 3.6,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "294",
+    "nome": "Corvina grande, cozida",
+    "categoria": "Grupo 29",
+    "kcal_100g": 100.0,
+    "proteina_100g": 23.4,
+    "gordura_100g": 2.6,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "295",
+    "nome": "Dourada de água doce, fresca",
+    "categoria": "Grupo 29",
+    "kcal_100g": 131.0,
+    "proteina_100g": 18.8,
+    "gordura_100g": 5.6,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "296",
+    "nome": "Lambari, congelado, cru",
+    "categoria": "Grupo 29",
+    "kcal_100g": 131.0,
+    "proteina_100g": 16.8,
+    "gordura_100g": 6.5,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "297",
+    "nome": "Lambari, congelado, frito",
+    "categoria": "Grupo 29",
+    "kcal_100g": 327.0,
+    "proteina_100g": 28.4,
+    "gordura_100g": 22.8,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "298",
+    "nome": "Lambari, fresco, cru",
+    "categoria": "Grupo 29",
+    "kcal_100g": 152.0,
+    "proteina_100g": 15.7,
+    "gordura_100g": 9.4,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "299",
+    "nome": "Manjuba, com farinha de trigo, frita",
+    "categoria": "Grupo 29",
+    "kcal_100g": 344.0,
+    "proteina_100g": 23.5,
+    "gordura_100g": 22.6,
+    "carbo_100g": 10.2
+  },
+  {
+    "id": "300",
+    "nome": "Manjuba, frita",
+    "categoria": "Grupo 29",
+    "kcal_100g": 349.0,
+    "proteina_100g": 30.1,
+    "gordura_100g": 24.5,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "301",
+    "nome": "Merluza, filé, assado",
+    "categoria": "Grupo 29",
+    "kcal_100g": 122.0,
+    "proteina_100g": 26.6,
+    "gordura_100g": 0.9,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "302",
+    "nome": "Merluza, filé, cru",
+    "categoria": "Grupo 29",
+    "kcal_100g": 89.0,
+    "proteina_100g": 16.6,
+    "gordura_100g": 2.0,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "303",
+    "nome": "Merluza, filé, frito",
+    "categoria": "Grupo 29",
+    "kcal_100g": 192.0,
+    "proteina_100g": 26.9,
+    "gordura_100g": 8.5,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "304",
+    "nome": "Pescada, branca, crua",
+    "categoria": "Grupo 29",
+    "kcal_100g": 111.0,
+    "proteina_100g": 16.3,
+    "gordura_100g": 4.6,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "305",
+    "nome": "Pescada, branca, frita",
+    "categoria": "Grupo 29",
+    "kcal_100g": 223.0,
+    "proteina_100g": 27.4,
+    "gordura_100g": 11.8,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "306",
+    "nome": "Pescada, filé, com farinha de trigo, frito",
+    "categoria": "Grupo 29",
+    "kcal_100g": 283.0,
+    "proteina_100g": 21.4,
+    "gordura_100g": 19.1,
+    "carbo_100g": 5.0
+  },
+  {
+    "id": "307",
+    "nome": "Pescada, filé, cru",
+    "categoria": "Grupo 29",
+    "kcal_100g": 107.0,
+    "proteina_100g": 16.7,
+    "gordura_100g": 4.0,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "308",
+    "nome": "Pescada, filé, frito",
+    "categoria": "Grupo 29",
+    "kcal_100g": 154.0,
+    "proteina_100g": 28.6,
+    "gordura_100g": 3.6,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "309",
+    "nome": "Pescada, filé, molho escabeche",
+    "categoria": "Grupo 29",
+    "kcal_100g": 142.0,
+    "proteina_100g": 11.8,
+    "gordura_100g": 8.0,
+    "carbo_100g": 5.0
+  },
+  {
+    "id": "310",
+    "nome": "Pescadinha, crua",
+    "categoria": "Grupo 29",
+    "kcal_100g": 76.0,
+    "proteina_100g": 15.5,
+    "gordura_100g": 1.1,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "311",
+    "nome": "Pintado, assado",
+    "categoria": "Grupo 31",
+    "kcal_100g": 192.0,
+    "proteina_100g": 36.5,
+    "gordura_100g": 4.0,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "312",
+    "nome": "Pintado, cru",
+    "categoria": "Grupo 31",
+    "kcal_100g": 91.0,
+    "proteina_100g": 18.6,
+    "gordura_100g": 1.3,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "313",
+    "nome": "Pintado, grelhado",
+    "categoria": "Grupo 31",
+    "kcal_100g": 152.0,
+    "proteina_100g": 30.8,
+    "gordura_100g": 2.3,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "314",
+    "nome": "Porquinho, cru",
+    "categoria": "Grupo 31",
+    "kcal_100g": 93.0,
+    "proteina_100g": 20.5,
+    "gordura_100g": 0.6,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "315",
+    "nome": "Salmão, filé, com pele, fresco,  grelhado",
+    "categoria": "Grupo 31",
+    "kcal_100g": 229.0,
+    "proteina_100g": 23.9,
+    "gordura_100g": 14.0,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "316",
+    "nome": "Salmão, sem pele, fresco, cru",
+    "categoria": "Grupo 31",
+    "kcal_100g": 170.0,
+    "proteina_100g": 19.3,
+    "gordura_100g": 9.7,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "317",
+    "nome": "Salmão, sem pele, fresco, grelhado",
+    "categoria": "Grupo 31",
+    "kcal_100g": 243.0,
+    "proteina_100g": 26.1,
+    "gordura_100g": 14.5,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "318",
+    "nome": "Sardinha, assada",
+    "categoria": "Grupo 31",
+    "kcal_100g": 164.0,
+    "proteina_100g": 32.2,
+    "gordura_100g": 3.0,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "319",
+    "nome": "Sardinha, conserva em óleo",
+    "categoria": "Grupo 31",
+    "kcal_100g": 285.0,
+    "proteina_100g": 15.9,
+    "gordura_100g": 24.0,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "320",
+    "nome": "Sardinha, frita",
+    "categoria": "Grupo 31",
+    "kcal_100g": 257.0,
+    "proteina_100g": 33.4,
+    "gordura_100g": 12.7,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "321",
+    "nome": "Sardinha, inteira, crua",
+    "categoria": "Grupo 31",
+    "kcal_100g": 114.0,
+    "proteina_100g": 21.1,
+    "gordura_100g": 2.7,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "322",
+    "nome": "Tucunaré, filé, congelado, cru",
+    "categoria": "Grupo 31",
+    "kcal_100g": 88.0,
+    "proteina_100g": 18.0,
+    "gordura_100g": 1.2,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "323",
+    "nome": "Apresuntado",
+    "categoria": "Grupo 31",
+    "kcal_100g": 129.0,
+    "proteina_100g": 13.5,
+    "gordura_100g": 6.7,
+    "carbo_100g": 2.9
+  },
+  {
+    "id": "324",
+    "nome": "Caldo de carne, tablete",
+    "categoria": "Grupo 31",
+    "kcal_100g": 241.0,
+    "proteina_100g": 7.8,
+    "gordura_100g": 16.6,
+    "carbo_100g": 15.1
+  },
+  {
+    "id": "325",
+    "nome": "Caldo de galinha, tablete",
+    "categoria": "Grupo 31",
+    "kcal_100g": 251.0,
+    "proteina_100g": 6.3,
+    "gordura_100g": 20.4,
+    "carbo_100g": 10.6
+  },
+  {
+    "id": "326",
+    "nome": "Carne, bovina, acém, moído, cozido",
+    "categoria": "Grupo 31",
+    "kcal_100g": 212.0,
+    "proteina_100g": 26.7,
+    "gordura_100g": 10.9,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "327",
+    "nome": "Carne, bovina, acém, moído, cru",
+    "categoria": "Grupo 31",
+    "kcal_100g": 137.0,
+    "proteina_100g": 19.4,
+    "gordura_100g": 5.9,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "328",
+    "nome": "Carne, bovina, acém, sem gordura, cozido",
+    "categoria": "Grupo 31",
+    "kcal_100g": 215.0,
+    "proteina_100g": 27.3,
+    "gordura_100g": 10.9,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "329",
+    "nome": "Carne, bovina, acém, sem gordura, cru",
+    "categoria": "Grupo 31",
+    "kcal_100g": 144.0,
+    "proteina_100g": 20.8,
+    "gordura_100g": 6.1,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "330",
+    "nome": "Carne, bovina, almôndegas, cruas",
+    "categoria": "Grupo 31",
+    "kcal_100g": 189.0,
+    "proteina_100g": 12.3,
+    "gordura_100g": 11.2,
+    "carbo_100g": 9.8
+  },
+  {
+    "id": "331",
+    "nome": "Carne, bovina, almôndegas, fritas",
+    "categoria": "Grupo 31",
+    "kcal_100g": 272.0,
+    "proteina_100g": 18.2,
+    "gordura_100g": 15.8,
+    "carbo_100g": 14.3
+  },
+  {
+    "id": "332",
+    "nome": "Carne, bovina, bucho, cozido",
+    "categoria": "Grupo 31",
+    "kcal_100g": 133.0,
+    "proteina_100g": 21.6,
+    "gordura_100g": 4.5,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "333",
+    "nome": "Carne, bovina, bucho, cru",
+    "categoria": "Grupo 31",
+    "kcal_100g": 137.0,
+    "proteina_100g": 20.5,
+    "gordura_100g": 5.5,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "334",
+    "nome": "Carne, bovina, capa de contra-filé, com gordura, crua",
+    "categoria": "Grupo 31",
+    "kcal_100g": 217.0,
+    "proteina_100g": 19.2,
+    "gordura_100g": 15.0,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "335",
+    "nome": "Carne, bovina, capa de contra-filé, com gordura, grelhada",
+    "categoria": "Grupo 31",
+    "kcal_100g": 312.0,
+    "proteina_100g": 30.7,
+    "gordura_100g": 20.0,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "336",
+    "nome": "Carne, bovina, capa de contra-filé, sem gordura, crua",
+    "categoria": "Grupo 31",
+    "kcal_100g": 131.0,
+    "proteina_100g": 21.5,
+    "gordura_100g": 4.3,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "337",
+    "nome": "Carne, bovina, capa de contra-filé, sem gordura, grelhada",
+    "categoria": "Grupo 31",
+    "kcal_100g": 239.0,
+    "proteina_100g": 35.1,
+    "gordura_100g": 10.0,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "338",
+    "nome": "Carne, bovina, charque, cozido",
+    "categoria": "Grupo 31",
+    "kcal_100g": 263.0,
+    "proteina_100g": 36.4,
+    "gordura_100g": 11.9,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "339",
+    "nome": "Carne, bovina, charque, cru",
+    "categoria": "Grupo 31",
+    "kcal_100g": 249.0,
+    "proteina_100g": 22.7,
+    "gordura_100g": 16.8,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "340",
+    "nome": "Carne, bovina, contra-filé, à milanesa",
+    "categoria": "Grupo 31",
+    "kcal_100g": 352.0,
+    "proteina_100g": 20.6,
+    "gordura_100g": 24.0,
+    "carbo_100g": 12.2
+  },
+  {
+    "id": "341",
+    "nome": "Carne, bovina, contra-filé de costela, cru",
+    "categoria": "Grupo 33",
+    "kcal_100g": 202.0,
+    "proteina_100g": 19.8,
+    "gordura_100g": 13.1,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "342",
+    "nome": "Carne, bovina, contra-filé de costela, grelhado",
+    "categoria": "Grupo 33",
+    "kcal_100g": 275.0,
+    "proteina_100g": 29.9,
+    "gordura_100g": 16.3,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "343",
+    "nome": "Carne, bovina, contra-filé, com gordura, cru",
+    "categoria": "Grupo 33",
+    "kcal_100g": 206.0,
+    "proteina_100g": 21.2,
+    "gordura_100g": 12.8,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "344",
+    "nome": "Carne, bovina, contra-filé, com gordura, grelhado",
+    "categoria": "Grupo 33",
+    "kcal_100g": 278.0,
+    "proteina_100g": 32.4,
+    "gordura_100g": 15.5,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "345",
+    "nome": "Carne, bovina, contra-filé, sem gordura, cru",
+    "categoria": "Grupo 33",
+    "kcal_100g": 157.0,
+    "proteina_100g": 24.0,
+    "gordura_100g": 6.0,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "346",
+    "nome": "Carne, bovina, contra-filé, sem gordura, grelhado",
+    "categoria": "Grupo 33",
+    "kcal_100g": 194.0,
+    "proteina_100g": 35.9,
+    "gordura_100g": 4.5,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "347",
+    "nome": "Carne, bovina, costela, assada",
+    "categoria": "Grupo 33",
+    "kcal_100g": 373.0,
+    "proteina_100g": 28.8,
+    "gordura_100g": 27.7,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "348",
+    "nome": "Carne, bovina, costela, crua",
+    "categoria": "Grupo 33",
+    "kcal_100g": 358.0,
+    "proteina_100g": 16.7,
+    "gordura_100g": 31.8,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "349",
+    "nome": "Carne, bovina, coxão duro, sem gordura, cozido",
+    "categoria": "Grupo 33",
+    "kcal_100g": 217.0,
+    "proteina_100g": 31.9,
+    "gordura_100g": 8.9,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "350",
+    "nome": "Carne, bovina, coxão duro, sem gordura, cru",
+    "categoria": "Grupo 33",
+    "kcal_100g": 148.0,
+    "proteina_100g": 21.5,
+    "gordura_100g": 6.2,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "351",
+    "nome": "Carne, bovina, coxão mole, sem gordura, cozido",
+    "categoria": "Grupo 33",
+    "kcal_100g": 219.0,
+    "proteina_100g": 32.4,
+    "gordura_100g": 8.9,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "352",
+    "nome": "Carne, bovina, coxão mole, sem gordura, cru",
+    "categoria": "Grupo 33",
+    "kcal_100g": 169.0,
+    "proteina_100g": 21.2,
+    "gordura_100g": 8.7,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "353",
+    "nome": "Carne, bovina, cupim, assado",
+    "categoria": "Grupo 33",
+    "kcal_100g": 330.0,
+    "proteina_100g": 28.6,
+    "gordura_100g": 23.0,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "354",
+    "nome": "Carne, bovina, cupim, cru",
+    "categoria": "Grupo 33",
+    "kcal_100g": 221.0,
+    "proteina_100g": 19.5,
+    "gordura_100g": 15.3,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "355",
+    "nome": "Carne, bovina, fígado, cru",
+    "categoria": "Grupo 33",
+    "kcal_100g": 141.0,
+    "proteina_100g": 20.7,
+    "gordura_100g": 5.4,
+    "carbo_100g": 1.1
+  },
+  {
+    "id": "356",
+    "nome": "Carne, bovina, fígado, grelhado",
+    "categoria": "Grupo 33",
+    "kcal_100g": 225.0,
+    "proteina_100g": 29.9,
+    "gordura_100g": 9.0,
+    "carbo_100g": 4.2
+  },
+  {
+    "id": "357",
+    "nome": "Carne, bovina, filé mingnon, sem gordura, cru",
+    "categoria": "Grupo 33",
+    "kcal_100g": 143.0,
+    "proteina_100g": 21.6,
+    "gordura_100g": 5.6,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "358",
+    "nome": "Carne, bovina, filé mingnon, sem gordura, grelhado",
+    "categoria": "Grupo 33",
+    "kcal_100g": 220.0,
+    "proteina_100g": 32.8,
+    "gordura_100g": 8.8,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "359",
+    "nome": "Carne, bovina, flanco, sem gordura, cozido",
+    "categoria": "Grupo 33",
+    "kcal_100g": 196.0,
+    "proteina_100g": 29.4,
+    "gordura_100g": 7.8,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "360",
+    "nome": "Carne, bovina, flanco, sem gordura, cru",
+    "categoria": "Grupo 33",
+    "kcal_100g": 141.0,
+    "proteina_100g": 20.0,
+    "gordura_100g": 6.2,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "361",
+    "nome": "Carne, bovina, fraldinha, com gordura, cozida",
+    "categoria": "Grupo 33",
+    "kcal_100g": 338.0,
+    "proteina_100g": 24.2,
+    "gordura_100g": 26.0,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "362",
+    "nome": "Carne, bovina, fraldinha, com gordura, crua",
+    "categoria": "Grupo 33",
+    "kcal_100g": 221.0,
+    "proteina_100g": 17.6,
+    "gordura_100g": 16.1,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "363",
+    "nome": "Carne, bovina, lagarto, cozido",
+    "categoria": "Grupo 33",
+    "kcal_100g": 222.0,
+    "proteina_100g": 32.9,
+    "gordura_100g": 9.1,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "364",
+    "nome": "Carne, bovina, lagarto, cru",
+    "categoria": "Grupo 33",
+    "kcal_100g": 135.0,
+    "proteina_100g": 20.5,
+    "gordura_100g": 5.2,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "365",
+    "nome": "Carne, bovina, língua, cozida",
+    "categoria": "Grupo 33",
+    "kcal_100g": 315.0,
+    "proteina_100g": 21.4,
+    "gordura_100g": 24.8,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "366",
+    "nome": "Carne, bovina, língua, crua",
+    "categoria": "Grupo 33",
+    "kcal_100g": 215.0,
+    "proteina_100g": 17.1,
+    "gordura_100g": 15.8,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "367",
+    "nome": "Carne, bovina, maminha, crua",
+    "categoria": "Grupo 33",
+    "kcal_100g": 153.0,
+    "proteina_100g": 20.9,
+    "gordura_100g": 7.0,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "368",
+    "nome": "Carne, bovina, maminha, grelhada",
+    "categoria": "Grupo 33",
+    "kcal_100g": 153.0,
+    "proteina_100g": 30.7,
+    "gordura_100g": 2.4,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "369",
+    "nome": "Carne, bovina, miolo de alcatra, sem gordura, cru",
+    "categoria": "Grupo 33",
+    "kcal_100g": 163.0,
+    "proteina_100g": 21.6,
+    "gordura_100g": 7.8,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "370",
+    "nome": "Carne, bovina, miolo de alcatra, sem gordura, grelhado",
+    "categoria": "Grupo 33",
+    "kcal_100g": 241.0,
+    "proteina_100g": 31.9,
+    "gordura_100g": 11.6,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "371",
+    "nome": "Carne, bovina, músculo, sem gordura, cozido",
+    "categoria": "Grupo 33",
+    "kcal_100g": 194.0,
+    "proteina_100g": 31.2,
+    "gordura_100g": 6.7,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "372",
+    "nome": "Carne, bovina, músculo, sem gordura, cru",
+    "categoria": "Grupo 33",
+    "kcal_100g": 142.0,
+    "proteina_100g": 21.6,
+    "gordura_100g": 5.5,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "373",
+    "nome": "Carne, bovina, paleta, com gordura, crua",
+    "categoria": "Grupo 35",
+    "kcal_100g": 159.0,
+    "proteina_100g": 21.4,
+    "gordura_100g": 7.5,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "374",
+    "nome": "Carne, bovina, paleta, sem gordura, cozida",
+    "categoria": "Grupo 35",
+    "kcal_100g": 194.0,
+    "proteina_100g": 29.7,
+    "gordura_100g": 7.4,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "375",
+    "nome": "Carne, bovina, paleta, sem gordura, crua",
+    "categoria": "Grupo 35",
+    "kcal_100g": 141.0,
+    "proteina_100g": 21.0,
+    "gordura_100g": 5.7,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "376",
+    "nome": "Carne, bovina, patinho, sem gordura, cru",
+    "categoria": "Grupo 35",
+    "kcal_100g": 133.0,
+    "proteina_100g": 21.7,
+    "gordura_100g": 4.5,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "377",
+    "nome": "Carne, bovina, patinho, sem gordura, grelhado",
+    "categoria": "Grupo 35",
+    "kcal_100g": 219.0,
+    "proteina_100g": 35.9,
+    "gordura_100g": 7.3,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "378",
+    "nome": "Carne, bovina, peito, sem gordura, cozido",
+    "categoria": "Grupo 35",
+    "kcal_100g": 338.0,
+    "proteina_100g": 22.2,
+    "gordura_100g": 27.0,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "379",
+    "nome": "Carne, bovina, peito, sem gordura, cru",
+    "categoria": "Grupo 35",
+    "kcal_100g": 259.0,
+    "proteina_100g": 17.6,
+    "gordura_100g": 20.4,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "380",
+    "nome": "Carne, bovina, picanha, com gordura, crua",
+    "categoria": "Grupo 35",
+    "kcal_100g": 213.0,
+    "proteina_100g": 18.8,
+    "gordura_100g": 14.7,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "381",
+    "nome": "Carne, bovina, picanha, com gordura, grelhada",
+    "categoria": "Grupo 35",
+    "kcal_100g": 289.0,
+    "proteina_100g": 26.4,
+    "gordura_100g": 19.5,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "382",
+    "nome": "Carne, bovina, picanha, sem gordura, crua",
+    "categoria": "Grupo 35",
+    "kcal_100g": 134.0,
+    "proteina_100g": 21.3,
+    "gordura_100g": 4.7,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "383",
+    "nome": "Carne, bovina, picanha, sem gordura, grelhada",
+    "categoria": "Grupo 35",
+    "kcal_100g": 238.0,
+    "proteina_100g": 31.9,
+    "gordura_100g": 11.3,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "384",
+    "nome": "Carne, bovina, seca, cozida",
+    "categoria": "Grupo 35",
+    "kcal_100g": 313.0,
+    "proteina_100g": 26.9,
+    "gordura_100g": 21.9,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "385",
+    "nome": "Carne, bovina, seca, crua",
+    "categoria": "Grupo 35",
+    "kcal_100g": 313.0,
+    "proteina_100g": 19.7,
+    "gordura_100g": 25.4,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "386",
+    "nome": "Coxinha de frango, frita",
+    "categoria": "Grupo 35",
+    "kcal_100g": 283.0,
+    "proteina_100g": 9.6,
+    "gordura_100g": 11.8,
+    "carbo_100g": 34.5
+  },
+  {
+    "id": "387",
+    "nome": "Croquete, de carne, cru",
+    "categoria": "Grupo 35",
+    "kcal_100g": 246.0,
+    "proteina_100g": 12.0,
+    "gordura_100g": 15.6,
+    "carbo_100g": 13.9
+  },
+  {
+    "id": "388",
+    "nome": "Croquete, de carne, frito",
+    "categoria": "Grupo 35",
+    "kcal_100g": 347.0,
+    "proteina_100g": 16.9,
+    "gordura_100g": 22.7,
+    "carbo_100g": 18.1
+  },
+  {
+    "id": "389",
+    "nome": "Empada de frango, pré-cozida, assada",
+    "categoria": "Grupo 35",
+    "kcal_100g": 358.0,
+    "proteina_100g": 6.9,
+    "gordura_100g": 15.6,
+    "carbo_100g": 47.5
+  },
+  {
+    "id": "390",
+    "nome": "Empada, de frango, pré-cozida",
+    "categoria": "Grupo 35",
+    "kcal_100g": 377.0,
+    "proteina_100g": 7.3,
+    "gordura_100g": 22.9,
+    "carbo_100g": 35.5
+  },
+  {
+    "id": "391",
+    "nome": "Frango, asa, com pele, crua",
+    "categoria": "Grupo 35",
+    "kcal_100g": 213.0,
+    "proteina_100g": 18.1,
+    "gordura_100g": 15.1,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "392",
+    "nome": "Frango, caipira, inteiro, com pele, cozido",
+    "categoria": "Grupo 35",
+    "kcal_100g": 243.0,
+    "proteina_100g": 23.9,
+    "gordura_100g": 15.6,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "393",
+    "nome": "Frango, caipira, inteiro, sem pele, cozido",
+    "categoria": "Grupo 35",
+    "kcal_100g": 196.0,
+    "proteina_100g": 29.6,
+    "gordura_100g": 7.7,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "394",
+    "nome": "Frango, coração, cru",
+    "categoria": "Grupo 35",
+    "kcal_100g": 222.0,
+    "proteina_100g": 12.6,
+    "gordura_100g": 18.6,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "395",
+    "nome": "Frango, coração, grelhado",
+    "categoria": "Grupo 35",
+    "kcal_100g": 207.0,
+    "proteina_100g": 22.4,
+    "gordura_100g": 12.1,
+    "carbo_100g": 0.6
+  },
+  {
+    "id": "396",
+    "nome": "Frango, coxa, com pele, assada",
+    "categoria": "Grupo 35",
+    "kcal_100g": 215.0,
+    "proteina_100g": 28.5,
+    "gordura_100g": 10.4,
+    "carbo_100g": 0.1
+  },
+  {
+    "id": "397",
+    "nome": "Frango, coxa, com pele, crua",
+    "categoria": "Grupo 35",
+    "kcal_100g": 161.0,
+    "proteina_100g": 17.1,
+    "gordura_100g": 9.8,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "398",
+    "nome": "Frango, coxa, sem pele, cozida",
+    "categoria": "Grupo 35",
+    "kcal_100g": 167.0,
+    "proteina_100g": 26.9,
+    "gordura_100g": 5.8,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "399",
+    "nome": "Frango, coxa, sem pele, crua",
+    "categoria": "Grupo 35",
+    "kcal_100g": 120.0,
+    "proteina_100g": 17.8,
+    "gordura_100g": 4.9,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "400",
+    "nome": "Frango, fígado, cru",
+    "categoria": "Grupo 35",
+    "kcal_100g": 106.0,
+    "proteina_100g": 17.6,
+    "gordura_100g": 3.5,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "401",
+    "nome": "Frango, filé, à milanesa",
+    "categoria": "Grupo 35",
+    "kcal_100g": 221.0,
+    "proteina_100g": 28.5,
+    "gordura_100g": 7.8,
+    "carbo_100g": 7.5
+  },
+  {
+    "id": "402",
+    "nome": "Frango, inteiro, com pele, cru",
+    "categoria": "Grupo 35",
+    "kcal_100g": 226.0,
+    "proteina_100g": 16.4,
+    "gordura_100g": 17.3,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "403",
+    "nome": "Frango, inteiro, sem pele, assado",
+    "categoria": "Grupo 35",
+    "kcal_100g": 187.0,
+    "proteina_100g": 28.0,
+    "gordura_100g": 7.5,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "404",
+    "nome": "Frango, inteiro, sem pele, cozido",
+    "categoria": "Grupo 35",
+    "kcal_100g": 170.0,
+    "proteina_100g": 25.0,
+    "gordura_100g": 7.1,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "405",
+    "nome": "Frango, inteiro, sem pele, cru",
+    "categoria": "Grupo 37",
+    "kcal_100g": 129.0,
+    "proteina_100g": 20.6,
+    "gordura_100g": 4.6,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "406",
+    "nome": "Frango, peito, com pele, assado",
+    "categoria": "Grupo 37",
+    "kcal_100g": 212.0,
+    "proteina_100g": 33.4,
+    "gordura_100g": 7.6,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "407",
+    "nome": "Frango, peito, com pele, cru",
+    "categoria": "Grupo 37",
+    "kcal_100g": 149.0,
+    "proteina_100g": 20.8,
+    "gordura_100g": 6.7,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "408",
+    "nome": "Frango, peito, sem pele, cozido",
+    "categoria": "Grupo 37",
+    "kcal_100g": 163.0,
+    "proteina_100g": 31.5,
+    "gordura_100g": 3.2,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "409",
+    "nome": "Frango, peito, sem pele, cru",
+    "categoria": "Grupo 37",
+    "kcal_100g": 119.0,
+    "proteina_100g": 21.5,
+    "gordura_100g": 3.0,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "410",
+    "nome": "Frango, peito, sem pele, grelhado",
+    "categoria": "Grupo 37",
+    "kcal_100g": 159.0,
+    "proteina_100g": 32.0,
+    "gordura_100g": 2.5,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "411",
+    "nome": "Frango, sobrecoxa, com pele, assada",
+    "categoria": "Grupo 37",
+    "kcal_100g": 260.0,
+    "proteina_100g": 28.7,
+    "gordura_100g": 15.2,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "412",
+    "nome": "Frango, sobrecoxa, com pele, crua",
+    "categoria": "Grupo 37",
+    "kcal_100g": 255.0,
+    "proteina_100g": 15.5,
+    "gordura_100g": 20.9,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "413",
+    "nome": "Frango, sobrecoxa, sem pele, assada",
+    "categoria": "Grupo 37",
+    "kcal_100g": 233.0,
+    "proteina_100g": 29.2,
+    "gordura_100g": 12.0,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "414",
+    "nome": "Frango, sobrecoxa, sem pele, crua",
+    "categoria": "Grupo 37",
+    "kcal_100g": 162.0,
+    "proteina_100g": 17.6,
+    "gordura_100g": 9.6,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "415",
+    "nome": "Hambúrguer, bovino, cru",
+    "categoria": "Grupo 37",
+    "kcal_100g": 215.0,
+    "proteina_100g": 13.2,
+    "gordura_100g": 16.2,
+    "carbo_100g": 4.2
+  },
+  {
+    "id": "416",
+    "nome": "Hambúrguer, bovino, frito",
+    "categoria": "Grupo 37",
+    "kcal_100g": 258.0,
+    "proteina_100g": 20.0,
+    "gordura_100g": 17.0,
+    "carbo_100g": 6.3
+  },
+  {
+    "id": "417",
+    "nome": "Hambúrguer, bovino, grelhado",
+    "categoria": "Grupo 37",
+    "kcal_100g": 210.0,
+    "proteina_100g": 13.2,
+    "gordura_100g": 12.4,
+    "carbo_100g": 11.3
+  },
+  {
+    "id": "418",
+    "nome": "Lingüiça, frango, crua",
+    "categoria": "Grupo 37",
+    "kcal_100g": 218.0,
+    "proteina_100g": 14.2,
+    "gordura_100g": 17.4,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "419",
+    "nome": "Lingüiça, frango, frita",
+    "categoria": "Grupo 37",
+    "kcal_100g": 245.0,
+    "proteina_100g": 18.3,
+    "gordura_100g": 18.5,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "420",
+    "nome": "Lingüiça, frango, grelhada",
+    "categoria": "Grupo 37",
+    "kcal_100g": 244.0,
+    "proteina_100g": 18.2,
+    "gordura_100g": 18.4,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "421",
+    "nome": "Lingüiça, porco, crua",
+    "categoria": "Grupo 37",
+    "kcal_100g": 227.0,
+    "proteina_100g": 16.1,
+    "gordura_100g": 17.6,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "422",
+    "nome": "Lingüiça, porco, frita",
+    "categoria": "Grupo 37",
+    "kcal_100g": 280.0,
+    "proteina_100g": 20.5,
+    "gordura_100g": 21.3,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "423",
+    "nome": "Lingüiça, porco, grelhada",
+    "categoria": "Grupo 37",
+    "kcal_100g": 296.0,
+    "proteina_100g": 23.2,
+    "gordura_100g": 21.9,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "424",
+    "nome": "Mortadela",
+    "categoria": "Grupo 37",
+    "kcal_100g": 269.0,
+    "proteina_100g": 12.0,
+    "gordura_100g": 21.6,
+    "carbo_100g": 5.8
+  },
+  {
+    "id": "425",
+    "nome": "Peru, congelado, assado",
+    "categoria": "Grupo 37",
+    "kcal_100g": 163.0,
+    "proteina_100g": 26.2,
+    "gordura_100g": 5.7,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "426",
+    "nome": "Peru, congelado, cru",
+    "categoria": "Grupo 37",
+    "kcal_100g": 94.0,
+    "proteina_100g": 18.1,
+    "gordura_100g": 1.8,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "427",
+    "nome": "Porco, bisteca, crua",
+    "categoria": "Grupo 37",
+    "kcal_100g": 164.0,
+    "proteina_100g": 21.5,
+    "gordura_100g": 8.0,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "428",
+    "nome": "Porco, bisteca, frita",
+    "categoria": "Grupo 37",
+    "kcal_100g": 311.0,
+    "proteina_100g": 33.7,
+    "gordura_100g": 18.5,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "429",
+    "nome": "Porco, bisteca, grelhada",
+    "categoria": "Grupo 37",
+    "kcal_100g": 280.0,
+    "proteina_100g": 28.9,
+    "gordura_100g": 17.4,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "430",
+    "nome": "Porco, costela, assada",
+    "categoria": "Grupo 37",
+    "kcal_100g": 402.0,
+    "proteina_100g": 30.2,
+    "gordura_100g": 30.3,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "431",
+    "nome": "Porco, costela, crua",
+    "categoria": "Grupo 37",
+    "kcal_100g": 256.0,
+    "proteina_100g": 18.0,
+    "gordura_100g": 19.8,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "432",
+    "nome": "Porco, lombo, assado",
+    "categoria": "Grupo 37",
+    "kcal_100g": 210.0,
+    "proteina_100g": 35.7,
+    "gordura_100g": 6.4,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "433",
+    "nome": "Porco, lombo, cru",
+    "categoria": "Grupo 37",
+    "kcal_100g": 176.0,
+    "proteina_100g": 22.6,
+    "gordura_100g": 8.8,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "434",
+    "nome": "Porco, orelha, salgada, crua",
+    "categoria": "Grupo 37",
+    "kcal_100g": 258.0,
+    "proteina_100g": 18.5,
+    "gordura_100g": 19.9,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "435",
+    "nome": "Porco, pernil, assado",
+    "categoria": "Grupo 37",
+    "kcal_100g": 262.0,
+    "proteina_100g": 32.1,
+    "gordura_100g": 13.9,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "436",
+    "nome": "Porco, pernil, cru",
+    "categoria": "Grupo 37",
+    "kcal_100g": 186.0,
+    "proteina_100g": 20.1,
+    "gordura_100g": 11.1,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "437",
+    "nome": "Porco, rabo, salgado, cru",
+    "categoria": "Grupo 39",
+    "kcal_100g": 377.0,
+    "proteina_100g": 15.6,
+    "gordura_100g": 34.5,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "438",
+    "nome": "Presunto, com capa de gordura",
+    "categoria": "Grupo 39",
+    "kcal_100g": 128.0,
+    "proteina_100g": 14.4,
+    "gordura_100g": 6.8,
+    "carbo_100g": 1.4
+  },
+  {
+    "id": "439",
+    "nome": "Presunto, sem capa de gordura",
+    "categoria": "Grupo 39",
+    "kcal_100g": 94.0,
+    "proteina_100g": 14.3,
+    "gordura_100g": 2.7,
+    "carbo_100g": 2.1
+  },
+  {
+    "id": "440",
+    "nome": "Quibe, assado",
+    "categoria": "Grupo 39",
+    "kcal_100g": 136.0,
+    "proteina_100g": 14.6,
+    "gordura_100g": 2.7,
+    "carbo_100g": 12.9
+  },
+  {
+    "id": "441",
+    "nome": "Quibe, cru",
+    "categoria": "Grupo 39",
+    "kcal_100g": 109.0,
+    "proteina_100g": 12.4,
+    "gordura_100g": 1.7,
+    "carbo_100g": 10.8
+  },
+  {
+    "id": "442",
+    "nome": "Quibe, frito",
+    "categoria": "Grupo 39",
+    "kcal_100g": 254.0,
+    "proteina_100g": 14.9,
+    "gordura_100g": 15.8,
+    "carbo_100g": 12.3
+  },
+  {
+    "id": "443",
+    "nome": "Salame",
+    "categoria": "Grupo 39",
+    "kcal_100g": 398.0,
+    "proteina_100g": 25.8,
+    "gordura_100g": 30.6,
+    "carbo_100g": 2.9
+  },
+  {
+    "id": "444",
+    "nome": "Toucinho, cru",
+    "categoria": "Grupo 39",
+    "kcal_100g": 593.0,
+    "proteina_100g": 11.5,
+    "gordura_100g": 60.3,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "445",
+    "nome": "Toucinho, frito",
+    "categoria": "Grupo 39",
+    "kcal_100g": 697.0,
+    "proteina_100g": 27.3,
+    "gordura_100g": 64.3,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "446",
+    "nome": "Bebida láctea, pêssego",
+    "categoria": "Grupo 39",
+    "kcal_100g": 55.0,
+    "proteina_100g": 2.1,
+    "gordura_100g": 1.9,
+    "carbo_100g": 7.6
+  },
+  {
+    "id": "447",
+    "nome": "Creme de Leite",
+    "categoria": "Grupo 39",
+    "kcal_100g": 221.0,
+    "proteina_100g": 1.5,
+    "gordura_100g": 22.5,
+    "carbo_100g": 4.5
+  },
+  {
+    "id": "448",
+    "nome": "Iogurte, natural",
+    "categoria": "Grupo 39",
+    "kcal_100g": 51.0,
+    "proteina_100g": 4.1,
+    "gordura_100g": 3.0,
+    "carbo_100g": 1.9
+  },
+  {
+    "id": "449",
+    "nome": "Iogurte, natural, desnatado",
+    "categoria": "Grupo 39",
+    "kcal_100g": 41.0,
+    "proteina_100g": 3.8,
+    "gordura_100g": 0.3,
+    "carbo_100g": 5.8
+  },
+  {
+    "id": "450",
+    "nome": "Iogurte, sabor abacaxi",
+    "categoria": "Grupo 39",
+    "kcal_100g": null,
+    "proteina_100g": null,
+    "gordura_100g": null,
+    "carbo_100g": null
+  },
+  {
+    "id": "451",
+    "nome": "Iogurte, sabor morango",
+    "categoria": "Grupo 39",
+    "kcal_100g": 70.0,
+    "proteina_100g": 2.7,
+    "gordura_100g": 2.3,
+    "carbo_100g": 9.7
+  },
+  {
+    "id": "452",
+    "nome": "Iogurte, sabor pêssego",
+    "categoria": "Grupo 39",
+    "kcal_100g": 68.0,
+    "proteina_100g": 2.5,
+    "gordura_100g": 2.3,
+    "carbo_100g": 9.4
+  },
+  {
+    "id": "453",
+    "nome": "Leite, condensado",
+    "categoria": "Grupo 39",
+    "kcal_100g": 313.0,
+    "proteina_100g": 7.7,
+    "gordura_100g": 6.7,
+    "carbo_100g": 57.0
+  },
+  {
+    "id": "454",
+    "nome": "Leite, de cabra",
+    "categoria": "Grupo 39",
+    "kcal_100g": 66.0,
+    "proteina_100g": 3.1,
+    "gordura_100g": 3.8,
+    "carbo_100g": 5.2
+  },
+  {
+    "id": "455",
+    "nome": "Leite, de vaca, achocolatado",
+    "categoria": "Grupo 39",
+    "kcal_100g": 83.0,
+    "proteina_100g": 2.1,
+    "gordura_100g": 2.2,
+    "carbo_100g": 14.2
+  },
+  {
+    "id": "456",
+    "nome": "Leite, de vaca, desnatado, pó",
+    "categoria": "Grupo 39",
+    "kcal_100g": 362.0,
+    "proteina_100g": 34.7,
+    "gordura_100g": 0.9,
+    "carbo_100g": 53.0
+  },
+  {
+    "id": "457",
+    "nome": "Leite, de vaca, desnatado, UHT",
+    "categoria": "Grupo 39",
+    "kcal_100g": null,
+    "proteina_100g": null,
+    "gordura_100g": null,
+    "carbo_100g": null
+  },
+  {
+    "id": "458",
+    "nome": "Leite, de vaca, integral",
+    "categoria": "Grupo 39",
+    "kcal_100g": null,
+    "proteina_100g": null,
+    "gordura_100g": null,
+    "carbo_100g": null
+  },
+  {
+    "id": "459",
+    "nome": "Leite, de vaca, integral, pó",
+    "categoria": "Grupo 39",
+    "kcal_100g": 497.0,
+    "proteina_100g": 25.4,
+    "gordura_100g": 26.9,
+    "carbo_100g": 39.2
+  },
+  {
+    "id": "460",
+    "nome": "Leite, fermentado",
+    "categoria": "Grupo 39",
+    "kcal_100g": 70.0,
+    "proteina_100g": 1.9,
+    "gordura_100g": 0.1,
+    "carbo_100g": 15.7
+  },
+  {
+    "id": "461",
+    "nome": "Queijo, minas, frescal",
+    "categoria": "Grupo 39",
+    "kcal_100g": 264.0,
+    "proteina_100g": 17.4,
+    "gordura_100g": 20.2,
+    "carbo_100g": 3.2
+  },
+  {
+    "id": "462",
+    "nome": "Queijo, minas, meia cura",
+    "categoria": "Grupo 39",
+    "kcal_100g": 321.0,
+    "proteina_100g": 21.2,
+    "gordura_100g": 24.6,
+    "carbo_100g": 3.6
+  },
+  {
+    "id": "463",
+    "nome": "Queijo, mozarela",
+    "categoria": "Grupo 39",
+    "kcal_100g": 330.0,
+    "proteina_100g": 22.6,
+    "gordura_100g": 25.2,
+    "carbo_100g": 3.0
+  },
+  {
+    "id": "464",
+    "nome": "Queijo, parmesão",
+    "categoria": "Grupo 39",
+    "kcal_100g": 453.0,
+    "proteina_100g": 35.6,
+    "gordura_100g": 33.5,
+    "carbo_100g": 1.7
+  },
+  {
+    "id": "465",
+    "nome": "Queijo, pasteurizado",
+    "categoria": "Grupo 39",
+    "kcal_100g": 303.0,
+    "proteina_100g": 9.4,
+    "gordura_100g": 27.4,
+    "carbo_100g": 5.7
+  },
+  {
+    "id": "466",
+    "nome": "Queijo, petit suisse, morango",
+    "categoria": "Grupo 41",
+    "kcal_100g": 121.0,
+    "proteina_100g": 5.8,
+    "gordura_100g": 2.8,
+    "carbo_100g": 18.5
+  },
+  {
+    "id": "467",
+    "nome": "Queijo, prato",
+    "categoria": "Grupo 41",
+    "kcal_100g": 360.0,
+    "proteina_100g": 22.7,
+    "gordura_100g": 29.1,
+    "carbo_100g": 1.9
+  },
+  {
+    "id": "468",
+    "nome": "Queijo, requeijão, cremoso",
+    "categoria": "Grupo 41",
+    "kcal_100g": 257.0,
+    "proteina_100g": 9.6,
+    "gordura_100g": 23.4,
+    "carbo_100g": 2.4
+  },
+  {
+    "id": "469",
+    "nome": "Queijo, ricota",
+    "categoria": "Grupo 41",
+    "kcal_100g": 140.0,
+    "proteina_100g": 12.6,
+    "gordura_100g": 8.1,
+    "carbo_100g": 3.8
+  },
+  {
+    "id": "470",
+    "nome": "Bebida isotônica, sabores variados",
+    "categoria": "Grupo 41",
+    "kcal_100g": 26.0,
+    "proteina_100g": 0.0,
+    "gordura_100g": 0.0,
+    "carbo_100g": 6.4
+  },
+  {
+    "id": "471",
+    "nome": "Café, infusão 10%",
+    "categoria": "Grupo 41",
+    "kcal_100g": 9.0,
+    "proteina_100g": 0.7,
+    "gordura_100g": 0.1,
+    "carbo_100g": 1.5
+  },
+  {
+    "id": "472",
+    "nome": "Cana, aguardente 1",
+    "categoria": "Grupo 41",
+    "kcal_100g": 216.0,
+    "proteina_100g": 0.0,
+    "gordura_100g": 0.0,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "473",
+    "nome": "Cana, caldo de",
+    "categoria": "Grupo 41",
+    "kcal_100g": 65.0,
+    "proteina_100g": 0.0,
+    "gordura_100g": 0.0,
+    "carbo_100g": 18.2
+  },
+  {
+    "id": "474",
+    "nome": "Cerveja, pilsen 2",
+    "categoria": "Grupo 41",
+    "kcal_100g": 41.0,
+    "proteina_100g": 0.6,
+    "gordura_100g": 0.0,
+    "carbo_100g": 3.3
+  },
+  {
+    "id": "475",
+    "nome": "Chá, erva-doce, infusão 5%",
+    "categoria": "Grupo 41",
+    "kcal_100g": 1.0,
+    "proteina_100g": 0.0,
+    "gordura_100g": 0.0,
+    "carbo_100g": 0.4
+  },
+  {
+    "id": "476",
+    "nome": "Chá, mate, infusão 5%",
+    "categoria": "Grupo 41",
+    "kcal_100g": 3.0,
+    "proteina_100g": 0.0,
+    "gordura_100g": 0.1,
+    "carbo_100g": 0.6
+  },
+  {
+    "id": "477",
+    "nome": "Chá, preto, infusão 5%",
+    "categoria": "Grupo 41",
+    "kcal_100g": 2.0,
+    "proteina_100g": 0.0,
+    "gordura_100g": 0.0,
+    "carbo_100g": 0.6
+  },
+  {
+    "id": "478",
+    "nome": "Coco, água de",
+    "categoria": "Grupo 41",
+    "kcal_100g": 22.0,
+    "proteina_100g": 0.0,
+    "gordura_100g": 0.0,
+    "carbo_100g": 5.3
+  },
+  {
+    "id": "479",
+    "nome": "Refrigerante, tipo água tônica",
+    "categoria": "Grupo 41",
+    "kcal_100g": 31.0,
+    "proteina_100g": 0.0,
+    "gordura_100g": 0.0,
+    "carbo_100g": 8.0
+  },
+  {
+    "id": "480",
+    "nome": "Refrigerante, tipo cola",
+    "categoria": "Grupo 41",
+    "kcal_100g": 34.0,
+    "proteina_100g": 0.0,
+    "gordura_100g": 0.0,
+    "carbo_100g": 8.7
+  },
+  {
+    "id": "481",
+    "nome": "Refrigerante, tipo guaraná",
+    "categoria": "Grupo 41",
+    "kcal_100g": 39.0,
+    "proteina_100g": 0.0,
+    "gordura_100g": 0.0,
+    "carbo_100g": 10.0
+  },
+  {
+    "id": "482",
+    "nome": "Refrigerante, tipo laranja",
+    "categoria": "Grupo 41",
+    "kcal_100g": 46.0,
+    "proteina_100g": 0.0,
+    "gordura_100g": 0.0,
+    "carbo_100g": 11.8
+  },
+  {
+    "id": "483",
+    "nome": "Refrigerante, tipo limão",
+    "categoria": "Grupo 41",
+    "kcal_100g": 40.0,
+    "proteina_100g": 0.0,
+    "gordura_100g": 0.0,
+    "carbo_100g": 10.3
+  },
+  {
+    "id": "484",
+    "nome": "Omelete, de queijo",
+    "categoria": "Grupo 41",
+    "kcal_100g": 268.0,
+    "proteina_100g": 15.6,
+    "gordura_100g": 22.0,
+    "carbo_100g": 0.4
+  },
+  {
+    "id": "485",
+    "nome": "Ovo, de codorna, inteiro, cru",
+    "categoria": "Grupo 41",
+    "kcal_100g": 177.0,
+    "proteina_100g": 13.7,
+    "gordura_100g": 12.7,
+    "carbo_100g": 0.8
+  },
+  {
+    "id": "486",
+    "nome": "Ovo, de galinha, clara, cozida/10minutos",
+    "categoria": "Grupo 41",
+    "kcal_100g": 59.0,
+    "proteina_100g": 13.4,
+    "gordura_100g": 0.1,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "487",
+    "nome": "Ovo, de galinha, gema, cozida/10minutos",
+    "categoria": "Grupo 41",
+    "kcal_100g": 353.0,
+    "proteina_100g": 15.9,
+    "gordura_100g": 30.8,
+    "carbo_100g": 1.6
+  },
+  {
+    "id": "488",
+    "nome": "Ovo, de galinha, inteiro, cozido/10minutos",
+    "categoria": "Grupo 41",
+    "kcal_100g": 146.0,
+    "proteina_100g": 13.3,
+    "gordura_100g": 9.5,
+    "carbo_100g": 0.6
+  },
+  {
+    "id": "489",
+    "nome": "Ovo, de galinha, inteiro, cru",
+    "categoria": "Grupo 41",
+    "kcal_100g": 143.0,
+    "proteina_100g": 13.0,
+    "gordura_100g": 8.9,
+    "carbo_100g": 1.6
+  },
+  {
+    "id": "490",
+    "nome": "Ovo, de galinha, inteiro, frito",
+    "categoria": "Grupo 41",
+    "kcal_100g": 240.0,
+    "proteina_100g": 15.6,
+    "gordura_100g": 18.6,
+    "carbo_100g": 1.2
+  },
+  {
+    "id": "491",
+    "nome": "Achocolatado, pó",
+    "categoria": "Grupo 41",
+    "kcal_100g": 401.0,
+    "proteina_100g": 4.2,
+    "gordura_100g": 2.2,
+    "carbo_100g": 91.2
+  },
+  {
+    "id": "492",
+    "nome": "Açúcar, cristal",
+    "categoria": "Grupo 41",
+    "kcal_100g": 387.0,
+    "proteina_100g": 0.3,
+    "gordura_100g": 0.0,
+    "carbo_100g": 99.6
+  },
+  {
+    "id": "493",
+    "nome": "Açúcar, mascavo",
+    "categoria": "Grupo 43",
+    "kcal_100g": 369.0,
+    "proteina_100g": 0.8,
+    "gordura_100g": 0.1,
+    "carbo_100g": 94.5
+  },
+  {
+    "id": "494",
+    "nome": "Açúcar, refinado",
+    "categoria": "Grupo 43",
+    "kcal_100g": 387.0,
+    "proteina_100g": 0.3,
+    "gordura_100g": 0.0,
+    "carbo_100g": 99.5
+  },
+  {
+    "id": "495",
+    "nome": "Chocolate, ao leite",
+    "categoria": "Grupo 43",
+    "kcal_100g": 540.0,
+    "proteina_100g": 7.2,
+    "gordura_100g": 30.3,
+    "carbo_100g": 59.6
+  },
+  {
+    "id": "496",
+    "nome": "Chocolate, ao leite, com castanha do Pará",
+    "categoria": "Grupo 43",
+    "kcal_100g": 559.0,
+    "proteina_100g": 7.4,
+    "gordura_100g": 34.2,
+    "carbo_100g": 55.4
+  },
+  {
+    "id": "497",
+    "nome": "Chocolate, ao leite, dietético",
+    "categoria": "Grupo 43",
+    "kcal_100g": 557.0,
+    "proteina_100g": 6.9,
+    "gordura_100g": 33.8,
+    "carbo_100g": 56.3
+  },
+  {
+    "id": "498",
+    "nome": "Chocolate, meio amargo",
+    "categoria": "Grupo 43",
+    "kcal_100g": 475.0,
+    "proteina_100g": 4.9,
+    "gordura_100g": 29.9,
+    "carbo_100g": 62.4
+  },
+  {
+    "id": "499",
+    "nome": "Cocada branca",
+    "categoria": "Grupo 43",
+    "kcal_100g": 449.0,
+    "proteina_100g": 1.1,
+    "gordura_100g": 13.6,
+    "carbo_100g": 81.4
+  },
+  {
+    "id": "500",
+    "nome": "Doce, de abóbora, cremoso",
+    "categoria": "Grupo 43",
+    "kcal_100g": 199.0,
+    "proteina_100g": 0.9,
+    "gordura_100g": 0.2,
+    "carbo_100g": 54.6
+  },
+  {
+    "id": "501",
+    "nome": "Doce, de leite, cremoso",
+    "categoria": "Grupo 43",
+    "kcal_100g": 306.0,
+    "proteina_100g": 5.5,
+    "gordura_100g": 6.0,
+    "carbo_100g": 59.5
+  },
+  {
+    "id": "502",
+    "nome": "Geléia, mocotó, natural",
+    "categoria": "Grupo 43",
+    "kcal_100g": 106.0,
+    "proteina_100g": 2.1,
+    "gordura_100g": 0.1,
+    "carbo_100g": 24.2
+  },
+  {
+    "id": "503",
+    "nome": "Glicose de milho",
+    "categoria": "Grupo 43",
+    "kcal_100g": 292.0,
+    "proteina_100g": 0.0,
+    "gordura_100g": 0.0,
+    "carbo_100g": 79.4
+  },
+  {
+    "id": "504",
+    "nome": "Maria mole",
+    "categoria": "Grupo 43",
+    "kcal_100g": 301.0,
+    "proteina_100g": 3.8,
+    "gordura_100g": 0.2,
+    "carbo_100g": 73.6
+  },
+  {
+    "id": "505",
+    "nome": "Maria mole, coco queimado",
+    "categoria": "Grupo 43",
+    "kcal_100g": 307.0,
+    "proteina_100g": 3.9,
+    "gordura_100g": 0.1,
+    "carbo_100g": 75.1
+  },
+  {
+    "id": "506",
+    "nome": "Marmelada",
+    "categoria": "Grupo 43",
+    "kcal_100g": 257.0,
+    "proteina_100g": 0.4,
+    "gordura_100g": 0.1,
+    "carbo_100g": 70.8
+  },
+  {
+    "id": "507",
+    "nome": "Mel, de abelha",
+    "categoria": "Grupo 43",
+    "kcal_100g": 309.0,
+    "proteina_100g": 0.0,
+    "gordura_100g": 0.0,
+    "carbo_100g": 84.0
+  },
+  {
+    "id": "508",
+    "nome": "Melado",
+    "categoria": "Grupo 43",
+    "kcal_100g": 297.0,
+    "proteina_100g": 0.0,
+    "gordura_100g": 0.0,
+    "carbo_100g": 76.6
+  },
+  {
+    "id": "509",
+    "nome": "Quindim",
+    "categoria": "Grupo 43",
+    "kcal_100g": 411.0,
+    "proteina_100g": 4.7,
+    "gordura_100g": 24.4,
+    "carbo_100g": 46.3
+  },
+  {
+    "id": "510",
+    "nome": "Rapadura",
+    "categoria": "Grupo 43",
+    "kcal_100g": 352.0,
+    "proteina_100g": 1.0,
+    "gordura_100g": 0.1,
+    "carbo_100g": 90.8
+  },
+  {
+    "id": "511",
+    "nome": "Café, pó, torrado",
+    "categoria": "Grupo 43",
+    "kcal_100g": 419.0,
+    "proteina_100g": 14.7,
+    "gordura_100g": 11.9,
+    "carbo_100g": 65.8
+  },
+  {
+    "id": "512",
+    "nome": "Capuccino, pó",
+    "categoria": "Grupo 43",
+    "kcal_100g": 417.0,
+    "proteina_100g": 11.3,
+    "gordura_100g": 8.6,
+    "carbo_100g": 73.6
+  },
+  {
+    "id": "513",
+    "nome": "Fermento em pó, químico",
+    "categoria": "Grupo 43",
+    "kcal_100g": 90.0,
+    "proteina_100g": 0.5,
+    "gordura_100g": 0.1,
+    "carbo_100g": 43.9
+  },
+  {
+    "id": "514",
+    "nome": "Fermento, biológico, levedura, tablete",
+    "categoria": "Grupo 43",
+    "kcal_100g": 90.0,
+    "proteina_100g": 17.0,
+    "gordura_100g": 1.5,
+    "carbo_100g": 7.7
+  },
+  {
+    "id": "515",
+    "nome": "Gelatina, sabores variados, pó",
+    "categoria": "Grupo 43",
+    "kcal_100g": 380.0,
+    "proteina_100g": 8.9,
+    "gordura_100g": 0.0,
+    "carbo_100g": 89.2
+  },
+  {
+    "id": "516",
+    "nome": "Sal, dietético",
+    "categoria": "Grupo 43",
+    "kcal_100g": 0.0,
+    "proteina_100g": 0.0,
+    "gordura_100g": 0.0,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "517",
+    "nome": "Sal, grosso",
+    "categoria": "Grupo 43",
+    "kcal_100g": 0.0,
+    "proteina_100g": 0.0,
+    "gordura_100g": 0.0,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "518",
+    "nome": "Shoyu",
+    "categoria": "Grupo 43",
+    "kcal_100g": 61.0,
+    "proteina_100g": 3.3,
+    "gordura_100g": 0.3,
+    "carbo_100g": 11.6
+  },
+  {
+    "id": "519",
+    "nome": "Tempero a base de sal",
+    "categoria": "Grupo 43",
+    "kcal_100g": 21.0,
+    "proteina_100g": 2.7,
+    "gordura_100g": 0.3,
+    "carbo_100g": 2.1
+  },
+  {
+    "id": "520",
+    "nome": "Azeitona, preta, conserva",
+    "categoria": "Grupo 43",
+    "kcal_100g": 194.0,
+    "proteina_100g": 1.2,
+    "gordura_100g": 20.3,
+    "carbo_100g": 5.5
+  },
+  {
+    "id": "521",
+    "nome": "Azeitona, verde, conserva",
+    "categoria": "Grupo 45",
+    "kcal_100g": 137.0,
+    "proteina_100g": 0.9,
+    "gordura_100g": 14.2,
+    "carbo_100g": 4.1
+  },
+  {
+    "id": "522",
+    "nome": "Chantilly, spray, com gordura vegetal",
+    "categoria": "Grupo 45",
+    "kcal_100g": 315.0,
+    "proteina_100g": 0.5,
+    "gordura_100g": 27.3,
+    "carbo_100g": 16.9
+  },
+  {
+    "id": "523",
+    "nome": "Leite, de coco",
+    "categoria": "Grupo 45",
+    "kcal_100g": 166.0,
+    "proteina_100g": 1.0,
+    "gordura_100g": 18.4,
+    "carbo_100g": 2.2
+  },
+  {
+    "id": "524",
+    "nome": "Maionese, tradicional com ovos",
+    "categoria": "Grupo 45",
+    "kcal_100g": 302.0,
+    "proteina_100g": 0.6,
+    "gordura_100g": 30.5,
+    "carbo_100g": 7.9
+  },
+  {
+    "id": "525",
+    "nome": "Acarajé",
+    "categoria": "Grupo 45",
+    "kcal_100g": 289.0,
+    "proteina_100g": 8.3,
+    "gordura_100g": 19.9,
+    "carbo_100g": 19.1
+  },
+  {
+    "id": "526",
+    "nome": "Arroz carreteiro",
+    "categoria": "Grupo 45",
+    "kcal_100g": 154.0,
+    "proteina_100g": 10.8,
+    "gordura_100g": 7.1,
+    "carbo_100g": 11.6
+  },
+  {
+    "id": "527",
+    "nome": "Baião de dois, arroz e feijão-de-corda",
+    "categoria": "Grupo 45",
+    "kcal_100g": 136.0,
+    "proteina_100g": 6.2,
+    "gordura_100g": 3.2,
+    "carbo_100g": 20.4
+  },
+  {
+    "id": "528",
+    "nome": "Barreado",
+    "categoria": "Grupo 45",
+    "kcal_100g": 165.0,
+    "proteina_100g": 18.3,
+    "gordura_100g": 9.5,
+    "carbo_100g": 0.2
+  },
+  {
+    "id": "529",
+    "nome": "Bife à cavalo, com contra filé",
+    "categoria": "Grupo 45",
+    "kcal_100g": 291.0,
+    "proteina_100g": 23.7,
+    "gordura_100g": 21.1,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "530",
+    "nome": "Bolinho de arroz",
+    "categoria": "Grupo 45",
+    "kcal_100g": 274.0,
+    "proteina_100g": 8.0,
+    "gordura_100g": 8.3,
+    "carbo_100g": 41.7
+  },
+  {
+    "id": "531",
+    "nome": "Camarão à baiana",
+    "categoria": "Grupo 45",
+    "kcal_100g": 101.0,
+    "proteina_100g": 7.9,
+    "gordura_100g": 6.0,
+    "carbo_100g": 3.2
+  },
+  {
+    "id": "532",
+    "nome": "Charuto, de repolho",
+    "categoria": "Grupo 45",
+    "kcal_100g": 78.0,
+    "proteina_100g": 6.8,
+    "gordura_100g": 1.1,
+    "carbo_100g": 10.1
+  },
+  {
+    "id": "533",
+    "nome": "Cuscuz, de milho, cozido com sal",
+    "categoria": "Grupo 45",
+    "kcal_100g": 113.0,
+    "proteina_100g": 2.2,
+    "gordura_100g": 0.7,
+    "carbo_100g": 25.3
+  },
+  {
+    "id": "534",
+    "nome": "Cuscuz, paulista",
+    "categoria": "Grupo 45",
+    "kcal_100g": 142.0,
+    "proteina_100g": 2.6,
+    "gordura_100g": 4.6,
+    "carbo_100g": 22.5
+  },
+  {
+    "id": "535",
+    "nome": "Cuxá, molho",
+    "categoria": "Grupo 45",
+    "kcal_100g": 80.0,
+    "proteina_100g": 5.6,
+    "gordura_100g": 3.6,
+    "carbo_100g": 5.7
+  },
+  {
+    "id": "536",
+    "nome": "Dobradinha",
+    "categoria": "Grupo 45",
+    "kcal_100g": 125.0,
+    "proteina_100g": 19.8,
+    "gordura_100g": 4.4,
+    "carbo_100g": 0.0
+  },
+  {
+    "id": "537",
+    "nome": "Estrogonofe de carne",
+    "categoria": "Grupo 45",
+    "kcal_100g": 173.0,
+    "proteina_100g": 15.0,
+    "gordura_100g": 10.8,
+    "carbo_100g": 3.0
+  },
+  {
+    "id": "538",
+    "nome": "Estrogonofe de frango",
+    "categoria": "Grupo 45",
+    "kcal_100g": 157.0,
+    "proteina_100g": 17.6,
+    "gordura_100g": 8.0,
+    "carbo_100g": 2.6
+  },
+  {
+    "id": "539",
+    "nome": "Feijão tropeiro mineiro",
+    "categoria": "Grupo 45",
+    "kcal_100g": 152.0,
+    "proteina_100g": 10.2,
+    "gordura_100g": 6.8,
+    "carbo_100g": 19.6
+  },
+  {
+    "id": "540",
+    "nome": "Feijoada",
+    "categoria": "Grupo 45",
+    "kcal_100g": 117.0,
+    "proteina_100g": 8.7,
+    "gordura_100g": 6.5,
+    "carbo_100g": 11.6
+  },
+  {
+    "id": "541",
+    "nome": "Frango, com açafrão",
+    "categoria": "Grupo 45",
+    "kcal_100g": 113.0,
+    "proteina_100g": 9.7,
+    "gordura_100g": 6.2,
+    "carbo_100g": 4.1
+  },
+  {
+    "id": "542",
+    "nome": "Macarrão, molho bolognesa",
+    "categoria": "Grupo 45",
+    "kcal_100g": 120.0,
+    "proteina_100g": 4.9,
+    "gordura_100g": 0.9,
+    "carbo_100g": 22.5
+  },
+  {
+    "id": "543",
+    "nome": "Maniçoba",
+    "categoria": "Grupo 45",
+    "kcal_100g": 134.0,
+    "proteina_100g": 10.0,
+    "gordura_100g": 8.7,
+    "carbo_100g": 3.4
+  },
+  {
+    "id": "544",
+    "nome": "Quibebe",
+    "categoria": "Grupo 45",
+    "kcal_100g": 86.0,
+    "proteina_100g": 8.6,
+    "gordura_100g": 2.7,
+    "carbo_100g": 6.6
+  },
+  {
+    "id": "545",
+    "nome": "Salada, de legumes, com maionese",
+    "categoria": "Grupo 45",
+    "kcal_100g": 96.0,
+    "proteina_100g": 1.1,
+    "gordura_100g": 7.0,
+    "carbo_100g": 8.9
+  },
+  {
+    "id": "546",
+    "nome": "Salada, de legumes, cozida no vapor",
+    "categoria": "Grupo 45",
+    "kcal_100g": 35.0,
+    "proteina_100g": 2.0,
+    "gordura_100g": 0.3,
+    "carbo_100g": 7.1
+  },
+  {
+    "id": "547",
+    "nome": "Salpicão, de frango",
+    "categoria": "Grupo 45",
+    "kcal_100g": 148.0,
+    "proteina_100g": 13.9,
+    "gordura_100g": 7.8,
+    "carbo_100g": 4.6
+  },
+  {
+    "id": "548",
+    "nome": "Sarapatel",
+    "categoria": "Grupo 45",
+    "kcal_100g": 123.0,
+    "proteina_100g": 18.5,
+    "gordura_100g": 4.4,
+    "carbo_100g": 1.1
+  },
+  {
+    "id": "549",
+    "nome": "Tabule",
+    "categoria": "Grupo 45",
+    "kcal_100g": 57.0,
+    "proteina_100g": 2.0,
+    "gordura_100g": 1.2,
+    "carbo_100g": 10.6
+  },
+  {
+    "id": "550",
+    "nome": "Tacacá",
+    "categoria": "Grupo 47",
+    "kcal_100g": 47.0,
+    "proteina_100g": 7.0,
+    "gordura_100g": 0.4,
+    "carbo_100g": 3.4
+  },
+  {
+    "id": "551",
+    "nome": "Tapioca, com manteiga",
+    "categoria": "Grupo 47",
+    "kcal_100g": 348.0,
+    "proteina_100g": 0.1,
+    "gordura_100g": 10.9,
+    "carbo_100g": 63.6
+  },
+  {
+    "id": "552",
+    "nome": "Tucupi, com pimenta-de-cheiro",
+    "categoria": "Grupo 47",
+    "kcal_100g": 27.0,
+    "proteina_100g": 2.1,
+    "gordura_100g": 0.3,
+    "carbo_100g": 4.7
+  },
+  {
+    "id": "553",
+    "nome": "Vaca atolada",
+    "categoria": "Grupo 47",
+    "kcal_100g": 145.0,
+    "proteina_100g": 5.1,
+    "gordura_100g": 9.3,
+    "carbo_100g": 10.1
+  },
+  {
+    "id": "554",
+    "nome": "Vatapá",
+    "categoria": "Grupo 47",
+    "kcal_100g": 255.0,
+    "proteina_100g": 6.0,
+    "gordura_100g": 23.2,
+    "carbo_100g": 9.7
+  },
+  {
+    "id": "555",
+    "nome": "Virado à paulista",
+    "categoria": "Grupo 47",
+    "kcal_100g": 307.0,
+    "proteina_100g": 10.2,
+    "gordura_100g": 25.6,
+    "carbo_100g": 14.1
+  },
+  {
+    "id": "556",
+    "nome": "Yakisoba",
+    "categoria": "Grupo 47",
+    "kcal_100g": 113.0,
+    "proteina_100g": 7.5,
+    "gordura_100g": 2.6,
+    "carbo_100g": 18.3
+  },
+  {
+    "id": "557",
+    "nome": "Amendoim, grão, cru",
+    "categoria": "Grupo 47",
+    "kcal_100g": 544.0,
+    "proteina_100g": 27.2,
+    "gordura_100g": 43.9,
+    "carbo_100g": 20.3
+  },
+  {
+    "id": "558",
+    "nome": "Amendoim, torrado, salgado",
+    "categoria": "Grupo 47",
+    "kcal_100g": 606.0,
+    "proteina_100g": 22.5,
+    "gordura_100g": 54.0,
+    "carbo_100g": 18.7
+  },
+  {
+    "id": "559",
+    "nome": "Ervilha, em vagem",
+    "categoria": "Grupo 47",
+    "kcal_100g": 88.0,
+    "proteina_100g": 7.5,
+    "gordura_100g": 0.5,
+    "carbo_100g": 14.2
+  },
+  {
+    "id": "560",
+    "nome": "Ervilha, enlatada, drenada",
+    "categoria": "Grupo 47",
+    "kcal_100g": 74.0,
+    "proteina_100g": 4.6,
+    "gordura_100g": 0.4,
+    "carbo_100g": 13.4
+  },
+  {
+    "id": "561",
+    "nome": "Feijão, carioca, cozido",
+    "categoria": "Grupo 47",
+    "kcal_100g": 76.0,
+    "proteina_100g": 4.8,
+    "gordura_100g": 0.5,
+    "carbo_100g": 13.6
+  },
+  {
+    "id": "562",
+    "nome": "Feijão, carioca, cru",
+    "categoria": "Grupo 47",
+    "kcal_100g": 329.0,
+    "proteina_100g": 20.0,
+    "gordura_100g": 1.3,
+    "carbo_100g": 61.2
+  },
+  {
+    "id": "563",
+    "nome": "Feijão, fradinho, cozido",
+    "categoria": "Grupo 47",
+    "kcal_100g": 78.0,
+    "proteina_100g": 5.1,
+    "gordura_100g": 0.6,
+    "carbo_100g": 13.5
+  },
+  {
+    "id": "564",
+    "nome": "Feijão, fradinho, cru",
+    "categoria": "Grupo 47",
+    "kcal_100g": 339.0,
+    "proteina_100g": 20.2,
+    "gordura_100g": 2.4,
+    "carbo_100g": 61.2
+  },
+  {
+    "id": "565",
+    "nome": "Feijão, jalo, cozido",
+    "categoria": "Grupo 47",
+    "kcal_100g": 93.0,
+    "proteina_100g": 6.1,
+    "gordura_100g": 0.5,
+    "carbo_100g": 16.5
+  },
+  {
+    "id": "566",
+    "nome": "Feijão, jalo, cru",
+    "categoria": "Grupo 47",
+    "kcal_100g": 328.0,
+    "proteina_100g": 20.1,
+    "gordura_100g": 0.9,
+    "carbo_100g": 61.5
+  },
+  {
+    "id": "567",
+    "nome": "Feijão, preto, cozido",
+    "categoria": "Grupo 47",
+    "kcal_100g": 77.0,
+    "proteina_100g": 4.5,
+    "gordura_100g": 0.5,
+    "carbo_100g": 14.0
+  },
+  {
+    "id": "568",
+    "nome": "Feijão, preto, cru",
+    "categoria": "Grupo 47",
+    "kcal_100g": 324.0,
+    "proteina_100g": 21.3,
+    "gordura_100g": 1.2,
+    "carbo_100g": 58.8
+  },
+  {
+    "id": "569",
+    "nome": "Feijão, rajado, cozido",
+    "categoria": "Grupo 47",
+    "kcal_100g": 85.0,
+    "proteina_100g": 5.5,
+    "gordura_100g": 0.4,
+    "carbo_100g": 15.3
+  },
+  {
+    "id": "570",
+    "nome": "Feijão, rajado, cru",
+    "categoria": "Grupo 47",
+    "kcal_100g": 326.0,
+    "proteina_100g": 17.3,
+    "gordura_100g": 1.2,
+    "carbo_100g": 62.9
+  },
+  {
+    "id": "571",
+    "nome": "Feijão, rosinha, cozido",
+    "categoria": "Grupo 47",
+    "kcal_100g": 68.0,
+    "proteina_100g": 4.5,
+    "gordura_100g": 0.5,
+    "carbo_100g": 11.8
+  },
+  {
+    "id": "572",
+    "nome": "Feijão, rosinha, cru",
+    "categoria": "Grupo 47",
+    "kcal_100g": 337.0,
+    "proteina_100g": 20.9,
+    "gordura_100g": 1.3,
+    "carbo_100g": 62.2
+  },
+  {
+    "id": "573",
+    "nome": "Feijão, roxo, cozido",
+    "categoria": "Grupo 47",
+    "kcal_100g": 77.0,
+    "proteina_100g": 5.7,
+    "gordura_100g": 0.5,
+    "carbo_100g": 12.9
+  },
+  {
+    "id": "574",
+    "nome": "Feijão, roxo, cru",
+    "categoria": "Grupo 47",
+    "kcal_100g": 331.0,
+    "proteina_100g": 22.2,
+    "gordura_100g": 1.2,
+    "carbo_100g": 60.0
+  },
+  {
+    "id": "575",
+    "nome": "Grão-de-bico, cru",
+    "categoria": "Grupo 47",
+    "kcal_100g": 355.0,
+    "proteina_100g": 21.2,
+    "gordura_100g": 5.4,
+    "carbo_100g": 57.9
+  },
+  {
+    "id": "576",
+    "nome": "Guandu, cru",
+    "categoria": "Grupo 47",
+    "kcal_100g": 344.0,
+    "proteina_100g": 19.0,
+    "gordura_100g": 2.1,
+    "carbo_100g": 64.0
+  },
+  {
+    "id": "577",
+    "nome": "Lentilha, cozida",
+    "categoria": "Grupo 47",
+    "kcal_100g": 93.0,
+    "proteina_100g": 6.3,
+    "gordura_100g": 0.5,
+    "carbo_100g": 16.3
+  },
+  {
+    "id": "578",
+    "nome": "Lentilha, crua",
+    "categoria": "Grupo 49",
+    "kcal_100g": 339.0,
+    "proteina_100g": 23.2,
+    "gordura_100g": 0.8,
+    "carbo_100g": 62.0
+  },
+  {
+    "id": "579",
+    "nome": "Paçoca, amendoim",
+    "categoria": "Grupo 49",
+    "kcal_100g": 487.0,
+    "proteina_100g": 16.0,
+    "gordura_100g": 26.1,
+    "carbo_100g": 52.4
+  },
+  {
+    "id": "580",
+    "nome": "Pé-de-moleque, amendoim",
+    "categoria": "Grupo 49",
+    "kcal_100g": 503.0,
+    "proteina_100g": 13.2,
+    "gordura_100g": 28.0,
+    "carbo_100g": 54.7
+  },
+  {
+    "id": "581",
+    "nome": "Soja, farinha",
+    "categoria": "Grupo 49",
+    "kcal_100g": 404.0,
+    "proteina_100g": 36.0,
+    "gordura_100g": 14.6,
+    "carbo_100g": 38.4
+  },
+  {
+    "id": "582",
+    "nome": "Soja, extrato solúvel, natural, fluido",
+    "categoria": "Grupo 49",
+    "kcal_100g": 39.0,
+    "proteina_100g": 2.4,
+    "gordura_100g": 1.6,
+    "carbo_100g": 4.3
+  },
+  {
+    "id": "583",
+    "nome": "Soja, extrato solúvel, pó",
+    "categoria": "Grupo 49",
+    "kcal_100g": 459.0,
+    "proteina_100g": 35.7,
+    "gordura_100g": 26.2,
+    "carbo_100g": 28.5
+  },
+  {
+    "id": "584",
+    "nome": "Soja, queijo (tofu)",
+    "categoria": "Grupo 49",
+    "kcal_100g": 64.0,
+    "proteina_100g": 6.6,
+    "gordura_100g": 4.0,
+    "carbo_100g": 2.1
+  },
+  {
+    "id": "585",
+    "nome": "Tremoço, cru",
+    "categoria": "Grupo 49",
+    "kcal_100g": 381.0,
+    "proteina_100g": 33.6,
+    "gordura_100g": 10.3,
+    "carbo_100g": 43.8
+  },
+  {
+    "id": "586",
+    "nome": "Tremoço, em conserva",
+    "categoria": "Grupo 49",
+    "kcal_100g": 121.0,
+    "proteina_100g": 11.1,
+    "gordura_100g": 3.8,
+    "carbo_100g": 12.4
+  },
+  {
+    "id": "587",
+    "nome": "Amêndoa, torrada, salgada",
+    "categoria": "Grupo 49",
+    "kcal_100g": 581.0,
+    "proteina_100g": 18.6,
+    "gordura_100g": 47.3,
+    "carbo_100g": 29.5
+  },
+  {
+    "id": "588",
+    "nome": "Castanha-de-caju, torrada, salgada",
+    "categoria": "Grupo 49",
+    "kcal_100g": 570.0,
+    "proteina_100g": 18.5,
+    "gordura_100g": 46.3,
+    "carbo_100g": 29.1
+  },
+  {
+    "id": "589",
+    "nome": "Castanha-do-Brasil, crua",
+    "categoria": "Grupo 49",
+    "kcal_100g": 643.0,
+    "proteina_100g": 14.5,
+    "gordura_100g": 63.5,
+    "carbo_100g": 15.1
+  },
+  {
+    "id": "590",
+    "nome": "Coco, cru",
+    "categoria": "Grupo 49",
+    "kcal_100g": 406.0,
+    "proteina_100g": 3.7,
+    "gordura_100g": 42.0,
+    "carbo_100g": 10.4
+  },
+  {
+    "id": "591",
+    "nome": "Coco,  verde, cru",
+    "categoria": "Grupo 49",
+    "kcal_100g": null,
+    "proteina_100g": null,
+    "gordura_100g": null,
+    "carbo_100g": null
+  },
+  {
+    "id": "592",
+    "nome": "Farinha, de mesocarpo de babaçu, crua",
+    "categoria": "Grupo 49",
+    "kcal_100g": 329.0,
+    "proteina_100g": 1.4,
+    "gordura_100g": 0.2,
+    "carbo_100g": 79.2
+  },
+  {
+    "id": "593",
+    "nome": "Gergelim, semente",
+    "categoria": "Grupo 49",
+    "kcal_100g": 584.0,
+    "proteina_100g": 21.2,
+    "gordura_100g": 50.4,
+    "carbo_100g": 21.6
+  },
+  {
+    "id": "594",
+    "nome": "Linhaça, semente",
+    "categoria": "Grupo 49",
+    "kcal_100g": 495.0,
+    "proteina_100g": 14.1,
+    "gordura_100g": 32.3,
+    "carbo_100g": 43.3
+  },
+  {
+    "id": "595",
+    "nome": "Pinhão, cozido",
+    "categoria": "Grupo 49",
+    "kcal_100g": 174.0,
+    "proteina_100g": 3.0,
+    "gordura_100g": 0.7,
+    "carbo_100g": 43.9
+  },
+  {
+    "id": "596",
+    "nome": "Pupunha, cozida",
+    "categoria": "Grupo 49",
+    "kcal_100g": 219.0,
+    "proteina_100g": 2.5,
+    "gordura_100g": 12.8,
+    "carbo_100g": 29.6
+  },
+  {
+    "id": "597",
+    "nome": "Noz, crua",
+    "categoria": "Grupo 49",
+    "kcal_100g": 620.0,
+    "proteina_100g": 14.0,
+    "gordura_100g": 59.4,
+    "carbo_100g": 18.4
+  }
+]
