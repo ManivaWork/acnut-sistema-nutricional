@@ -26,6 +26,7 @@ builder.Services.AddHttpClient<AsaasClient>();
     ?? throw new InvalidOperationException("Defina ConnectionStrings:Default nos user-secrets.");
     string jwtKey = builder.Configuration["Jwt:Key"]
     ?? throw new InvalidOperationException("Defina Jwt:Key nos user-secrets (mínimo 32 caracteres).");
+    string pythonBaseUrl = builder.Configuration["Python:BaseUrl"] ?? "http://127.0.0.1:5002";
 var origens = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? new[] { "null" };
 // "null" = página aberta direto do disco (file://). Com Live Server, adicione http://127.0.0.1:5500
 // Em produção (Render), defina Cors__AllowedOrigins como JSON array: ["https://achubhome.vercel.app","https://seu-outro-dominio.com"]
@@ -187,7 +188,7 @@ app.MapGet("/api/pacientes", async (ClaimsPrincipal user) =>
     {
         pacientes.Add(new
         {
-            id = reader.GetInt32(0),
+            id = Convert.ToInt32(reader.GetValue(0)),
             nome = reader.GetString(1),
             email = reader.GetString(2),
             telefone = reader.IsDBNull(3) ? "" : reader.GetString(3),
@@ -315,7 +316,7 @@ app.MapPost("/api/avaliacoes", async (AvaliacaoInput input, IHttpClientFactory c
     };
 
     var content = new StringContent(JsonSerializer.Serialize(payloadPython), Encoding.UTF8, "application/json");
-    var responsePython = await httpClient.PostAsync("http://127.0.0.1:5002/calcular-plano", content);
+    var responsePython = await httpClient.PostAsync($"{pythonBaseUrl}/calcular-plano", content);
 
     if (!responsePython.IsSuccessStatusCode)
         return Results.Problem("Erro ao comunicar com o microserviço em Python de cálculos nutricionais.");
@@ -362,7 +363,7 @@ app.MapGet("/api/alimentos", async () =>
     {
         alimentos.Add(new
         {
-            id = reader.GetInt32(0),
+            id = Convert.ToInt32(reader.GetValue(0)),
             nome = reader.GetString(1),
             categoria = reader.IsDBNull(2) ? "" : reader.GetString(2),
             calorias_100g = reader.GetDecimal(3),
@@ -401,7 +402,7 @@ app.MapGet("/api/alimentos/buscar", async (string q, int limite = 20) =>
     {
         alimentos.Add(new
         {
-            id = reader.GetInt32(0),
+            id = Convert.ToInt32(reader.GetValue(0)),
             nome = reader.GetString(1),
             categoria = reader.IsDBNull(2) ? "" : reader.GetString(2),
             calorias_100g = reader.GetDecimal(3),
@@ -427,7 +428,7 @@ app.MapGet("/api/alimentos/{id:int}", async (int id) =>
 
     return Results.Ok(new
     {
-        id = reader.GetInt32(0),
+        id = Convert.ToInt32(reader.GetValue(0)),
         nome = reader.GetString(1),
         categoria = reader.IsDBNull(2) ? "" : reader.GetString(2),
         calorias_100g = reader.GetDecimal(3),
@@ -556,10 +557,10 @@ app.MapGet("/api/checkins/{pacienteId}", async (int pacienteId) =>
     {
         checkins.Add(new
         {
-            id = reader.GetInt32(0),
+            id = Convert.ToInt32(reader.GetValue(0)),
             data_checkin = reader.GetDateTime(1).ToString("yyyy-MM-dd"),
             peso_atual_kg = reader.GetDecimal(2),
-            adesao_plano_porcentagem = reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
+            adesao_plano_porcentagem = reader.IsDBNull(3) ? 0 : Convert.ToInt32(reader.GetValue(3)),
             observacoes_paciente = reader.IsDBNull(4) ? "" : reader.GetString(4)
         });
     }
@@ -639,7 +640,7 @@ app.MapPost("/api/planos/refeicao", async (RefeicaoInput input) =>
         ON CONFLICT (paciente_id) DO UPDATE SET paciente_id = EXCLUDED.paciente_id
         RETURNING id;", conn);
     cmdPlano.Parameters.AddWithValue("paciente_id", input.PacienteId);
-    var planoId = (int)(await cmdPlano.ExecuteScalarAsync())!;
+    var planoId = Convert.ToInt32(await cmdPlano.ExecuteScalarAsync());
 
     using var cmdRef = new NpgsqlCommand(@"
         INSERT INTO refeicoes (plano_id, empresa_id, nome_refeicao, horario, observacoes)
@@ -799,7 +800,7 @@ app.MapPost("/api/planos/item/calcular", async (ItemCalcularInput input, IHttpCl
     };
 
     var content = new StringContent(JsonSerializer.Serialize(payloadPython), Encoding.UTF8, "application/json");
-    var responsePython = await httpClient.PostAsync("http://127.0.0.1:5002/calcular-item", content);
+    var responsePython = await httpClient.PostAsync($"{pythonBaseUrl}/calcular-item", content);
 
     if (!responsePython.IsSuccessStatusCode)
     {
