@@ -280,47 +280,37 @@ async function carregarDadosPacienteAvaliacao(pacienteId) {
 
         console.log("[Avaliação] Buscando paciente ID:", id);
 
-        try {
-                const token = getToken(); // usa helper correto (sessionStorage.bybar_token)
-                console.log("[Avaliação] Token:", token ? "presente" : "AUSENTE");
+        // Usa lista em cache (carregada no login/dashboard) - evita 405 do endpoint individual
+        const paciente = listaPacientes.find(p => p.id === id);
 
-                const res = await fetch(`${API_URL}/pacientes/${id}`, {
-                        headers: { "Authorization": `Bearer ${token}` }
-                });
-                console.log("[Avaliação] Response status:", res.status);
+        if (!paciente) {
+                console.log("[Avaliação] Paciente não encontrado na lista em cache");
+                return;
+        }
 
-                if (!res.ok) {
-                        console.log("[Avaliação] Erro HTTP:", res.status);
-                        return;
+        console.log("[Avaliação] Dados do paciente (cache):", paciente);
+
+        // Calcular idade a partir da data de nascimento
+        if (paciente.data_nascimento) {
+                const nascimento = new Date(paciente.data_nascimento);
+                const hoje = new Date();
+                let idade = hoje.getFullYear() - nascimento.getFullYear();
+                const mes = hoje.getMonth() - nascimento.getMonth();
+                if (mes < 0 || (mes === 0 && hoje.getDate() < nascimento.getDate())) {
+                        idade--;
                 }
-                const paciente = await res.json();
-                console.log("[Avaliação] Dados do paciente:", paciente);
+                document.getElementById("a-idade").value = idade;
+                const idadeInput = document.getElementById("a-idade");
+                idadeInput.style.borderColor = "#22b8a0";
+                setTimeout(() => { idadeInput.style.borderColor = ""; }, 1500);
+                console.log("[Avaliação] Idade calculada:", idade);
+        } else {
+                console.log("[Avaliação] data_nascimento NÃO encontrado no paciente");
+        }
 
-                // Calcular idade a partir da data de nascimento
-                if (paciente.data_nascimento) {
-                        const nascimento = new Date(paciente.data_nascimento);
-                        const hoje = new Date();
-                        let idade = hoje.getFullYear() - nascimento.getFullYear();
-                        const mes = hoje.getMonth() - nascimento.getMonth();
-                        if (mes < 0 || (mes === 0 && hoje.getDate() < nascimento.getDate())) {
-                                idade--;
-                        }
-                        document.getElementById("a-idade").value = idade;
-                        // Feedback visual sutil
-                        const idadeInput = document.getElementById("a-idade");
-                        idadeInput.style.borderColor = "#22b8a0";
-                        setTimeout(() => { idadeInput.style.borderColor = ""; }, 1500);
-                        console.log("[Avaliação] Idade calculada:", idade);
-                } else {
-                        console.log("[Avaliação] data_nascimento NÃO encontrado no retorno");
-                }
-
-                // Opcional: preencher sexo se vier do paciente
-                if (paciente.sexo) {
-                        document.getElementById("a-sexo").value = paciente.sexo;
-                }
-        } catch (err) {
-                console.error("[Avaliação] Erro ao buscar paciente:", err);
+        // Opcional: preencher sexo se vier do paciente
+        if (paciente.sexo) {
+                document.getElementById("a-sexo").value = paciente.sexo;
         }
 }
 
