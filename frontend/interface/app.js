@@ -3158,7 +3158,7 @@ async function carregarAreaPaciente() {
         if (!res.ok) throw new Error(res.status);
         dadosPaciente = await res.json();
         document.getElementById("pac-nome").innerText = dadosPaciente.nome.split(" ")[0];
-        abaPaciente("plano");
+        abaPaciente("dashboard");
     } catch {
         el.innerHTML = `<p class="text-rose-400 text-sm">Não foi possível carregar seus dados. Tente novamente.</p>`;
     }
@@ -3179,6 +3179,11 @@ function abaPaciente(aba) {
         const m = i.medidaCaseira ? ` (${escaparHtml(i.medidaCaseira)})` : "";
         return `${escaparHtml(i.alimento)}${q}${m}`;
     };
+
+    if (aba === "dashboard") {
+        carregarDashboardPaciente(d.id);
+        return;
+    }
 
     if (aba === "plano") {
         const refs = d.plano.refeicoes || [];
@@ -3248,6 +3253,182 @@ function abaPaciente(aba) {
     }
     else if (aba === "anamnese") {
         renderAnamneseForm(d.id);
+    }
+}
+
+// ===== DASHBOARD PACIENTE =====
+async function carregarDashboardPaciente(pacienteId) {
+    const el = document.getElementById("pac-conteudo");
+    if (!el) return;
+
+    el.innerHTML = `<div class="flex items-center justify-center h-64"><div class="animate-spin rounded-full h-8 w-8 border-4 border-purple-600 border-t-transparent"></div></div>`;
+
+    try {
+        // Buscar dados em paralelo
+        const [anamneseRes, planoRes, checkinsRes] = await Promise.allSettled([
+            fetch(`${API_URL}/anamnese/${pacienteId}`),
+            fetch(`${API_URL}/planos/${pacienteId}`),
+            fetch(`${API_URL}/checkins/${pacienteId}`)
+        ]);
+
+        // Última anamnese
+        let ultimaAnamnese = null;
+        if (anamneseRes.status === 'fulfilled' && anamneseRes.value.ok) {
+            const an = await anamneseRes.value.json();
+            if (an && (an.dados_extendidos || an.historico_medico || an.alergias)) {
+                ultimaAnamnese = an;
+            }
+        }
+
+        // Plano atual
+        let planoAtual = null;
+        if (planoRes.status === 'fulfilled' && planoRes.value.ok) {
+            const plano = await planoRes.value.json();
+            if (plano && plano.refeicoes && plano.refeicoes.length > 0) {
+                planoAtual = plano;
+            }
+        }
+
+        // Próxima consulta - usar check-ins como proxy (mais recente)
+        let proximaConsulta = null;
+        if (checkinsRes.status === 'fulfilled' && checkinsRes.value.ok) {
+            const checkins = await checkinsRes.value.json();
+            if (checkins && checkins.length > 0) {
+                const ultimo = checkins[0];
+                proximaConsulta = {
+                    data: ultimo.data_checkin,
+                    tipo: "Check-in semanal",
+                    peso: ultimo.peso_atual_kg,
+                    adesao: ultimo.adesao_plano_porcentagem
+                };
+            }
+        }
+
+        // Renderizar cards
+        const formatarDataBR = (iso) => {
+            if (!iso) return "—";
+            const [a, m, d] = iso.split("-");
+            return `${d}/${m}/${a}`;
+        };
+
+        const cardAnamnese = ultimaAnamnese
+            ? `
+                <div class="bg-slate-800/50 border border-purple-500/30 rounded-2xl p-5">
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <p class="text-xs font-semibold text-purple-300 uppercase tracking-wider">Última Anamnese</p>
+                            <p class="text-white font-medium mt-1">${formatarDataBR(ultimaAnamnese.atualizado_em || ultimaAnamnese.criado_em)}</p>
+                            <p class="text-sm text-slate-400 mt-2">Dados completos preenchidos</p>
+                        </div>
+                        <button onclick="abaPaciente('anamnese')" class="shrink-0 h-9 px-4 rounded-xl text-xs font-semibold text-white bg-purple-600 hover:bg-purple-500 transition flex items-center gap-1">
+                            <i class="fa-solid fa-arrow-right text-xs"></i> Ver
+                        </button>
+                    </div>
+                </div>`
+            : `
+                <div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5">
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Última Anamnese</p>
+                            <p class="text-white font-medium mt-1">Não preenchida</p>
+                            <p class="text-sm text-slate-500 mt-2">Complete sua anamnese inicial</p>
+                        </div>
+                        <button onclick="abaPaciente('anamnese')" class="shrink-0 h-9 px-4 rounded-xl text-xs font-semibold text-white bg-slate-700 hover:bg-slate-600 transition flex items-center gap-1">
+                            <i class="fa-solid fa-plus text-xs"></i> Iniciar
+                        </button>
+                    </div>
+                </div>`;
+
+        const cardPlano = planoAtual
+            ? `
+                <div class="bg-slate-800/50 border border-emerald-500/30 rounded-2xl p-5">
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <p class="text-xs font-semibold text-emerald-300 uppercase tracking-wider">Plano Atual</p>
+                            <p class="text-white font-medium mt-1">${planoAtual.refeicoes.length} refeições</p>
+                            <p class="text-sm text-slate-400 mt-2">${planoAtual.refeicoes.reduce((acc, r) => acc + (r.itens?.length || 0), 0)} alimentos no total</p>
+                        </div>
+                        <button onclick="abaPaciente('plano')" class="shrink-0 h-9 px-4 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 transition flex items-center gap-1">
+                            <i class="fa-solid fa-arrow-right text-xs"></i> Ver
+                        </button>
+                    </div>
+                </div>`
+            : `
+                <div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5">
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Plano Atual</p>
+                            <p class="text-white font-medium mt-1">Sem plano alimentar</p>
+                            <p class="text-sm text-slate-500 mt-2">Aguardando nutricionista</p>
+                        </div>
+                        <button onclick="abaPaciente('plano')" class="shrink-0 h-9 px-4 rounded-xl text-xs font-semibold text-white bg-slate-700 hover:bg-slate-600 transition flex items-center gap-1">
+                            <i class="fa-solid fa-bowl-food text-xs"></i> Ver
+                        </button>
+                    </div>
+                </div>`;
+
+        const cardConsulta = proximaConsulta
+            ? `
+                <div class="bg-slate-800/50 border border-amber-500/30 rounded-2xl p-5">
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <p class="text-xs font-semibold text-amber-300 uppercase tracking-wider">Último Acompanhamento</p>
+                            <p class="text-white font-medium mt-1">${proximaConsulta.tipo}</p>
+                            <p class="text-sm text-slate-400 mt-2">${formatarDataBR(proximaConsulta.data)} • ${proximaConsulta.peso}kg • Aderência: ${proximaConsulta.adesao}%</p>
+                        </div>
+                        <div class="shrink-0 text-right">
+                            <p class="text-xs text-slate-400">Próximo agendado</p>
+                            <p class="text-white font-medium mt-1">—</p>
+                        </div>
+                    </div>
+                </div>`
+            : `
+                <div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5">
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Próxima Consulta</p>
+                            <p class="text-white font-medium mt-1">Não agendada</p>
+                            <p class="text-sm text-slate-500 mt-2">Entre em contato com seu nutricionista</p>
+                        </div>
+                        <div class="shrink-0 text-right">
+                            <p class="text-xs text-slate-400">Agendar</p>
+                            <p class="text-white font-medium mt-1">—</p>
+                        </div>
+                    </div>
+                </div>`;
+
+        el.innerHTML = `
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                ${cardConsulta}
+                ${cardAnamnese}
+                ${cardPlano}
+            </div>
+            <div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5">
+                <h3 class="font-bold text-white mb-4">Ações Rápidas</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <button onclick="abaPaciente('anamnese')" class="h-14 rounded-xl bg-purple-600/20 border border-purple-500/30 text-white hover:bg-purple-600/30 transition flex flex-col items-center justify-center gap-2">
+                        <i class="fa-solid fa-file-medical text-xl"></i>
+                        <span class="text-sm font-medium">Anamnese</span>
+                    </button>
+                    <button onclick="abaPaciente('plano')" class="h-14 rounded-xl bg-emerald-600/20 border border-emerald-500/30 text-white hover:bg-emerald-600/30 transition flex flex-col items-center justify-center gap-2">
+                        <i class="fa-solid fa-bowl-food text-xl"></i>
+                        <span class="text-sm font-medium">Plano Alimentar</span>
+                    </button>
+                    <button onclick="abaPaciente('metas')" class="h-14 rounded-xl bg-amber-500/20 border border-amber-500/30 text-white hover:bg-amber-500/30 transition flex flex-col items-center justify-center gap-2">
+                        <i class="fa-solid fa-bullseye text-xl"></i>
+                        <span class="text-sm font-medium">Metas</span>
+                    </button>
+                </div>
+            </div>
+        `;
+    } catch (err) {
+        console.error("Erro ao carregar dashboard do paciente:", err);
+        el.innerHTML = `<div class="bg-slate-800/50 border border-rose-500/30 rounded-2xl p-5 text-center">
+            <p class="text-rose-400">Erro ao carregar dashboard. Tente novamente.</p>
+            <button onclick="carregarDashboardPaciente(${pacienteId})" class="mt-3 px-4 py-2 text-sm font-semibold rounded-xl bg-rose-600 hover:bg-rose-500 text-white transition">
+                Tentar novamente
+            </button>
+        </div>`;
     }
 }
 
