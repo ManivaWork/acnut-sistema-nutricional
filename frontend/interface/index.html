@@ -1285,6 +1285,12 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         <i class="fa-solid fa-credit-card"></i>
         <span class="acnut-rail-label">Plano & Assinatura</span>
         </button>
+        <button type="button" data-nav="convites" data-tip="Convites"
+        onclick="navegar('convites'); fecharMenuMobile();"
+        class="acnut-rail-item">
+        <i class="fa-solid fa-envelope-open-text"></i>
+        <span class="acnut-rail-label">Convites</span>
+        </button>
         <button type="button" data-nav="empresas" data-tip="Empresas"
         onclick="navegar('empresas'); fecharMenuMobile();"
         class="acnut-rail-item" id="nav-empresas" style="display:none;">
@@ -1326,6 +1332,10 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         <input id="dash-busca" type="text" oninput="filtrarDashboard(this.value)" placeholder="Buscar paciente..."
         class="w-full h-11 pl-11 pr-4 rounded-xl bg-slate-800 border border-white/10 text-sm text-white placeholder-slate-500 outline-none transition">
         </div>
+        <button type="button" onclick="abrirModalConvitePaciente()"
+        class="h-11 px-5 rounded-xl text-sm font-semibold text-white bg-purple-600 hover:bg-purple-500 transition flex items-center gap-2 shrink-0">
+        <i class="fa-solid fa-envelope text-xs"></i> Convidar Paciente
+        </button>
         <button type="button" onclick="navegar('pacientes')"
         class="h-11 px-5 rounded-xl text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 transition flex items-center gap-2 shrink-0">
         <i class="fa-solid fa-plus text-xs"></i> Novo paciente
@@ -3890,6 +3900,260 @@ function mostrarLogin() {
             </div>
           </div>
         </section>
+        <!-- ========================================================= SEÇÃO: CONVITES PACIENTE ========================================================= -->
+        <section id="sec-convites" class="hidden space-y-6">
+          <!-- Cabeçalho -->
+          <header class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
+            <button type="button" onclick="abrirMenuMobile()" class="btn-menu-mobile lg:hidden p-2 rounded-xl bg-slate-800 border border-white/10 text-slate-300 hover:text-white hover:bg-white/5 transition" aria-label="Abrir menu">
+                <i class="fa-solid fa-bars text-lg"></i>
+            </button>
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-2xl bg-purple-500/15 border border-purple-500/20 flex items-center justify-center">
+                  <i class="fa-solid fa-envelope-open-text text-purple-400 text-lg"></i>
+                </div>
+                <div>
+                  <h2 class="text-2xl font-extrabold text-white tracking-tight">Convites de Pacientes</h2>
+                  <p class="text-sm text-slate-400 mt-1">Gerencie convites enviados para pacientes se cadastrarem no sistema.</p>
+                </div>
+              </div>
+              <button type="button" onclick="abrirModalConvitePaciente()"
+              class="h-11 px-5 rounded-xl text-sm font-semibold text-white bg-purple-600 hover:bg-purple-500 transition flex items-center gap-2 shrink-0">
+              <i class="fa-solid fa-plus text-xs"></i> Convidar Paciente
+              </button>
+            </div>
+          </header>
+
+          <!-- Tabela de Convites -->
+          <div class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-lg font-bold text-white">Convites Enviados</h3>
+              <div class="flex gap-2">
+                <select id="convites-filtro-status" onchange="carregarConvitesPaciente()" class="acnut-input text-sm w-auto">
+                  <option value="">Todos</option>
+                  <option value="pendente">Pendentes</option>
+                  <option value="aceito">Aceitos</option>
+                  <option value="expirado">Expirados</option>
+                  <option value="cancelado">Cancelados</option>
+                </select>
+                <button onclick="carregarConvitesPaciente()" class="h-11 px-4 rounded-xl text-sm font-semibold text-white bg-slate-700 hover:bg-slate-600 transition flex items-center gap-2">
+                  <i class="fa-solid fa-rotate text-xs"></i> Atualizar
+                </button>
+              </div>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm" id="tabela-convites">
+                <thead>
+                  <tr class="text-left text-[11px] font-bold uppercase text-slate-500 border-b border-slate-700/50">
+                    <th class="py-3 px-4">Paciente</th>
+                    <th class="py-3 px-4">E-mail</th>
+                    <th class="py-3 px-4">Status</th>
+                    <th class="py-3 px-4">Expira em</th>
+                    <th class="py-3 px-4">Criado em</th>
+                    <th class="py-3 px-4">Ações</th>
+                  </tr>
+                </thead>
+                <tbody id="convites-tbody" class="divide-y divide-slate-700/40">
+                  <tr><td colspan="6" class="py-6 text-center text-slate-400">Carregando…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Modal Convidar Paciente -->
+          <div id="modal-convite-paciente" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md mx-4 p-6 space-y-5">
+              <div class="flex items-center justify-between">
+                <h4 class="text-lg font-bold text-white" id="modal-convite-title">Convidar Novo Paciente</h4>
+                <button onclick="fecharModal('modal-convite-paciente')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+              </div>
+              <p class="text-sm text-slate-300">Digite o e-mail do paciente para enviar o convite. O paciente receberá um e-mail com link para se cadastrar e vincular a você.</p>
+              <div class="space-y-4">
+                <div>
+                  <label class="block text-sm text-slate-300 mb-1">E-mail do Paciente <span class="text-rose-400">*</span></label>
+                  <input type="email" id="convite-email-paciente" class="acnut-input" placeholder="paciente@exemplo.com">
+                </div>
+                <div>
+                  <label class="block text-sm text-slate-300 mb-1">Nome do Paciente (opcional)</label>
+                  <input type="text" id="convite-nome-paciente" class="acnut-input" placeholder="Nome completo">
+                </div>
+                <div id="modal-convite-erro" class="hidden lg-error"><i class="fa-solid fa-circle-exclamation"></i><span></span></div>
+              </div>
+              <div class="flex gap-3 pt-2">
+                <button onclick="fecharModal('modal-convite-paciente')" class="flex-1 acnut-btn-secondary">Cancelar</button>
+                <button onclick="enviarConvitePaciente()" class="flex-1 acnut-btn-primary" id="btn-enviar-convite">
+                  <i class="fa-solid fa-paper-plane"></i> Enviar Convite
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Modal Reenviar/Cancelar Convite -->
+          <div id="modal-convite-acao" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md mx-4 p-6 space-y-5">
+              <div class="flex items-center justify-between">
+                <h4 class="text-lg font-bold text-white" id="modal-convite-acao-title">Ação no Convite</h4>
+                <button onclick="fecharModal('modal-convite-acao')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+              </div>
+              <p class="text-sm text-slate-300" id="modal-convite-acao-msg"></p>
+              <div id="modal-convite-acao-erro" class="hidden lg-error"><i class="fa-solid fa-circle-exclamation"></i><span></span></div>
+              <div class="flex gap-3 pt-2">
+                <button onclick="fecharModal('modal-convite-acao')" class="flex-1 acnut-btn-secondary">Cancelar</button>
+                <button onclick="confirmarAcaoConvite()" class="flex-1 acnut-btn-primary" id="btn-confirmar-acao-convite">Confirmar</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================================= SEÇÃO: ACEITAR CONVITE PACIENTE (PÚBLICO) ========================================================= -->
+        <section id="sec-convite-paciente" class="hidden space-y-6">
+          <div class="min-h-screen flex items-center justify-center p-6">
+            <div class="w-full max-w-md">
+              <!-- Card Principal -->
+              <div class="bg-slate-800/70 backdrop-blur-xl rounded-3xl border border-slate-700/60 shadow-2xl p-8">
+                <!-- Header -->
+                <div class="text-center mb-8">
+                  <div class="w-20 h-20 rounded-2xl bg-purple-500/15 border border-purple-500/20 flex items-center justify-center mx-auto mb-4">
+                    <i class="fa-solid fa-envelope-open-text text-purple-400 text-3xl"></i>
+                  </div>
+                  <h1 class="text-2xl font-extrabold text-white tracking-tight">Convite para Acompanhamento Nutricional</h1>
+                  <p class="text-slate-400 mt-2" id="convite-boasvindas">Você foi convidado(a) por um nutricionista para se cadastrar no ACNUTRI.</p>
+                </div>
+
+                <!-- Info do Convite -->
+                <div class="bg-slate-900/50 border border-slate-700/50 rounded-2xl p-5 mb-6" id="convite-info">
+                  <div class="space-y-3 text-sm">
+                    <div class="flex items-center gap-3">
+                      <i class="fa-solid fa-user-tie text-purple-400 w-5"></i>
+                      <div>
+                        <p class="text-slate-500 text-xs uppercase tracking-wider">Nutricionista</p>
+                        <p class="font-medium text-white" id="convite-nutri-nome">—</p>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                      <i class="fa-solid fa-building text-emerald-400 w-5"></i>
+                      <div>
+                        <p class="text-slate-500 text-xs uppercase tracking-wider">Clínica/Empresa</p>
+                        <p class="font-medium text-white" id="convite-empresa-nome">—</p>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                      <i class="fa-solid fa-clock text-amber-400 w-5"></i>
+                      <div>
+                        <p class="text-slate-500 text-xs uppercase tracking-wider">Expira em</p>
+                        <p class="font-medium text-white" id="convite-expira">—</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Status/Erros -->
+                <div id="convite-status" class="hidden mb-4 p-4 rounded-xl"></div>
+
+                <!-- Formulário de Cadastro -->
+                <form id="form-aceitar-convite" class="space-y-4" onsubmit="return false;">
+                  <input type="hidden" id="convite-token-input">
+
+                  <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-1">Nome Completo <span class="text-rose-400">*</span></label>
+                    <div class="relative">
+                      <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"></i>
+                      <input type="text" id="convite-nome" required autocomplete="name"
+                        class="w-full h-12 pl-11 pr-4 bg-slate-900/70 border border-slate-700 rounded-xl text-white placeholder-slate-600 outline-none transition-all focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10"
+                        placeholder="Seu nome completo">
+                    </div>
+                  </div>
+
+                  <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-1">E-mail <span class="text-rose-400">*</span></label>
+                    <div class="relative">
+                      <i class="fa-solid fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"></i>
+                      <input type="email" id="convite-email" required autocomplete="email" readonly
+                        class="w-full h-12 pl-11 pr-4 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder-slate-600 outline-none"
+                        placeholder="seu@email.com">
+                    </div>
+                    <p class="text-xs text-slate-500 mt-1">Este e-mail foi preenchido automaticamente pelo convite.</p>
+                  </div>
+
+                  <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-1">Senha <span class="text-rose-400">*</span></label>
+                    <div class="relative">
+                      <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"></i>
+                      <input type="password" id="convite-senha" required autocomplete="new-password" minlength="8"
+                        class="w-full h-12 pl-11 pr-12 bg-slate-900/70 border border-slate-700 rounded-xl text-white placeholder-slate-600 outline-none transition-all focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10"
+                        placeholder="Mínimo 8 caracteres">
+                      <button type="button" onclick="alternarVisibilidadeSenha('convite-senha')" class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition">
+                        <i class="fa-solid fa-eye" id="convite-senha-icon"></i>
+                      </button>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-1">Mínimo 8 caracteres.</p>
+                  </div>
+
+                  <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-1">Confirmar Senha <span class="text-rose-400">*</span></label>
+                    <div class="relative">
+                      <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"></i>
+                      <input type="password" id="convite-senha-conf" required autocomplete="new-password"
+                        class="w-full h-12 pl-11 pr-4 bg-slate-900/70 border border-slate-700 rounded-xl text-white placeholder-slate-600 outline-none transition-all focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10"
+                        placeholder="Repita a senha">
+                    </div>
+                  </div>
+
+                  <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-1">CPF <span class="text-rose-400">*</span></label>
+                    <div class="relative">
+                      <i class="fa-solid fa-id-card absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"></i>
+                      <input type="text" id="convite-cpf" required autocomplete="off" maxlength="14"
+                        class="w-full h-12 pl-11 pr-4 bg-slate-900/70 border border-slate-700 rounded-xl text-white placeholder-slate-600 outline-none transition-all focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10"
+                        placeholder="000.000.000-00" oninput="formatarCPF(this)">
+                    </div>
+                    <p class="text-xs text-slate-500 mt-1">Apenas números, será formatado automaticamente.</p>
+                  </div>
+
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-slate-300 mb-1">Data de Nascimento <span class="text-rose-400">*</span></label>
+                      <div class="relative">
+                        <i class="fa-solid fa-calendar absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"></i>
+                        <input type="date" id="convite-data-nascimento" required
+                          class="w-full h-12 pl-11 pr-4 bg-slate-900/70 border border-slate-700 rounded-xl text-white placeholder-slate-600 outline-none transition-all focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10">
+                      </div>
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-slate-300 mb-1">Telefone <span class="text-rose-400">*</span></label>
+                      <div class="relative">
+                        <i class="fa-solid fa-phone absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"></i>
+                        <input type="tel" id="convite-telefone" required autocomplete="tel" maxlength="15"
+                          class="w-full h-12 pl-11 pr-4 bg-slate-900/70 border border-slate-700 rounded-xl text-white placeholder-slate-600 outline-none transition-all focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10"
+                          placeholder="(11) 99999-9999" oninput="formatarTelefone(this)">
+                      </div>
+                    </div>
+                  </div>
+
+                  <div id="convite-erro" class="hidden lg-error"><i class="fa-solid fa-circle-exclamation"></i><span></span></div>
+
+                  <button type="button" onclick="aceitarConvitePaciente()"
+                    class="w-full h-12 mt-2 bg-purple-600 hover:bg-purple-500 text-white font-semibold rounded-xl transition flex items-center justify-center gap-2"
+                    id="btn-aceitar-convite">
+                    <i class="fa-solid fa-check"></i> Aceitar Convite e Criar Conta
+                  </button>
+                </form>
+
+                <!-- Link para login se já tem conta -->
+                <div class="mt-6 pt-6 border-t border-slate-700/50 text-center">
+                  <p class="text-sm text-slate-400">Já tem conta? </p>
+                  <a href="/login" onclick="event.preventDefault(); navegar('login');" class="text-purple-400 hover:text-purple-300 font-medium">Entrar no sistema</a>
+                </div>
+              </div>
+
+              <!-- Footer -->
+              <p class="text-center text-xs text-slate-500 mt-6">
+                <i class="fa-solid fa-shield-halved"></i> Seus dados são protegidos pela LGPD. Não compartilharemos suas informações.
+              </p>
+            </div>
+          </div>
+        </section>
+
         <!-- =========================================================SEÇÃO: EMPRESAS (super_admin)========================================================= -->
         <section id="sec-empresas" class="hidden space-y-6">
         <!-- Cabeçalho -->

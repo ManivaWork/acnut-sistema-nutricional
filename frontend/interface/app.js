@@ -15,6 +15,59 @@ const PYTHON_API_URL = window.ENV_PYTHON_API_URL
     : 'https://acnut-sistema-nutricional-python.onrender.com';
         const TOKEN_KEY = "bybar_token";
 const getToken = () => sessionStorage.getItem(TOKEN_KEY);
+const getFrontendUrl = () => window.ENV_FRONTEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:5500' : window.location.origin;
+
+function mostrarToast(mensagem, tipo = 'info') {
+    const container = document.getElementById('toast-container') || (() => {
+        const div = document.createElement('div');
+        div.id = 'toast-container';
+        div.className = 'fixed bottom-6 right-6 z-50 flex flex-col gap-2';
+        document.body.appendChild(div);
+        return div;
+    })();
+
+    const cores = {
+        sucesso: 'bg-emerald-600 text-white',
+        erro: 'bg-rose-600 text-white',
+        aviso: 'bg-amber-600 text-white',
+        info: 'bg-blue-600 text-white'
+    };
+
+    const icones = {
+        sucesso: 'fa-circle-check',
+        erro: 'fa-circle-xmark',
+        aviso: 'fa-triangle-exclamation',
+        info: 'fa-circle-info'
+    };
+
+    const toast = document.createElement('div');
+    toast.className = `flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg ${cores[tipo] || cores.info} animate-slide-in`;
+    toast.innerHTML = `<i class="fa-solid ${icones[tipo] || icones.info}"></i><span class="text-sm font-medium">${mensagem}</span>`;
+
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-x-4', 'transition-all', 'duration-300');
+        setTimeout(() => toast.remove(), 300);
+    }, 4000);
+}
+
+function alternarVisibilidadeSenha(inputId) {
+    const input = document.getElementById(inputId);
+    const icon = document.getElementById(inputId + '-icon');
+    if (!input || !icon) return;
+
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.classList.remove('fa-eye');
+        icon.classList.add('fa-eye-slash');
+    } else {
+        input.type = 'password';
+        icon.classList.remove('fa-eye-slash');
+        icon.classList.add('fa-eye');
+    }
+}
+
 const urlArquivo = id => `${API_URL}/arquivos/${id}?t=${encodeURIComponent(getToken() || "")}`;
 
 // Todo fetch para a API leva o token automaticamente
@@ -3043,6 +3096,9 @@ function formatarCpf(c) {
     return d.length === 11 ? d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : d;
 }
 
+// Alias para compatibilidade com HTML (case-sensitive)
+function formatarCPF(c) { return formatarCpf(c); }
+
 // ---------- Telefone ----------
 function mascararTelefone(el) {
     let d = el.value.replace(/\D/g, "").slice(0, 11);
@@ -4666,6 +4722,323 @@ async function aceitarConvite(event) {
     }
 }
 
+// ===== CONVITES PACIENTE =====
+
+let conviteAcaoAtual = null; // { token, acao: 'reenviar' | 'cancelar' }
+
+function abrirModalConvitePaciente() {
+    document.getElementById('convite-email-paciente').value = '';
+    document.getElementById('convite-nome-paciente').value = '';
+    document.getElementById('modal-convite-erro').style.display = 'none';
+    document.getElementById('modal-convite-paciente').classList.remove('hidden');
+}
+
+async function enviarConvitePaciente() {
+    const email = document.getElementById('convite-email-paciente').value.trim().toLowerCase();
+    const nome = document.getElementById('convite-nome-paciente').value.trim();
+    const erroDiv = document.getElementById('modal-convite-erro');
+    const msg = erroDiv?.querySelector('span');
+    const btn = document.getElementById('btn-enviar-convite');
+
+    if (!email || !email.includes('@')) {
+        if (msg) msg.innerText = 'E-mail inválido.';
+        erroDiv.style.display = 'flex';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Enviando...';
+    erroDiv.style.display = 'none';
+
+    try {
+        const res = await fetch(`${API_URL}/convites-paciente`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
+            body: JSON.stringify({ emailPaciente: email })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.mensagem || 'Erro ao enviar convite');
+
+        fecharModal('modal-convite-paciente');
+        carregarConvitesPaciente();
+        mostrarToast('Convite enviado com sucesso!', 'sucesso');
+    } catch (e) {
+        if (msg) msg.innerText = e.message;
+        erroDiv.style.display = 'flex';
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Enviar Convite';
+    }
+}
+
+async function carregarConvitesPaciente() {
+    const tbody = document.getElementById('convites-tbody');
+    const filtro = document.getElementById('convites-filtro-status')?.value || '';
+
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-slate-400">Carregando…</td></tr>';
+
+    try {
+        const res = await fetch(`${API_URL}/nutricionista/convites-paciente`, {
+            headers: { 'Authorization': `Bearer ${getToken()}` }
+        });
+        if (!res.ok) throw new Error('Erro ao carregar convites');
+        const convites = await res.json();
+
+        const filtrados = filtro ? convites.filter(c => c.status === filtro) : convites;
+
+        if (filtrados.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-slate-400">${filtro ? 'Nenhum convite com este status.' : 'Nenhum convite enviado ainda.'}</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = filtrados.map(c => {
+            const statusClass = {
+                pendente: 'bg-amber-500/20 text-amber-400',
+                aceito: 'bg-emerald-500/20 text-emerald-400',
+                expirado: 'bg-slate-500/20 text-slate-400',
+                cancelado: 'bg-rose-500/20 text-rose-400'
+            }[c.status] || 'bg-slate-500/20 text-slate-400';
+
+            const expiraEm = new Date(c.expiraEm).toLocaleString('pt-BR');
+            const criadoEm = new Date(c.criadoEm).toLocaleString('pt-BR');
+
+            let acoesHtml = '';
+            if (c.status === 'pendente') {
+                acoesHtml = `
+                    <button onclick="abrirModalAcaoConvite('${c.token}', 'reenviar')" class="text-slate-300 hover:text-white transition px-2 py-1" title="Reenviar e-mail">
+                        <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                    <button onclick="abrirModalAcaoConvite('${c.token}', 'cancelar')" class="text-rose-400 hover:text-rose-300 transition px-2 py-1" title="Cancelar convite">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                    <a href="${getFrontendUrl()}/convite-paciente/${c.token}" target="_blank" class="text-purple-400 hover:text-purple-300 transition px-2 py-1" title="Copiar link">
+                        <i class="fa-solid fa-link"></i>
+                    </a>
+                `;
+            } else if (c.status === 'aceito') {
+                acoesHtml = `
+                    <span class="text-emerald-400 px-2 py-1" title="Convite aceito">
+                        <i class="fa-solid fa-check-circle"></i>
+                    </span>
+                `;
+            } else {
+                acoesHtml = `<span class="text-slate-500 px-2 py-1">—</span>`;
+            }
+
+            return `
+                <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+                    <td class="py-3 px-4 text-white font-medium">${c.pacienteId ? `#${c.pacienteId}` : '—'}</td>
+                    <td class="py-3 px-4 text-slate-300">${c.emailPaciente}</td>
+                    <td class="py-3 px-4">
+                        <span class="px-2 py-1 rounded-full text-xs font-semibold ${statusClass}">${c.status}</span>
+                    </td>
+                    <td class="py-3 px-4 text-slate-300">${expiraEm}</td>
+                    <td class="py-3 px-4 text-slate-300">${criadoEm}</td>
+                    <td class="py-3 px-4 flex items-center gap-1">${acoesHtml}</td>
+                </tr>
+            `;
+        }).join('');
+    } catch (e) {
+        console.error('Erro ao carregar convites:', e);
+        tbody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-rose-400">Erro ao carregar: ${e.message}</td></tr>`;
+    }
+}
+
+function abrirModalAcaoConvite(token, acao) {
+    conviteAcaoAtual = { token, acao };
+    const modal = document.getElementById('modal-convite-acao');
+    const title = document.getElementById('modal-convite-acao-title');
+    const msg = document.getElementById('modal-convite-acao-msg');
+    const btn = document.getElementById('btn-confirmar-acao-convite');
+    const erroDiv = document.getElementById('modal-convite-acao-erro');
+
+    erroDiv.style.display = 'none';
+
+    if (acao === 'reenviar') {
+        title.innerText = 'Reenviar Convite';
+        msg.innerText = 'Tem certeza que deseja reenviar o e-mail de convite para este paciente?';
+        btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Reenviar';
+        btn.className = 'flex-1 acnut-btn-primary';
+    } else {
+        title.innerText = 'Cancelar Convite';
+        msg.innerText = 'Tem certeza que deseja cancelar este convite? O paciente não poderá mais usá-lo.';
+        btn.innerHTML = '<i class="fa-solid fa-ban"></i> Cancelar';
+        btn.className = 'flex-1 bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded-xl font-semibold transition';
+    }
+
+    modal.classList.remove('hidden');
+}
+
+async function confirmarAcaoConvite() {
+    if (!conviteAcaoAtual) return;
+
+    const { token, acao } = conviteAcaoAtual;
+    const btn = document.getElementById('btn-confirmar-acao-convite');
+    const erroDiv = document.getElementById('modal-convite-acao-erro');
+    const msg = erroDiv?.querySelector('span');
+
+    btn.disabled = true;
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processando...';
+    erroDiv.style.display = 'none';
+
+    try {
+        let endpoint = '';
+        if (acao === 'reenviar') {
+            // Reenviar: chamar endpoint de reenvio ou recriar
+            endpoint = `${API_URL}/nutricionista/convites-paciente/${token}/reenviar`;
+        } else {
+            endpoint = `${API_URL}/nutricionista/convites-paciente/${token}/cancelar`;
+        }
+
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${getToken()}` }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.mensagem || `Erro ao ${acao === 'reenviar' ? 'reenviar' : 'cancelar'} convite`);
+
+        fecharModal('modal-convite-acao');
+        carregarConvitesPaciente();
+        mostrarToast(acao === 'reenviar' ? 'Convite reenviado com sucesso!' : 'Convite cancelado.', 'sucesso');
+    } catch (e) {
+        if (msg) msg.innerText = e.message;
+        erroDiv.style.display = 'flex';
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+    }
+}
+
+// ===== CONVITE PACIENTE (PÚBLICO - /convite-paciente/{token}) =====
+
+async function verificarConvitePacienteURL() {
+    // Verifica se a URL contém /convite-paciente/TOKEN
+    const pathMatch = window.location.pathname.match(/\/convite-paciente\/([a-f0-9]{32})/i);
+    const queryMatch = window.location.search.match(/[?&]convite=([a-f0-9]{32})/i);
+    const hashMatch = window.location.hash.match(/#convite-paciente\/([a-f0-9]{32})/i);
+
+    const token = pathMatch?.[1] || queryMatch?.[1] || hashMatch?.[1];
+
+    if (token) {
+        // Esconder tudo, mostrar apenas a seção de convite paciente
+        document.querySelectorAll("main > section").forEach(s => s.classList.add("hidden"));
+        const conviteSection = document.getElementById("sec-convite-paciente");
+        if (conviteSection) conviteSection.classList.remove("hidden");
+
+        // Carregar info do convite
+        document.getElementById("convite-token-input").value = token;
+
+        try {
+            const res = await fetch(`${API_URL}/convites-paciente/${token}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.valido) {
+                    document.getElementById("convite-boasvindas").innerHTML =
+                        `Você foi convidado(a) por <strong>${data.nutricionistaNome}</strong> da <strong>${data.empresaNome}</strong> para se cadastrar no ACNUTRI.`;
+                    document.getElementById("convite-nutri-nome").innerText = data.nutricionistaNome;
+                    document.getElementById("convite-empresa-nome").innerText = data.empresaNome;
+                    document.getElementById("convite-expira").innerText = new Date(data.expiraEm).toLocaleString('pt-BR');
+                    document.getElementById("convite-email").value = data.emailPaciente;
+                } else {
+                    // Convite inválido/expirado
+                    const statusDiv = document.getElementById("convite-status");
+                    statusDiv.className = "mb-4 p-4 rounded-xl bg-rose-500/20 border border-rose-500/30 text-rose-300";
+                    statusDiv.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> <strong>Convite inválido ou expirado.</strong> ${data.mensagem || 'Este convite não é mais válido.'}`;
+                    statusDiv.classList.remove("hidden");
+                    document.getElementById("btn-aceitar-convite").disabled = true;
+                }
+            } else {
+                throw new Error('Convite não encontrado');
+            }
+        } catch (e) {
+            console.error('Erro ao carregar convite:', e);
+            const statusDiv = document.getElementById("convite-status");
+            statusDiv.className = "mb-4 p-4 rounded-xl bg-rose-500/20 border border-rose-500/30 text-rose-300";
+            statusDiv.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> <strong>Erro ao carregar convite.</strong> ${e.message}`;
+            statusDiv.classList.remove("hidden");
+            document.getElementById("btn-aceitar-convite").disabled = true;
+        }
+
+        return true; // Indica que está na tela de convite paciente
+    }
+    return false;
+}
+
+async function aceitarConvitePaciente() {
+    const token = document.getElementById("convite-token-input").value;
+    const nome = document.getElementById("convite-nome")?.value?.trim();
+    const senha = document.getElementById("convite-senha")?.value;
+    const senhaConf = document.getElementById("convite-senha-conf")?.value;
+    const cpf = document.getElementById("convite-cpf")?.value?.replace(/\D/g, '');
+    const dataNascimento = document.getElementById("convite-data-nascimento")?.value;
+    const telefone = document.getElementById("convite-telefone")?.value?.trim();
+    const erroDiv = document.getElementById("convite-erro");
+    const msg = erroDiv?.querySelector("span");
+    const btn = document.getElementById("btn-aceitar-convite");
+
+    if (!token) {
+        if (msg) msg.innerText = "Token de convite inválido.";
+        erroDiv.style.display = "flex";
+        return;
+    }
+    if (!nome || !senha || !cpf || !dataNascimento || !telefone) {
+        if (msg) msg.innerText = "Preencha todos os campos obrigatórios.";
+        erroDiv.style.display = "flex";
+        return;
+    }
+    if (senha.length < 8) {
+        if (msg) msg.innerText = "A senha deve ter pelo menos 8 caracteres.";
+        erroDiv.style.display = "flex";
+        return;
+    }
+    if (senha !== senhaConf) {
+        if (msg) msg.innerText = "As senhas não conferem.";
+        erroDiv.style.display = "flex";
+        return;
+    }
+    if (cpf.length !== 11) {
+        if (msg) msg.innerText = "CPF deve ter 11 dígitos.";
+        erroDiv.style.display = "flex";
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Criando conta...';
+    erroDiv.style.display = "none";
+
+    try {
+        const res = await fetch(`${API_URL}/convites-paciente/${token}/aceitar-com-cadastro`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nome, senha, cpf, dataNascimento, telefone })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.mensagem || "Erro ao aceitar convite");
+
+        // Sucesso - mostrar mensagem e redirecionar para login
+        const statusDiv = document.getElementById("convite-status");
+        statusDiv.className = "mb-4 p-4 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-300";
+        statusDiv.innerHTML = `<i class="fa-solid fa-circle-check"></i> <strong>Conta criada com sucesso!</strong> Redirecionando para login...`;
+        statusDiv.classList.remove("hidden");
+        document.getElementById("form-aceitar-convite").style.display = "none";
+
+        setTimeout(() => {
+            // Limpar URL e ir para login
+            window.history.replaceState({}, document.title, "/");
+            navegar("login");
+        }, 2000);
+
+    } catch (e) {
+        if (msg) msg.innerText = e.message;
+        erroDiv.style.display = "flex";
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-check"></i> Aceitar Convite e Criar Conta';
+    }
+}
+
 // Verificar se há token de convite na URL ao carregar a página
 function verificarConviteURL() {
     // Verifica se a URL contém /convite/TOKEN ou ?convite=TOKEN
@@ -4708,12 +5081,17 @@ function verificarConviteURL() {
 document.addEventListener("DOMContentLoaded", async () => {
     restaurarSidebar();
 
-    // 1. Verificar se há token de convite na URL
-    if (typeof verificarConviteURL === "function" && verificarConviteURL()) {
-        return; // Para aqui, mostra tela de convite
+    // 1. Verificar se há token de convite PACIENTE na URL (/convite-paciente/{token})
+    if (typeof verificarConvitePacienteURL === "function" && await verificarConvitePacienteURL()) {
+        return; // Para aqui, mostra tela de aceite de convite paciente
     }
 
-    // 2. Verificar se há sessão válida
+    // 2. Verificar se há token de convite EQUIPE na URL (/convite/{token})
+    if (typeof verificarConviteURL === "function" && verificarConviteURL()) {
+        return; // Para aqui, mostra tela de convite equipe
+    }
+
+    // 3. Verificar se há sessão válida
     if (sessaoValida()) {
         let u = {};
         try { u = JSON.parse(sessionStorage.getItem("bybar_user") || "{}"); } catch {}

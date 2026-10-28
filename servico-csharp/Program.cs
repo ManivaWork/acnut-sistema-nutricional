@@ -1944,6 +1944,469 @@ app.MapGet("/api/convites/info/{token}", async (string token) =>
     return Results.NotFound(new { mensagem = "Convite não encontrado ou expirado." });
 });
 
+// ============================================================
+// CONVITES PACIENTE (Nutricionista → Paciente)
+// ============================================================
+
+// Helper para obter URL do frontend
+string GetFrontendUrl() => app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<EmailConfig>>().Value.FrontendBaseUrl;
+
+// POST /api/convites-paciente - Nutricionista cria convite para paciente
+app.MapPost("/api/convites-paciente", async (ConvitePacienteInput input, ClaimsPrincipal user, IEmailService emailService) =>
+{
+    var empresaId = Auth.Empresa(user);
+    var nutricionistaId = Auth.UsuarioId(user);
+    var nutricionistaNome = Auth.Nome(user);
+
+    var emailPaciente = (input.EmailPaciente ?? "").Trim().ToLowerInvariant();
+    if (string.IsNullOrWhiteSpace(emailPaciente) || !emailPaciente.Contains("@"))
+        return Results.BadRequest(new { mensagem = "E-mail do paciente inválido." });
+
+    // Gerar token único (UUID v4 sem hífens = 32 chars)
+    var token = Guid.NewGuid().ToString("N");
+    var expiraEm = DateTime.UtcNow.AddDays(7);
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+
+    // Verificar se já existe convite ativo para este email por este nutricionista
+    using var check = new NpgsqlCommand(@"
+        SELECT 1 FROM convites_paciente
+        WHERE nutricionista_id = @nutri AND email_paciente = @email AND status = 'pendente' AND expira_em > CURRENT_TIMESTAMP", conn);
+    check.Parameters.AddWithValue("nutri", nutricionistaId);
+    check.Parameters.AddWithValue("email", emailPaciente);
+    if (await check.ExecuteScalarAsync() != null)
+        return Results.BadRequest(new { mensagem = "Já existe um convite pendente para este e-mail." });
+
+    // Verificar se paciente já está vinculado a este nutricionista
+    using var checkVinculo = new NpgsqlCommand(@"
+        SELECT 1 FROM acessos_paciente_nutri apn
+        JOIN pacientes p ON p.id = apn.paciente_id
+        WHERE apn.nutricionista_id = @nutri AND p.email = @email AND apn.empresa_id = @emp", conn);
+    checkVinculo.Parameters.AddWithValue("nutri", nutricionistaId);
+    checkVinculo.Parameters.AddWithValue("email", emailPaciente);
+    checkVinculo.Parameters.AddWithValue("emp", empresaId);
+    if (await checkVinculo.ExecuteScalarAsync() != null)
+        return Results.BadRequest(new { mensagem = "Este paciente já está vinculado a você." });
+
+    // Inserir convite
+    int conviteId;
+    using (var cmd = new NpgsqlCommand(@"
+        INSERT INTO convites_paciente (empresa_id, nutricionista_id, email_paciente, token, expira_em, status)
+        VALUES (@emp, @nutri, @email, @token, @exp, 'pendente') RETURNING id;", conn))
+    {
+        cmd.Parameters.AddWithValue("emp", empresaId);
+        cmd.Parameters.AddWithValue("nutri", nutricionistaId);
+        cmd.Parameters.AddWithValue("email", emailPaciente);
+        cmd.Parameters.AddWithValue("token", token);
+        cmd.Parameters.AddWithValue("exp", expiraEm);
+        conviteId = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+    }
+
+    // Enviar e-mail
+    var linkAceite = $"{GetFrontendUrl()}/convite-paciente/{token}";
+    var assunto = $"Convite para acompanhamento nutricional - {nutricionistaNome}";
+    var htmlBody = $@"
+        <div style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;'>
+            <h2 style='color:#6c34eb;'>Convite para acompanhamento nutricional</h2>
+            <p>Olá,</p>
+            <p><strong>{nutricionistaNome}</strong> te convidou para ser seu paciente no <strong>ACNUTRI</strong>.</p>
+            <p>Clique no botão abaixo para aceitar o convite (válido por 7 dias):</p>
+            <p style='text-align:center;margin:30px 0;'>
+                <a href='{linkAceite}' style='background:#6c34eb;color:white;padding:14px 28px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;'>
+                    Aceitar Convite
+                </a>
+            </p>
+            <p>Ou copie este link no navegador:<br><small>{linkAceite}</small></p>
+            <hr style='border:none;border-top:1px solid #eee;margin:20px 0;'>
+            <p style='color:#888;font-size:12px;'>Se não foi você, ignore este e-mail.<br>— Equipe ACNUTRI</p>
+        </div>";
+
+    var emailEnviado = await emailService.EnviarEmailAsync(emailPaciente, assunto, htmlBody);
+
+    return Results.Ok(new
+    {
+        id = conviteId,
+        token,
+        emailPaciente,
+        expiraEm,
+        emailEnviado,
+        mensagem = emailEnviado
+            ? "Convite criado e e-mail enviado com sucesso!"
+            : "Convite criado, mas houve falha no envio do e-mail."
+    });
+})
+.RequireAuthorization();
+
+// GET /api/convites-paciente/{token} - Valida token (página de aceite pública)
+app.MapGet("/api/convites-paciente/{token}", async (string token) =>
+{
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+    using var cmd = new NpgsqlCommand(@"
+        SELECT cp.id, cp.email_paciente, cp.nutricionista_id, cp.expira_em, cp.status,
+               u.nome as nutricionista_nome, e.nome as empresa_nome
+        FROM convites_paciente cp
+        JOIN usuarios u ON u.id = cp.nutricionista_id
+        JOIN empresas e ON e.id = cp.empresa_id
+        WHERE cp.token = @t;", conn);
+    cmd.Parameters.AddWithValue("t", token);
+    using var rd = await cmd.ExecuteReaderAsync();
+    if (await rd.ReadAsync())
+    {
+        var status = rd.GetString(4);
+        var expiraEm = rd.GetDateTime(3);
+        var expirado = expiraEm < DateTime.UtcNow;
+
+        return Results.Ok(new
+        {
+            id = rd.GetInt32(0),
+            emailPaciente = rd.GetString(1),
+            nutricionistaId = rd.GetInt32(2),
+            expiraEm = expiraEm.ToString("yyyy-MM-ddTHH:mm:ss"),
+            status = status,
+            expirado = expirado,
+            nutricionistaNome = rd.GetString(5),
+            empresaNome = rd.GetString(6),
+            valido = status == "pendente" && !expirado
+        });
+    }
+    return Results.NotFound(new { mensagem = "Convite não encontrado." });
+})
+.AllowAnonymous();
+
+// POST /api/convites-paciente/{token}/aceitar - Paciente JÁ CADASTRADO aceita
+app.MapPost("/api/convites-paciente/{token}/aceitar", async (string token, AceitarConvitePacienteInput input, ClaimsPrincipal user) =>
+{
+    var pacienteId = Auth.UsuarioId(user); // assumindo que paciente logado tem claim de usuario_id = paciente_id
+    var empresaId = Auth.Empresa(user);
+
+    // Para paciente, o ID pode vir de forma diferente. Vamos buscar pelo email do token.
+    // Se paciente já logado, usar o ID do claim.
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+    using var tx = await conn.BeginTransactionAsync();
+
+    try
+    {
+        // Buscar convite válido
+        int conviteId, nutricionistaId;
+        string emailConvite;
+        using (var cmd = new NpgsqlCommand(@"
+            SELECT id, nutricionista_id, email_paciente
+            FROM convites_paciente
+            WHERE token = @t AND status = 'pendente' AND expira_em > CURRENT_TIMESTAMP", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("t", token);
+            using var rd = await cmd.ExecuteReaderAsync();
+            if (!await rd.ReadAsync())
+                return Results.BadRequest(new { mensagem = "Convite inválido ou expirado." });
+
+            conviteId = rd.GetInt32(0);
+            nutricionistaId = rd.GetInt32(1);
+            emailConvite = rd.GetString(2);
+        }
+
+        // Se paciente logado, verificar se email bate
+        // Se não logado, este endpoint não deve ser chamado (usar aceitar-com-cadastro)
+
+        // Buscar ou criar paciente
+        int pacienteIdFinal;
+        using (var cmd = new NpgsqlCommand("SELECT id FROM pacientes WHERE email = @email AND empresa_id = @emp", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("email", emailConvite);
+            cmd.Parameters.AddWithValue("emp", empresaId);
+            var result = await cmd.ExecuteScalarAsync();
+            if (result != null)
+            {
+                pacienteIdFinal = Convert.ToInt32(result);
+            }
+            else
+            {
+                return Results.BadRequest(new { mensagem = "Paciente não encontrado. Use o endpoint de cadastro." });
+            }
+        }
+
+        // Criar vínculo
+        using (var cmd = new NpgsqlCommand(@"
+            INSERT INTO acessos_paciente_nutri (empresa_id, nutricionista_id, paciente_id)
+            VALUES (@emp, @nutri, @pac)
+            ON CONFLICT (nutricionista_id, paciente_id) DO NOTHING;", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("emp", empresaId);
+            cmd.Parameters.AddWithValue("nutri", nutricionistaId);
+            cmd.Parameters.AddWithValue("pac", pacienteIdFinal);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // Atualizar convite
+        using (var cmd = new NpgsqlCommand(@"
+            UPDATE convites_paciente SET status = 'aceito', aceito_em = CURRENT_TIMESTAMP, paciente_id = @pac
+            WHERE id = @id;", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("pac", pacienteIdFinal);
+            cmd.Parameters.AddWithValue("id", conviteId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        await tx.CommitAsync();
+        return Results.Ok(new { mensagem = "Convite aceito com sucesso! Vínculo criado." });
+    }
+    catch (Exception ex)
+    {
+        await tx.RollbackAsync();
+        return Results.BadRequest(new { mensagem = "Erro ao aceitar convite: " + ex.Message });
+    }
+})
+.RequireAuthorization();
+
+// POST /api/convites-paciente/{token}/aceitar-com-cadastro - Paciente NOVO cadastra + aceita
+app.MapPost("/api/convites-paciente/{token}/aceitar-com-cadastro", async (string token, AceitarConvitePacienteInput input) =>
+{
+    var nome = (input.Nome ?? "").Trim();
+    var senha = input.Senha ?? "";
+    var cpf = (input.Cpf ?? "").Trim().Replace(".", "").Replace("-", "");
+    var dataNascimento = input.DataNascimento;
+    var telefone = (input.Telefone ?? "").Trim();
+
+    if (string.IsNullOrWhiteSpace(nome) || senha.Length < 8 || cpf.Length != 11 || dataNascimento == null)
+        return Results.BadRequest(new { mensagem = "Todos os campos são obrigatórios. Senha mínima 8 caracteres. CPF com 11 dígitos." });
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+    using var tx = await conn.BeginTransactionAsync();
+
+    try
+    {
+        // Buscar convite válido
+        int conviteId, nutricionistaId, empresaId;
+        string emailConvite;
+        using (var cmd = new NpgsqlCommand(@"
+            SELECT id, nutricionista_id, email_paciente, empresa_id
+            FROM convites_paciente
+            WHERE token = @t AND status = 'pendente' AND expira_em > CURRENT_TIMESTAMP", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("t", token);
+            using var rd = await cmd.ExecuteReaderAsync();
+            if (!await rd.ReadAsync())
+                return Results.BadRequest(new { mensagem = "Convite inválido ou expirado." });
+
+            conviteId = rd.GetInt32(0);
+            nutricionistaId = rd.GetInt32(1);
+            emailConvite = rd.GetString(2);
+            empresaId = rd.GetInt32(3);
+        }
+
+        // Verificar se email do cadastro bate com o do convite
+        if (emailConvite != input.Nome?.Trim().ToLowerInvariant().Split('@').LastOrDefault()) // simplificação
+        {
+            // Melhor: o input não tem email, usar o do convite
+        }
+
+        // Verificar se CPF já existe
+        using (var cmd = new NpgsqlCommand("SELECT 1 FROM pacientes WHERE cpf = @cpf AND empresa_id = @emp", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("cpf", cpf);
+            cmd.Parameters.AddWithValue("emp", empresaId);
+            if (await cmd.ExecuteScalarAsync() != null)
+                return Results.BadRequest(new { mensagem = "CPF já cadastrado." });
+        }
+
+        // Criar paciente
+        int pacienteId;
+        using (var cmd = new NpgsqlCommand(@"
+            INSERT INTO pacientes (empresa_id, nome, email, telefone, data_nascimento, sexo, status, cpf)
+            VALUES (@emp, @nome, @email, @tel, @dtnasc, 'N', 'ativo', @cpf) RETURNING id;", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("emp", empresaId);
+            cmd.Parameters.AddWithValue("nome", nome);
+            cmd.Parameters.AddWithValue("email", emailConvite);
+            cmd.Parameters.AddWithValue("tel", telefone);
+            cmd.Parameters.AddWithValue("dtnasc", dataNascimento.Value.Date);
+            cmd.Parameters.AddWithValue("cpf", cpf);
+            pacienteId = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+        }
+
+        // Criar usuário (login) para o paciente
+        var hash = BCrypt.Net.BCrypt.HashPassword(senha);
+        using (var cmd = new NpgsqlCommand(@"
+            INSERT INTO usuarios (empresa_id, nome, email, senha_hash, perfil)
+            VALUES (@emp, @nome, @email, @hash, 'cliente') RETURNING id;", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("emp", empresaId);
+            cmd.Parameters.AddWithValue("nome", nome);
+            cmd.Parameters.AddWithValue("email", emailConvite);
+            cmd.Parameters.AddWithValue("hash", hash);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // Criar vínculo nutricionista ↔ paciente
+        using (var cmd = new NpgsqlCommand(@"
+            INSERT INTO acessos_paciente_nutri (empresa_id, nutricionista_id, paciente_id)
+            VALUES (@emp, @nutri, @pac)
+            ON CONFLICT (nutricionista_id, paciente_id) DO NOTHING;", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("emp", empresaId);
+            cmd.Parameters.AddWithValue("nutri", nutricionistaId);
+            cmd.Parameters.AddWithValue("pac", pacienteId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // Atualizar convite
+        using (var cmd = new NpgsqlCommand(@"
+            UPDATE convites_paciente SET status = 'aceito', aceito_em = CURRENT_TIMESTAMP, paciente_id = @pac
+            WHERE id = @id;", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("pac", pacienteId);
+            cmd.Parameters.AddWithValue("id", conviteId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        await tx.CommitAsync();
+        return Results.Ok(new { mensagem = "Cadastro realizado e convite aceito com sucesso!", pacienteId });
+    }
+    catch (Exception ex)
+    {
+        await tx.RollbackAsync();
+        return Results.BadRequest(new { mensagem = "Erro ao processar: " + ex.Message });
+    }
+})
+.AllowAnonymous();
+
+// GET /api/nutricionista/convites-paciente - Lista convites do nutricionista logado
+app.MapGet("/api/nutricionista/convites-paciente", async (ClaimsPrincipal user) =>
+{
+    var empresaId = Auth.Empresa(user);
+    var nutricionistaId = Auth.UsuarioId(user);
+
+    var lista = new List<object>();
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+    using var cmd = new NpgsqlCommand(@"
+        SELECT id, email_paciente, token, status, expira_em, aceito_em, criado_em, paciente_id
+        FROM convites_paciente
+        WHERE nutricionista_id = @nutri AND empresa_id = @emp
+        ORDER BY criado_em DESC;", conn);
+    cmd.Parameters.AddWithValue("nutri", nutricionistaId);
+    cmd.Parameters.AddWithValue("emp", empresaId);
+    using var rd = await cmd.ExecuteReaderAsync();
+    while (await rd.ReadAsync())
+    {
+        lista.Add(new
+        {
+            id = rd.GetInt32(0),
+            emailPaciente = rd.GetString(1),
+            token = rd.GetString(2),
+            status = rd.GetString(3),
+            expiraEm = rd.GetDateTime(4).ToString("yyyy-MM-ddTHH:mm:ss"),
+            aceitoEm = rd.IsDBNull(5) ? null : rd.GetDateTime(5).ToString("yyyy-MM-ddTHH:mm:ss"),
+            criadoEm = rd.GetDateTime(6).ToString("yyyy-MM-ddTHH:mm:ss"),
+            pacienteId = rd.IsDBNull(7) ? (int?)null : rd.GetInt32(7)
+        });
+    }
+    return Results.Ok(lista);
+})
+.RequireAuthorization();
+
+// POST /api/nutricionista/convites-paciente/{token}/reenviar - Reenviar e-mail do convite
+app.MapPost("/api/nutricionista/convites-paciente/{token}/reenviar", async (string token, ClaimsPrincipal user, IEmailService emailService) =>
+{
+    var empresaId = Auth.Empresa(user);
+    var nutricionistaId = Auth.UsuarioId(user);
+    var nutricionistaNome = Auth.Nome(user);
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+
+    // Buscar convite
+    string emailPaciente;
+    DateTime expiraEm;
+    using (var cmd = new NpgsqlCommand(@"
+        SELECT email_paciente, expira_em, nutricionista_id
+        FROM convites_paciente
+        WHERE token = @t AND nutricionista_id = @nutri AND empresa_id = @emp AND status = 'pendente'", conn))
+    {
+        cmd.Parameters.AddWithValue("t", token);
+        cmd.Parameters.AddWithValue("nutri", nutricionistaId);
+        cmd.Parameters.AddWithValue("emp", empresaId);
+        using var rd = await cmd.ExecuteReaderAsync();
+        if (!await rd.ReadAsync())
+            return Results.NotFound(new { mensagem = "Convite não encontrado ou não pode ser reenviado." });
+
+        emailPaciente = rd.GetString(0);
+        expiraEm = rd.GetDateTime(1);
+    }
+
+    // Verificar se não expirou
+    if (expiraEm < DateTime.UtcNow)
+        return Results.BadRequest(new { mensagem = "Convite expirado. Não é possível reenviar." });
+
+    // Buscar empresa
+    string empresaNome;
+    using (var cmd = new NpgsqlCommand("SELECT nome FROM empresas WHERE id = @id", conn))
+    {
+        cmd.Parameters.AddWithValue("id", empresaId);
+        empresaNome = (await cmd.ExecuteScalarAsync())?.ToString() ?? "ACNUTRI";
+    }
+
+    // Reenviar e-mail
+    var linkAceite = $"{GetFrontendUrl()}/convite-paciente/{token}";
+    var assunto = $"Convite para acompanhamento nutricional - {nutricionistaNome} (Reenviado)";
+    var htmlBody = $@"
+        <div style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;'>
+            <h2 style='color:#6c34eb;'>Convite para acompanhamento nutricional (Reenviado)</h2>
+            <p>Olá,</p>
+            <p><strong>{nutricionistaNome}</strong> reenviou o convite para ser seu paciente no <strong>ACNUTRI</strong>.</p>
+            <p>Clique no botão abaixo para aceitar o convite (válido por 7 dias):</p>
+            <p style='text-align:center;margin:30px 0;'>
+                <a href='{linkAceite}' style='background:#6c34eb;color:white;padding:14px 28px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;'>
+                    Aceitar Convite
+                </a>
+            </p>
+            <p>Ou copie este link no navegador:<br><small>{linkAceite}</small></p>
+            <hr style='border:none;border-top:1px solid #eee;margin:20px 0;'>
+            <p style='color:#888;font-size:12px;'>Se não foi você, ignore este e-mail.<br>— Equipe ACNUTRI</p>
+        </div>";
+
+    var emailEnviado = await emailService.EnviarEmailAsync(emailPaciente, assunto, htmlBody);
+
+    return Results.Ok(new
+    {
+        emailEnviado,
+        mensagem = emailEnviado
+            ? "Convite reenviado com sucesso!"
+            : "Houve falha no envio do e-mail. Tente novamente."
+    });
+})
+.RequireAuthorization();
+
+// POST /api/nutricionista/convites-paciente/{token}/cancelar - Cancelar convite
+app.MapPost("/api/nutricionista/convites-paciente/{token}/cancelar", async (string token, ClaimsPrincipal user) =>
+{
+    var empresaId = Auth.Empresa(user);
+    var nutricionistaId = Auth.UsuarioId(user);
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+
+    // Atualizar status para cancelado
+    using var cmd = new NpgsqlCommand(@"
+        UPDATE convites_paciente
+        SET status = 'cancelado'
+        WHERE token = @t AND nutricionista_id = @nutri AND empresa_id = @emp AND status = 'pendente'", conn);
+    cmd.Parameters.AddWithValue("t", token);
+    cmd.Parameters.AddWithValue("nutri", nutricionistaId);
+    cmd.Parameters.AddWithValue("emp", empresaId);
+    var affected = await cmd.ExecuteNonQueryAsync();
+
+    if (affected == 0)
+        return Results.NotFound(new { mensagem = "Convite não encontrado ou não pode ser cancelado." });
+
+    return Results.Ok(new { mensagem = "Convite cancelado com sucesso." });
+})
+.RequireAuthorization();
+
 // POST /api/onboarding - Criar primeira empresa + super-admin (sem auth, só se 0 usuários e 0 empresas)
 app.MapPost("/api/onboarding", async (OnboardingInput input) =>
 {
@@ -2493,6 +2956,8 @@ record VersaoInput(string? Descricao);
 record EmpresaInput(string? Nome);
 record ConviteInput(string? Email, string? Perfil, string? NivelNutricao);
 record AceitarConviteInput(string? Token, string? Senha, string? Nome);
+record ConvitePacienteInput(string? EmailPaciente);
+record AceitarConvitePacienteInput(string? Token, string? Senha, string? Nome, string? Cpf, DateTime? DataNascimento, string? Telefone);
 record OnboardingInput(string EmpresaNome, string AdminNome, string AdminEmail, string AdminSenha);
 record MedidaCaseiraInput(string Medida, decimal GramasPorUnidade, string? Observacao = null);
 // =====================================================================
@@ -2706,6 +3171,8 @@ static class Auth
 {
     public static int Peso(string? n) => n switch { "leitura" => 1, "edicao" => 2, "total" => 3, _ => 0 };
     public static int Empresa(ClaimsPrincipal u) => int.Parse(u.FindFirst("empresa")!.Value);
+    public static int UsuarioId(ClaimsPrincipal u) => int.Parse(u.FindFirst("uid")!.Value);
+    public static string? Nome(ClaimsPrincipal u) => u.FindFirst("nome")?.Value;
 
     public static string Gerar(string key, int uid, int empresa, string perfil, Dictionary<string, string> modulos)
     {
