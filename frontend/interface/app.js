@@ -2944,13 +2944,13 @@ let anamneseState = {
 
 const anamneseSections = [
     { id: 1, title: "Objetivo", icon: "fa-bullseye" },
-    { id: 2, title: "Histórico Médico", icon: "fa-file-medical" },
-    { id: 3, title: "Alergias e Intolerâncias", icon: "fa-triangle-exclamation" },
-    { id: 4, title: "Rotina e Hábitos", icon: "fa-clock" },
-    { id: 5, title: "Histórico Familiar", icon: "fa-users" },
-    { id: 6, title: "Exames e Suplementação", icon: "fa-flask-vial" },
-    { id: 7, title: "Alimentação Atual", icon: "fa-bowl-food" },
-    { id: 8, title: "Observações Finais", icon: "fa-pen-to-square" }
+    { id: 2, title: "Dados Pessoais", icon: "fa-user" },
+    { id: 3, title: "Rotina e Estilo de Vida", icon: "fa-clock" },
+    { id: 4, title: "Alimentação Atual", icon: "fa-bowl-food" },
+    { id: 5, title: "Saúde", icon: "fa-heart-pulse" },
+    { id: 6, title: "Sintomas", icon: "fa-notes-medical" },
+    { id: 7, title: "Rotina Alimentar", icon: "fa-utensils" },
+    { id: 8, title: "Finalizando", icon: "fa-flag-checkered" }
 ];
 
 async function renderAnamneseForm(pacienteId) {
@@ -3070,6 +3070,12 @@ function renderAnamneseSection(sectionNum) {
         html = renderSectionAlimentacaoAtual();
     } else if (sectionNum === 5) {
         html = renderSectionSaude();
+    } else if (sectionNum === 6) {
+        html = renderSectionSintomas();
+    } else if (sectionNum === 7) {
+        html = renderSectionRotinaAlimentar();
+    } else if (sectionNum === 8) {
+        html = renderSectionFinalizando();
     } else {
         html = `<div class="text-center py-12 text-slate-500">
             <i class="fa-solid ${section.icon} text-3xl mb-3"></i>
@@ -3566,6 +3572,184 @@ function renderSectionSaude() {
                         </label>
                     `).join('')}
                 </div>
+            </div>
+        </div>
+    `;
+}
+
+// Section 6: Sintomas
+function renderSectionSintomas() {
+    const data = anamneseState.data.sintomas || {};
+    const sintomasSelecionados = data.lista || [];
+    const outrosSintomas = data.outros || '';
+
+    const sintomasDisponiveis = [
+        'Cansaço',
+        'Inchaço',
+        'Gases',
+        'Constipação',
+        'Diarreia',
+        'Ansiedade para comer',
+        'Compulsão alimentar',
+        'Dor de cabeça',
+        'Queda de cabelo'
+    ];
+
+    return `
+        <div class="space-y-5">
+            <div>
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-notes-medical text-purple-400"></i>Sintomas
+                </h3>
+                <p class="text-sm text-slate-400 mt-1">Marque os sintomas que você apresenta com frequência</p>
+            </div>
+
+            <div class="space-y-2">
+                <label class="block text-sm font-medium text-slate-300">Sintomas frequentes</label>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    ${sintomasDisponiveis.map(sintoma => `
+                        <label class="flex items-center gap-3 cursor-pointer p-3 bg-slate-800/50 border border-white/10 rounded-xl hover:border-purple-500/50 transition">
+                            <input type="checkbox"
+                                class="w-4 h-4 rounded border-white/20 bg-slate-800 text-purple-600 focus:ring-purple-500"
+                                ${sintomasSelecionados.includes(sintoma) ? 'checked' : ''}
+                                onchange="toggleSintoma('${sintoma}', this.checked)">
+                            <span class="text-sm text-slate-200">${sintoma}</span>
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+
+            <div class="space-y-2">
+                <label class="block text-sm font-medium text-slate-300">Outros sintomas</label>
+                <textarea rows="3"
+                    class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                    placeholder="Descreva outros sintomas não listados acima..."
+                    oninput="anamneseUpdateField('sintomas', 'outros', this.value)">${outrosSintomas}</textarea>
+            </div>
+        </div>
+    `;
+}
+
+function toggleSintoma(sintoma, checked) {
+    if (!anamneseState.data.sintomas) anamneseState.data.sintomas = {};
+    if (!anamneseState.data.sintomas.lista) anamneseState.data.sintomas.lista = [];
+
+    if (checked) {
+        if (!anamneseState.data.sintomas.lista.includes(sintoma)) {
+            anamneseState.data.sintomas.lista.push(sintoma);
+        }
+    } else {
+        anamneseState.data.sintomas.lista = anamneseState.data.sintomas.lista.filter(s => s !== sintoma);
+    }
+}
+
+// Section 7: Rotina Alimentar
+function renderSectionRotinaAlimentar() {
+    const data = anamneseState.data.rotina_alimentar || {};
+
+    return `
+        <div class="space-y-5">
+            <div>
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-utensils text-purple-400"></i>Rotina Alimentar
+                </h3>
+                <p class="text-sm text-slate-400 mt-1">Informe os horários e hábitos das suas refeições</p>
+            </div>
+
+            <div class="space-y-2">
+                <label class="block text-sm font-medium text-slate-300">Horários das refeições</label>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="space-y-2">
+                        <label class="block text-xs text-slate-400">Café da manhã</label>
+                        <input type="time"
+                            class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-purple-500 focus:outline-none transition"
+                            value="${data.cafe_manha || ''}"
+                            onchange="anamneseUpdateField('rotina_alimentar', 'cafe_manha', this.value)">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="block text-xs text-slate-400">Lanche da manhã</label>
+                        <input type="time"
+                            class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-purple-500 focus:outline-none transition"
+                            value="${data.lanche_manha || ''}"
+                            onchange="anamneseUpdateField('rotina_alimentar', 'lanche_manha', this.value)">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="block text-xs text-slate-400">Almoço</label>
+                        <input type="time"
+                            class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-purple-500 focus:outline-none transition"
+                            value="${data.almoco || ''}"
+                            onchange="anamneseUpdateField('rotina_alimentar', 'almoco', this.value)">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="block text-xs text-slate-400">Lanche da tarde</label>
+                        <input type="time"
+                            class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-purple-500 focus:outline-none transition"
+                            value="${data.lanche_tarde || ''}"
+                            onchange="anamneseUpdateField('rotina_alimentar', 'lanche_tarde', this.value)">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="block text-xs text-slate-400">Jantar</label>
+                        <input type="time"
+                            class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-purple-500 focus:outline-none transition"
+                            value="${data.jantar || ''}"
+                            onchange="anamneseUpdateField('rotina_alimentar', 'jantar', this.value)">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="block text-xs text-slate-400">Ceia</label>
+                        <input type="time"
+                            class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-purple-500 focus:outline-none transition"
+                            value="${data.ceia || ''}"
+                            onchange="anamneseUpdateField('rotina_alimentar', 'ceia', this.value)">
+                    </div>
+                </div>
+            </div>
+
+            <div class="space-y-2">
+                <label class="block text-sm font-medium text-slate-300">Fica longos períodos sem comer?</label>
+                <select
+                    class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-purple-500 focus:outline-none transition"
+                    onchange="anamneseUpdateField('rotina_alimentar', 'longos_periodos_sem_comer', this.value)">
+                    <option value="">Selecione</option>
+                    <option value="sim" ${data.longos_periodos_sem_comer === 'sim' ? 'selected' : ''}>Sim</option>
+                    <option value="nao" ${data.longos_periodos_sem_comer === 'nao' ? 'selected' : ''}>Não</option>
+                    <option value="as_vezes" ${data.longos_periodos_sem_comer === 'as_vezes' ? 'selected' : ''}>Às vezes</option>
+                </select>
+            </div>
+        </div>
+    `;
+}
+
+// Section 8: Finalizando
+function renderSectionFinalizando() {
+    const data = anamneseState.data.finalizando || {};
+
+    return `
+        <div class="space-y-5">
+            <div>
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-flag-checkered text-purple-400"></i>Finalizando
+                </h3>
+                <p class="text-sm text-slate-400 mt-1">Últimas informações antes de salvar</p>
+            </div>
+
+            <div class="space-y-2">
+                <label class="block text-sm font-medium text-slate-300">Algo mais que gostaria de informar?</label>
+                <textarea rows="4"
+                    class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                    placeholder="Observações adicionais, dúvidas, ou qualquer informação relevante..."
+                    oninput="anamneseUpdateField('finalizando', 'observacoes_adicionais', this.value)">${data.observacoes_adicionais || ''}</textarea>
+            </div>
+
+            <div class="space-y-2">
+                <label class="block text-sm font-medium text-slate-300">O que você espera do acompanhamento nutricional?</label>
+                <textarea rows="4"
+                    class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                    placeholder="Descreva suas expectativas, metas desejadas, como gostaria que fosse o acompanhamento..."
+                    oninput="anamneseUpdateField('finalizando', 'expectativas', this.value)">${data.expectativas || ''}</textarea>
+            </div>
+
+            <div class="pt-4 border-t border-white/10">
+                <p class="text-sm text-slate-400 text-center mb-4">Ao clicar em Salvar, sua anamnese será enviada para o nutricionista responsável.</p>
             </div>
         </div>
     `;
