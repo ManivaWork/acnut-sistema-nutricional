@@ -40,26 +40,15 @@ var origens = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
     {
-    o.TokenValidationParameters = new TokenValidationParameters
-    {
-    ValidateIssuer = true, ValidIssuer = "bybarhub",
-    ValidateAudience = true, ValidAudience = "bybarhub-app",
-    ValidateLifetime = true, ClockSkew = TimeSpan.FromMinutes(1),
-    ValidateIssuerSigningKey = true,
-    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
-    };
-    // <img> e links de arquivo não enviam header: aceita ?t= só em GET /api/arquivos
-    o.Events = new JwtBearerEvents
-    {
-    OnMessageReceived = ctx =>
-    {
-    if (HttpMethods.IsGet(ctx.Request.Method)
-    && ctx.Request.Path.StartsWithSegments("/api/arquivos")
-    && ctx.Request.Query.TryGetValue("t", out var t))
-    ctx.Token = t;
-    return Task.CompletedTask;
-    }
-    };
+        o.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true, ValidIssuer = "bybarhub",
+            ValidateAudience = true, ValidAudience = "bybarhub-app",
+            ValidateLifetime = true, ClockSkew = TimeSpan.FromMinutes(1),
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+        };
+        // Token via header Authorization obrigatório (não aceita ?t=)
     });
 builder.Services.AddAuthorization();
 builder.Services.AddEndpointsApiExplorer();
@@ -93,7 +82,72 @@ if (!string.IsNullOrEmpty(asaasCfg.ApiKey))
     app.MapBillingEndpoints(connString, asaasCfg);
 
 await Seed.Garantir(connString, builder.Configuration);
-        // Qualquer erro vira JSON { mensagem } (o front mostra no alert)
+
+        // ===== HEADERS DE SEGURANÇA =====
+        app.Use(async (ctx, next) =>
+        {
+            ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
+            ctx.Response.Headers["X-Frame-Options"] = "DENY";
+            ctx.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+            // HSTS só em HTTPS (produção)
+            if (ctx.Request.IsHttps)
+                ctx.Response.Headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
+            await next();
+        });
+
+        // ===== AUDITORIA HELPER =====
+        async Task RegistrarAuditoria(HttpContext http, string acao, long? registroId = null)
+        {
+            try
+            {
+                var user = http.User;
+                if (user.FindFirst("tipo")?.Value != "equipe") return;
+                var uidClaim = user.FindFirst("uid");
+                var empClaim = user.FindFirst("empresa");
+                if (uidClaim == null || empClaim == null) return;
+
+                int uid = int.Parse(uidClaim.Value);
+                int emp = int.Parse(empClaim.Value);
+                var ip = http.Connection.RemoteIpAddress;
+                var ua = http.Request.Headers["User-Agent"].ToString();
+
+                using var conn = new NpgsqlConnection(connString);
+                await conn.OpenAsync();
+                using var cmd = new NpgsqlCommand(@"
+                    INSERT INTO auditoria (empresa_id, usuario_id, acao, rota, registro_id, ip, user_agent)
+                    VALUES (@emp, @uid, @acao, @rota, @reg, @ip, @ua)", conn);
+                cmd.Parameters.AddWithValue("emp", emp);
+                cmd.Parameters.AddWithValue("uid", uid);
+                cmd.Parameters.AddWithValue("acao", acao);
+                cmd.Parameters.AddWithValue("rota", http.Request.Path.Value ?? "");
+                cmd.Parameters.AddWithValue("reg", (object?)registroId ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("ip", (object?)ip ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("ua", string.IsNullOrEmpty(ua) ? DBNull.Value : (object)ua);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            catch { /* auditoria não deve quebrar a request */ }
+        }
+
+        // Versão para uso dentro de transação existente
+        async Task RegistrarAuditoriaDetalhada(NpgsqlConnection conn, NpgsqlTransaction tx, int emp, int uid, string acao, string rota, long? registroId, string detalhes)
+        {
+            try
+            {
+                using var cmd = new NpgsqlCommand(@"
+                    INSERT INTO auditoria (empresa_id, usuario_id, acao, rota, registro_id, ip, user_agent)
+                    VALUES (@emp, @uid, @acao, @rota, @reg, NULL, @detalhes)", conn, tx);
+                cmd.Parameters.AddWithValue("emp", emp);
+                cmd.Parameters.AddWithValue("uid", uid);
+                cmd.Parameters.AddWithValue("acao", acao);
+                cmd.Parameters.AddWithValue("rota", rota);
+                cmd.Parameters.AddWithValue("reg", (object?)registroId ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("detalhes", detalhes);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            catch { /* auditoria não deve quebrar a request */ }
+        }
+
+        // Qualquer erro vira JSON { mensagem } (o front mostra no alert) - SEM DADOS PESSOAIS NOS LOGS
 app.Use(async (context, next) =>
         {
         try
@@ -102,12 +156,13 @@ app.Use(async (context, next) =>
         }
         catch (Exception ex)
         {
-        Console.WriteLine($"=== ERRO em {context.Request.Method} {context.Request.Path}: {ex} ===");
+        // Log sem dados sensíveis: apenas método, rota, tipo de erro
+        Console.WriteLine($"=== ERRO em {context.Request.Method} {context.Request.Path}: {ex.GetType().Name} ===");
         if (!context.Response.HasStarted)
         {
         context.Response.StatusCode = 500;
         context.Response.ContentType = "application/json";
-        await context.Response.WriteAsync(JsonSerializer.Serialize(new { mensagem = ex.Message }));
+        await context.Response.WriteAsync(JsonSerializer.Serialize(new { mensagem = "Erro interno do servidor." }));
         }
         }
         });
@@ -131,16 +186,16 @@ app.Use(async (ctx, next) =>
     }
     var u = ctx.User;
         if (u.Identity?.IsAuthenticated != true) { await Negar(401, "Sessão expirada. Entre novamente."); return; }
-    // Token de paciente: GET em /api/paciente/* + POST/DELETE em /api/paciente/exames
+    // Token de paciente: GET em /api/paciente/* + POST/DELETE em /api/paciente/exames + POST/GET em /api/paciente/consentimentos
     if (u.FindFirst("tipo")?.Value == "paciente")
     {
         if (!path.StartsWith("/api/paciente/"))
         { await Negar(403, "Acesso não permitido."); return; }
         if (!HttpMethods.IsGet(m))
         {
-            // Permite apenas POST /api/paciente/exames e DELETE /api/paciente/exames/{id}
             bool permitido = (path == "/api/paciente/exames" && HttpMethods.IsPost(m))
-                          || (path.StartsWith("/api/paciente/exames/") && HttpMethods.IsDelete(m));
+                          || (path.StartsWith("/api/paciente/exames/") && HttpMethods.IsDelete(m))
+                          || (path == "/api/paciente/consentimentos" && (HttpMethods.IsPost(m) || HttpMethods.IsGet(m)));
             if (!permitido) { await Negar(403, "Acesso não permitido."); return; }
         }
         await next(); return;
@@ -309,6 +364,166 @@ app.MapDelete("/api/pacientes/{id}", async (int id, ClaimsPrincipal user) =>
     return rowsAffected > 0
         ? Results.Ok(new { mensagem = "Paciente excluído com sucesso!" })
         : Results.NotFound(new { mensagem = "Paciente não encontrado." });
+});
+
+// 5. ANONIMIZAR PACIENTE (LGPD) - apenas admin e super_admin
+app.MapPost("/api/pacientes/{id}/anonimizar", async (int id, ClaimsPrincipal user) =>
+{
+    var perfil = user.FindFirst("perfil")?.Value;
+    if (perfil != "super_admin" && perfil != "admin")
+        return Results.Forbid();
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+
+    // Verifica se o paciente existe e pertence à empresa
+    using (var cmd = new NpgsqlCommand("SELECT id, nome FROM pacientes WHERE id = @id AND empresa_id = @emp", conn))
+    {
+        cmd.Parameters.AddWithValue("id", id);
+        cmd.Parameters.AddWithValue("emp", Auth.Empresa(user));
+        using var reader = await cmd.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+            return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+    }
+
+    // Usar transação para garantir atomicidade
+    using var tx = await conn.BeginTransactionAsync();
+    try
+    {
+        var agora = DateTime.UtcNow;
+        var cpfAnon = $"ANON-{id:D8}";
+        var emailAnon = $"anon-{id:D8}@anonimizado.local";
+        var nomeAnon = $"Paciente Anonimizado {id}";
+        var telefoneAnon = "";
+        var dataNascAnon = new DateTime(1900, 1, 1);
+
+        // 1. Apagar dados relacionados
+        // Exames e arquivos de exames
+        using (var cmd = new NpgsqlCommand(@"
+            DELETE FROM arquivos_paciente
+            WHERE paciente_id = @id AND empresa_id = @emp
+            AND tipo IN ('exame', 'evolucao');", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("emp", Auth.Empresa(user));
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        using (var cmd = new NpgsqlCommand(@"
+            DELETE FROM exames WHERE paciente_id = @id AND empresa_id = @emp", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("emp", Auth.Empresa(user));
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // Anamnese
+        using (var cmd = new NpgsqlCommand(@"
+            DELETE FROM anamneses WHERE paciente_id = @id AND empresa_id = @emp", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("emp", Auth.Empresa(user));
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // Evolução (inclui fotos)
+        using (var cmd = new NpgsqlCommand(@"
+            DELETE FROM evolucao WHERE paciente_id = @id AND empresa_id = @emp", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("emp", Auth.Empresa(user));
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // Check-ins semanais
+        using (var cmd = new NpgsqlCommand(@"
+            DELETE FROM checkins_semanais WHERE paciente_id = @id AND empresa_id = @emp", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("emp", Auth.Empresa(user));
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // Avaliações físicas
+        using (var cmd = new NpgsqlCommand(@"
+            DELETE FROM avaliacoes_fisicas WHERE paciente_id = @id AND empresa_id = @emp", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("emp", Auth.Empresa(user));
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // Planos alimentares e versões
+        using (var cmd = new NpgsqlCommand(@"
+            DELETE FROM planos_versoes WHERE paciente_id = @id AND empresa_id = @emp", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("emp", Auth.Empresa(user));
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        using (var cmd = new NpgsqlCommand(@"
+            DELETE FROM planos_alimentares WHERE paciente_id = @id AND empresa_id = @emp", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("emp", Auth.Empresa(user));
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // Orientações nutricionais
+        using (var cmd = new NpgsqlCommand(@"
+            DELETE FROM orientacoes_nutricionais WHERE paciente_id = @id AND empresa_id = @emp", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("emp", Auth.Empresa(user));
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // Metas do paciente
+        using (var cmd = new NpgsqlCommand(@"
+            DELETE FROM metas_paciente WHERE paciente_id = @id AND empresa_id = @emp", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("emp", Auth.Empresa(user));
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // 2. Anonimizar dados do paciente
+        using (var cmd = new NpgsqlCommand(@"
+            UPDATE pacientes SET
+                nome = @nome,
+                email = @email,
+                telefone = @telefone,
+                data_nascimento = @data_nasc,
+                cpf = @cpf,
+                foto_url = NULL,
+                anonimizado_em = @agora
+            WHERE id = @id AND empresa_id = @emp", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("emp", Auth.Empresa(user));
+            cmd.Parameters.AddWithValue("nome", nomeAnon);
+            cmd.Parameters.AddWithValue("email", emailAnon);
+            cmd.Parameters.AddWithValue("telefone", telefoneAnon);
+            cmd.Parameters.AddWithValue("data_nasc", dataNascAnon);
+            cmd.Parameters.AddWithValue("cpf", cpfAnon);
+            cmd.Parameters.AddWithValue("agora", agora);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // 3. Registrar na auditoria
+        await RegistrarAuditoriaDetalhada(conn, tx, Auth.Empresa(user), Auth.UsuarioId(user),
+            "anonimizacao", $"/api/pacientes/{id}/anonimizar", id,
+            $"Paciente anonimizado por {Auth.Nome(user) ?? "usuário"}. Dados clínicos removidos, PII substituída por valores anônimos.");
+
+        await tx.CommitAsync();
+        return Results.Ok(new { mensagem = "Paciente anonimizado com sucesso. Dados clínicos removidos e PII substituída.", anonimizado_em = agora });
+    }
+    catch
+    {
+        await tx.RollbackAsync();
+        throw;
+    }
 });
 
 //==================================== AVALIAÇÃO FÍSICA (integra com o microserviço Python)======================================
@@ -576,6 +791,134 @@ app.MapGet("/api/checkins/{pacienteId}", async (int pacienteId) =>
     }
     return Results.Ok(checkins);
 });
+
+// Helper: busca últimos valores de peso/altura/%gordura de 3 fontes para um paciente
+async Task<object> BuscarUltimosValoresPaciente(int pacienteId)
+{
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+
+    var result = new Dictionary<string, object?>();
+
+    // 1. Avaliações físicas (tem peso, altura, % gordura)
+    using (var cmd = new NpgsqlCommand(@"
+        SELECT peso_kg, altura_cm, percentual_gordura, criado_em
+        FROM avaliacoes_fisicas
+        WHERE paciente_id = @pid
+        ORDER BY criado_em DESC, id DESC
+        LIMIT 1;", conn))
+    {
+        cmd.Parameters.AddWithValue("pid", pacienteId);
+        using var rd = await cmd.ExecuteReaderAsync();
+        if (await rd.ReadAsync())
+        {
+            result["avaliacao_fisica"] = new
+            {
+                peso = rd.IsDBNull(0) ? (double?)null : Convert.ToDouble(rd.GetValue(0)),
+                altura = rd.IsDBNull(1) ? (double?)null : Convert.ToDouble(rd.GetValue(1)),
+                percentual_gordura = rd.IsDBNull(2) ? (double?)null : Convert.ToDouble(rd.GetValue(2)),
+                data = rd.GetDateTime(3).ToString("yyyy-MM-dd"),
+                fonte = "avaliacao_fisica"
+            };
+        }
+    }
+
+    // 2. Evolução (tem peso, % gordura, medidas)
+    using (var cmd = new NpgsqlCommand(@"
+        SELECT peso_kg, percentual_gordura, cintura_cm, quadril_cm, abdomen_cm, braco_cm, coxa_cm, data_registro
+        FROM evolucao_registros
+        WHERE paciente_id = @pid
+        ORDER BY data_registro DESC, id DESC
+        LIMIT 1;", conn))
+    {
+        cmd.Parameters.AddWithValue("pid", pacienteId);
+        using var rd = await cmd.ExecuteReaderAsync();
+        if (await rd.ReadAsync())
+        {
+            result["evolucao"] = new
+            {
+                peso = rd.IsDBNull(0) ? (double?)null : Convert.ToDouble(rd.GetValue(0)),
+                percentual_gordura = rd.IsDBNull(1) ? (double?)null : Convert.ToDouble(rd.GetValue(1)),
+                cintura = rd.IsDBNull(2) ? (double?)null : Convert.ToDouble(rd.GetValue(2)),
+                quadril = rd.IsDBNull(3) ? (double?)null : Convert.ToDouble(rd.GetValue(3)),
+                abdomen = rd.IsDBNull(4) ? (double?)null : Convert.ToDouble(rd.GetValue(4)),
+                braco = rd.IsDBNull(5) ? (double?)null : Convert.ToDouble(rd.GetValue(5)),
+                coxa = rd.IsDBNull(6) ? (double?)null : Convert.ToDouble(rd.GetValue(6)),
+                data = rd.GetDateTime(7).ToString("yyyy-MM-dd"),
+                fonte = "evolucao"
+            };
+        }
+    }
+
+    // 3. Check-ins semanais (tem peso)
+    using (var cmd = new NpgsqlCommand(@"
+        SELECT peso_atual_kg, data_checkin
+        FROM checkins_semanais
+        WHERE paciente_id = @pid
+        ORDER BY data_checkin DESC, id DESC
+        LIMIT 1;", conn))
+    {
+        cmd.Parameters.AddWithValue("pid", pacienteId);
+        using var rd = await cmd.ExecuteReaderAsync();
+        if (await rd.ReadAsync())
+        {
+            result["checkin"] = new
+            {
+                peso = rd.IsDBNull(0) ? (double?)null : Convert.ToDouble(rd.GetValue(0)),
+                data = rd.GetDateTime(1).ToString("yyyy-MM-dd"),
+                fonte = "checkin"
+            };
+        }
+    }
+
+    // Determinar o valor mais recente geral (para sugestão rápida)
+    var todasFontes = new List<dynamic>();
+    if (result.ContainsKey("avaliacao_fisica")) todasFontes.Add(result["avaliacao_fisica"]);
+    if (result.ContainsKey("evolucao")) todasFontes.Add(result["evolucao"]);
+    if (result.ContainsKey("checkin")) todasFontes.Add(result["checkin"]);
+
+    dynamic? maisRecente = null;
+    if (todasFontes.Count > 0)
+    {
+        maisRecente = todasFontes.OrderByDescending(x => DateTime.Parse(((dynamic)x).data)).First();
+    }
+
+    return new
+    {
+        paciente_id = pacienteId,
+        fontes = result,
+        mais_recente = maisRecente != null ? new
+        {
+            peso = maisRecente.peso,
+            altura = maisRecente.altura,
+            percentual_gordura = maisRecente.percentual_gordura,
+            data = maisRecente.data,
+            fonte = maisRecente.fonte
+        } : null
+    };
+}
+
+// ==================================================== HISTÓRICO DE VALORES (Equipe) ==========================================
+// GET /api/historico-valores/{pacienteId} - Último peso, altura, % gordura e data de avaliacoes_fisicas, evolucao_registros e checkins_semanais
+app.MapGet("/api/historico-valores/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
+{
+    int emp = Auth.Empresa(user);
+
+    // Validar se paciente pertence à empresa do token
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+    using (var cmd = new NpgsqlCommand("SELECT 1 FROM pacientes WHERE id = @id AND empresa_id = @emp", conn))
+    {
+        cmd.Parameters.AddWithValue("id", pacienteId);
+        cmd.Parameters.AddWithValue("emp", emp);
+        if (await cmd.ExecuteScalarAsync() == null)
+            return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+    }
+
+    var dados = await BuscarUltimosValoresPaciente(pacienteId);
+    return Results.Ok(dados);
+});
+
 // ========================================================== ANAMNESE ===========================================================
 app.MapPost("/api/anamnese", async (AnamneseInput input) =>
 {
@@ -1225,29 +1568,65 @@ app.MapDelete("/api/metas/acompanhamento/{id}", async (int id) =>
 // =====================================================================
 // ARQUIVOS (fotos de evolução e exames)
 // =====================================================================
-app.MapGet("/api/arquivos/{id}", async (int id) =>
+app.MapGet("/api/arquivos/{id}", async (int id, ClaimsPrincipal user, HttpContext http) =>
 {
+    int emp = int.Parse(user.FindFirst("empresa")!.Value);
+
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
-    using var cmd = new NpgsqlCommand("SELECT mime, dados FROM arquivos_paciente WHERE id = @id", conn);
-    cmd.Parameters.AddWithValue("id", id);
-    using var rd = await cmd.ExecuteReaderAsync();
+
+    // Verificar se arquivo pertence à empresa do usuário
+    using var cmdCheck = new NpgsqlCommand(@"
+        SELECT a.mime, a.dados, a.paciente_id
+        FROM arquivos_paciente a
+        JOIN pacientes p ON p.id = a.paciente_id
+        WHERE a.id = @id AND p.empresa_id = @emp", conn);
+    cmdCheck.Parameters.AddWithValue("id", id);
+    cmdCheck.Parameters.AddWithValue("emp", emp);
+
+    using var rd = await cmdCheck.ExecuteReaderAsync();
     if (!await rd.ReadAsync())
         return Results.NotFound(new { mensagem = "Arquivo não encontrado." });
 
-    return Results.File(rd.GetFieldValue<byte[]>(1), rd.GetString(0));
+    var mime = rd.GetString(0);
+    var dados = rd.GetFieldValue<byte[]>(1);
+    var pacienteId = rd.GetInt64(2);
+
+    // Auditoria: leitura de arquivo
+    await RegistrarAuditoria(http, "leitura", id);
+
+    return Results.File(dados, mime);
 });
 
-app.MapDelete("/api/arquivos/{id}", async (int id) =>
+app.MapDelete("/api/arquivos/{id}", async (int id, ClaimsPrincipal user, HttpContext http) =>
 {
+    int emp = int.Parse(user.FindFirst("empresa")!.Value);
+
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
+
+    // Verificar se arquivo pertence à empresa do usuário
+    using var cmdCheck = new NpgsqlCommand(@"
+        SELECT a.id FROM arquivos_paciente a
+        JOIN pacientes p ON p.id = a.paciente_id
+        WHERE a.id = @id AND p.empresa_id = @emp", conn);
+    cmdCheck.Parameters.AddWithValue("id", id);
+    cmdCheck.Parameters.AddWithValue("emp", emp);
+
+    var exists = await cmdCheck.ExecuteScalarAsync();
+    if (exists == null)
+        return Results.NotFound(new { mensagem = "Arquivo não encontrado." });
+
     using var cmd = new NpgsqlCommand("DELETE FROM arquivos_paciente WHERE id = @id", conn);
     cmd.Parameters.AddWithValue("id", id);
     var rows = await cmd.ExecuteNonQueryAsync();
-    return rows > 0
-        ? Results.Ok(new { mensagem = "Arquivo excluído!" })
-        : Results.NotFound(new { mensagem = "Arquivo não encontrado." });
+
+    if (rows > 0)
+    {
+        await RegistrarAuditoria(http, "exclusao", id);
+        return Results.Ok(new { mensagem = "Arquivo excluído!" });
+    }
+    return Results.NotFound(new { mensagem = "Arquivo não encontrado." });
 });
 
 // =====================================================================
@@ -3011,6 +3390,444 @@ app.MapDelete("/api/paciente/exames/{id:int}", async (int id, ClaimsPrincipal us
     return rows > 0
         ? Results.Ok(new { mensagem = "Exame excluído com sucesso!" })
         : Results.NotFound(new { mensagem = "Exame não encontrado." });
+});
+
+// POST /api/paciente/consentimentos - Registra consentimento do paciente (aceito=true) ou revoga (aceito=false)
+app.MapPost("/api/paciente/consentimentos", async (HttpRequest request, ClaimsPrincipal user) =>
+{
+    int pid = int.Parse(user.FindFirst("pid")!.Value);
+    int emp = int.Parse(user.FindFirst("empresa")!.Value);
+
+    var form = await request.ReadFormAsync();
+    string tipo = form["tipo"].ToString().Trim();
+    string versao = form["versao_texto"].ToString().Trim();
+    if (tipo == "" || versao == "") return Results.BadRequest(new { mensagem = "Tipo e versão são obrigatórios." });
+
+    // aceito: opcional, default true. Se false, revoga o consentimento
+    bool aceito = true;
+    var aceitoStr = form["aceito"].ToString().Trim().ToLower();
+    if (aceitoStr == "false" || aceitoStr == "0") aceito = false;
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+
+    var ip = request.HttpContext.Connection.RemoteIpAddress;
+
+    using var cmd = new NpgsqlCommand(@"
+        INSERT INTO consentimentos (empresa_id, paciente_id, tipo, versao_texto, aceito, ip)
+        VALUES (@emp, @pid, @tipo, @versao, @aceito, @ip)
+        ON CONFLICT (empresa_id, paciente_id, tipo, versao_texto) DO UPDATE SET aceito = @aceito, ip = @ip, criado_em = CURRENT_TIMESTAMP;", conn);
+    cmd.Parameters.AddWithValue("emp", emp);
+    cmd.Parameters.AddWithValue("pid", pid);
+    cmd.Parameters.AddWithValue("tipo", tipo);
+    cmd.Parameters.AddWithValue("versao", versao);
+    cmd.Parameters.AddWithValue("aceito", aceito);
+    cmd.Parameters.AddWithValue("ip", (object?)ip ?? DBNull.Value);
+    await cmd.ExecuteNonQueryAsync();
+
+    return Results.Ok(new { mensagem = aceito ? "Consentimento registrado." : "Consentimento revogado." });
+});
+
+// GET /api/paciente/consentimentos - Lista consentimentos do paciente
+app.MapGet("/api/paciente/consentimentos", async (ClaimsPrincipal user) =>
+{
+    int pid = int.Parse(user.FindFirst("pid")!.Value);
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+
+    var lista = new List<object>();
+    using var cmd = new NpgsqlCommand(@"
+        SELECT tipo, versao_texto, aceito, criado_em, ip
+        FROM consentimentos
+        WHERE paciente_id = @p
+        ORDER BY tipo, criado_em DESC;", conn);
+    cmd.Parameters.AddWithValue("p", pid);
+    using var rd = await cmd.ExecuteReaderAsync();
+    while (await rd.ReadAsync())
+    {
+        lista.Add(new
+        {
+            tipo = rd.GetString(0),
+            versao_texto = rd.GetString(1),
+            aceito = rd.GetBoolean(2),
+            criado_em = rd.GetDateTime(3),
+            ip = rd.IsDBNull(4) ? null : rd.GetFieldValue<System.Net.IPAddress>(4).ToString()
+        });
+    }
+    return Results.Ok(lista);
+});
+
+// GET /api/paciente/ultimos-valores - Últimos valores do paciente (peso, altura, % gordura) para pré-preenchimento
+app.MapGet("/api/paciente/ultimos-valores", async (ClaimsPrincipal user) =>
+{
+    int pid = int.Parse(user.FindFirst("pid")!.Value);
+    var dados = await BuscarUltimosValoresPaciente(pid);
+    return Results.Ok(dados);
+});
+
+// =====================================================================
+// LGPD - DIREITOS DO TITULAR (Paciente)
+// =====================================================================
+
+// GET /api/paciente/meus-dados - Exporta todos os dados do paciente (Art. 18 LGPD)
+app.MapGet("/api/paciente/meus-dados", async (ClaimsPrincipal user) =>
+{
+    int pid = int.Parse(user.FindFirst("pid")!.Value);
+    int emp = int.Parse(user.FindFirst("empresa")!.Value);
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+
+    var result = new Dictionary<string, object>();
+
+    // 1. Dados cadastrais
+    using (var cmd = new NpgsqlCommand("SELECT * FROM pacientes WHERE id = @p AND empresa_id = @e", conn))
+    {
+        cmd.Parameters.AddWithValue("p", pid);
+        cmd.Parameters.AddWithValue("e", emp);
+        using var rd = await cmd.ExecuteReaderAsync();
+        if (await rd.ReadAsync())
+        {
+            var paciente = new Dictionary<string, object>();
+            for (int i = 0; i < rd.FieldCount; i++)
+                paciente[rd.GetName(i)] = rd.GetValue(i);
+            result["cadastro"] = paciente;
+        }
+    }
+
+    // 2. Anamnese
+    using (var cmd = new NpgsqlCommand("SELECT * FROM anamneses WHERE paciente_id = @p ORDER BY criado_em DESC", conn))
+    {
+        cmd.Parameters.AddWithValue("p", pid);
+        using var rd = await cmd.ExecuteReaderAsync();
+        var list = new List<object>();
+        while (await rd.ReadAsync())
+        {
+            var item = new Dictionary<string, object>();
+            for (int i = 0; i < rd.FieldCount; i++)
+                item[rd.GetName(i)] = rd.GetValue(i);
+            list.Add(item);
+        }
+        result["anamnese"] = list;
+    }
+
+    // 3. Exames
+    using (var cmd = new NpgsqlCommand("SELECT id, titulo_exame, data_exame, observacao, enviado_por, criado_em FROM exames_paciente WHERE paciente_id = @p ORDER BY data_exame DESC", conn))
+    {
+        cmd.Parameters.AddWithValue("p", pid);
+        using var rd = await cmd.ExecuteReaderAsync();
+        var list = new List<object>();
+        while (await rd.ReadAsync())
+        {
+            var item = new Dictionary<string, object>();
+            for (int i = 0; i < rd.FieldCount; i++)
+                item[rd.GetName(i)] = rd.GetValue(i);
+            list.Add(item);
+        }
+        result["exames"] = list;
+    }
+
+    // 4. Metas
+    using (var cmd = new NpgsqlCommand(@"
+        SELECT m.*, json_agg(ma ORDER BY ma.data_acompanhamento DESC) AS acompanhamentos
+        FROM metas_paciente m
+        LEFT JOIN metas_acompanhamento ma ON ma.meta_id = m.id
+        WHERE m.paciente_id = @p
+        GROUP BY m.id
+        ORDER BY m.criado_em DESC", conn))
+    {
+        cmd.Parameters.AddWithValue("p", pid);
+        using var rd = await cmd.ExecuteReaderAsync();
+        var list = new List<object>();
+        while (await rd.ReadAsync())
+        {
+            var item = new Dictionary<string, object>();
+            for (int i = 0; i < rd.FieldCount; i++)
+                item[rd.GetName(i)] = rd.GetValue(i);
+            list.Add(item);
+        }
+        result["metas"] = list;
+    }
+
+    // 5. Check-ins
+    using (var cmd = new NpgsqlCommand("SELECT * FROM checkins_semanais WHERE paciente_id = @p ORDER BY data_checkin DESC", conn))
+    {
+        cmd.Parameters.AddWithValue("p", pid);
+        using var rd = await cmd.ExecuteReaderAsync();
+        var list = new List<object>();
+        while (await rd.ReadAsync())
+        {
+            var item = new Dictionary<string, object>();
+            for (int i = 0; i < rd.FieldCount; i++)
+                item[rd.GetName(i)] = rd.GetValue(i);
+            list.Add(item);
+        }
+        result["checkins"] = list;
+    }
+
+    // 6. Evolução (registros antropométricos)
+    using (var cmd = new NpgsqlCommand("SELECT * FROM evolucao_registros WHERE paciente_id = @p ORDER BY data_registro DESC", conn))
+    {
+        cmd.Parameters.AddWithValue("p", pid);
+        using var rd = await cmd.ExecuteReaderAsync();
+        var list = new List<object>();
+        while (await rd.ReadAsync())
+        {
+            var item = new Dictionary<string, object>();
+            for (int i = 0; i < rd.FieldCount; i++)
+                item[rd.GetName(i)] = rd.GetValue(i);
+            list.Add(item);
+        }
+        result["evolucao"] = list;
+    }
+
+    // 7. Planos alimentares
+    using (var cmd = new NpgsqlCommand(@"
+        SELECT p.*, json_agg(r ORDER BY r.ordem) AS refeicoes
+        FROM planos_alimentares p
+        LEFT JOIN plano_refeicoes r ON r.plano_id = p.id
+        WHERE p.paciente_id = @p
+        GROUP BY p.id
+        ORDER BY p.criado_em DESC", conn))
+    {
+        cmd.Parameters.AddWithValue("p", pid);
+        using var rd = await cmd.ExecuteReaderAsync();
+        var list = new List<object>();
+        while (await rd.ReadAsync())
+        {
+            var item = new Dictionary<string, object>();
+            for (int i = 0; i < rd.FieldCount; i++)
+                item[rd.GetName(i)] = rd.GetValue(i);
+            list.Add(item);
+        }
+        result["planos"] = list;
+    }
+
+    // 8. Orientações nutricionais
+    using (var cmd = new NpgsqlCommand("SELECT * FROM orientacoes_nutricionais WHERE paciente_id = @p ORDER BY criado_em DESC", conn))
+    {
+        cmd.Parameters.AddWithValue("p", pid);
+        using var rd = await cmd.ExecuteReaderAsync();
+        var list = new List<object>();
+        while (await rd.ReadAsync())
+        {
+            var item = new Dictionary<string, object>();
+            for (int i = 0; i < rd.FieldCount; i++)
+                item[rd.GetName(i)] = rd.GetValue(i);
+            list.Add(item);
+        }
+        result["orientacoes"] = list;
+    }
+
+    // 9. Observações
+    using (var cmd = new NpgsqlCommand("SELECT * FROM observacoes_paciente WHERE paciente_id = @p ORDER BY criado_em DESC", conn))
+    {
+        cmd.Parameters.AddWithValue("p", pid);
+        using var rd = await cmd.ExecuteReaderAsync();
+        var list = new List<object>();
+        while (await rd.ReadAsync())
+        {
+            var item = new Dictionary<string, object>();
+            for (int i = 0; i < rd.FieldCount; i++)
+                item[rd.GetName(i)] = rd.GetValue(i);
+            list.Add(item);
+        }
+        result["observacoes"] = list;
+    }
+
+    // 10. Consentimentos
+    using (var cmd = new NpgsqlCommand("SELECT tipo, versao_texto, aceito, criado_em, ip FROM consentimentos WHERE paciente_id = @p ORDER BY tipo, criado_em DESC", conn))
+    {
+        cmd.Parameters.AddWithValue("p", pid);
+        using var rd = await cmd.ExecuteReaderAsync();
+        var list = new List<object>();
+        while (await rd.ReadAsync())
+        {
+            var item = new Dictionary<string, object>();
+            for (int i = 0; i < rd.FieldCount; i++)
+                item[rd.GetName(i)] = rd.GetValue(i);
+            list.Add(item);
+        }
+        result["consentimentos"] = list;
+    }
+
+    // 11. Solicitações LGPD
+    using (var cmd = new NpgsqlCommand("SELECT * FROM solicitacoes_lgpd WHERE paciente_id = @p ORDER BY criado_em DESC", conn))
+    {
+        cmd.Parameters.AddWithValue("p", pid);
+        using var rd = await cmd.ExecuteReaderAsync();
+        var list = new List<object>();
+        while (await rd.ReadAsync())
+        {
+            var item = new Dictionary<string, object>();
+            for (int i = 0; i < rd.FieldCount; i++)
+                item[rd.GetName(i)] = rd.GetValue(i);
+            list.Add(item);
+        }
+        result["solicitacoes"] = list;
+    }
+
+    // 12. Acessos (auditoria)
+    using (var cmd = new NpgsqlCommand("SELECT * FROM acessos_paciente WHERE paciente_id = @p ORDER BY criado_em DESC LIMIT 100", conn))
+    {
+        cmd.Parameters.AddWithValue("p", pid);
+        using var rd = await cmd.ExecuteReaderAsync();
+        var list = new List<object>();
+        while (await rd.ReadAsync())
+        {
+            var item = new Dictionary<string, object>();
+            for (int i = 0; i < rd.FieldCount; i++)
+                item[rd.GetName(i)] = rd.GetValue(i);
+            list.Add(item);
+        }
+        result["acessos"] = list;
+    }
+
+    result["exportado_em"] = DateTimeOffset.UtcNow;
+    result["versao"] = "1.0";
+
+    return Results.Ok(result);
+});
+
+// POST /api/paciente/solicitacoes - Cria solicitação LGPD (correcao, exclusao, informacao)
+app.MapPost("/api/paciente/solicitacoes", async (HttpRequest request, ClaimsPrincipal user) =>
+{
+    int pid = int.Parse(user.FindFirst("pid")!.Value);
+    int emp = int.Parse(user.FindFirst("empresa")!.Value);
+
+    var form = await request.ReadFormAsync();
+    string tipo = form["tipo"].ToString().Trim().ToLower();
+    string descricao = form["descricao"].ToString().Trim();
+
+    if (!new[] { "correcao", "exclusao", "informacao" }.Contains(tipo))
+        return Results.BadRequest(new { mensagem = "Tipo inválido. Use: correcao, exclusao ou informacao." });
+    if (descricao.Length < 10)
+        return Results.BadRequest(new { mensagem = "Descrição muito curta (mín. 10 caracteres)." });
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+
+    using var cmd = new NpgsqlCommand(@"
+        INSERT INTO solicitacoes_lgpd (empresa_id, paciente_id, tipo, descricao)
+        VALUES (@emp, @pid, @tipo, @desc)
+        RETURNING id, criado_em;", conn);
+    cmd.Parameters.AddWithValue("emp", emp);
+    cmd.Parameters.AddWithValue("pid", pid);
+    cmd.Parameters.AddWithValue("tipo", tipo);
+    cmd.Parameters.AddWithValue("desc", descricao);
+
+    using var rd = await cmd.ExecuteReaderAsync();
+    await rd.ReadAsync();
+    var id = rd.GetInt64(0);
+    var criado = rd.GetDateTime(1);
+
+    return Results.Ok(new { id, tipo, descricao, status = "pendente", criado_em = criado });
+});
+
+// GET /api/paciente/solicitacoes - Lista solicitações do paciente
+app.MapGet("/api/paciente/solicitacoes", async (ClaimsPrincipal user) =>
+{
+    int pid = int.Parse(user.FindFirst("pid")!.Value);
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+
+    var lista = new List<object>();
+    using var cmd = new NpgsqlCommand("SELECT id, tipo, descricao, status, criado_em, resolvido_em FROM solicitacoes_lgpd WHERE paciente_id = @p ORDER BY criado_em DESC", conn);
+    cmd.Parameters.AddWithValue("p", pid);
+    using var rd = await cmd.ExecuteReaderAsync();
+    while (await rd.ReadAsync())
+    {
+        lista.Add(new
+        {
+            id = rd.GetInt64(0),
+            tipo = rd.GetString(1),
+            descricao = rd.GetString(2),
+            status = rd.GetString(3),
+            criado_em = rd.GetDateTime(4),
+            resolvido_em = rd.IsDBNull(5) ? (DateTime?)null : rd.GetDateTime(5)
+        });
+    }
+    return Results.Ok(lista);
+});
+
+// =====================================================================
+// LGPD - EQUIPE (Gestão de solicitações da empresa)
+// =====================================================================
+
+// GET /api/empresa/solicitacoes - Lista solicitações da empresa (equipe)
+app.MapGet("/api/empresa/solicitacoes", async (ClaimsPrincipal user) =>
+{
+    int emp = int.Parse(user.FindFirst("empresa")!.Value);
+    string perfil = user.FindFirst("perfil")?.Value ?? "";
+
+    // Apenas admin/nutricionista podem ver
+    if (!new[] { "admin", "nutricionista", "superadmin" }.Contains(perfil))
+        return Results.Forbid();
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+
+    var lista = new List<object>();
+    using var cmd = new NpgsqlCommand(@"
+        SELECT s.id, s.paciente_id, p.nome AS paciente_nome, s.tipo, s.descricao, s.status, s.criado_em, s.resolvido_em
+        FROM solicitacoes_lgpd s
+        JOIN pacientes p ON p.id = s.paciente_id
+        WHERE s.empresa_id = @e
+        ORDER BY
+            CASE s.status WHEN 'pendente' THEN 0 WHEN 'em_analise' THEN 1 WHEN 'atendida' THEN 2 ELSE 3 END,
+            s.criado_em DESC", conn);
+    cmd.Parameters.AddWithValue("e", emp);
+    using var rd = await cmd.ExecuteReaderAsync();
+    while (await rd.ReadAsync())
+    {
+        lista.Add(new
+        {
+            id = rd.GetInt64(0),
+            paciente_id = rd.GetInt64(1),
+            paciente_nome = rd.GetString(2),
+            tipo = rd.GetString(3),
+            descricao = rd.GetString(4),
+            status = rd.GetString(5),
+            criado_em = rd.GetDateTime(6),
+            resolvido_em = rd.IsDBNull(7) ? (DateTime?)null : rd.GetDateTime(7)
+        });
+    }
+    return Results.Ok(lista);
+});
+
+// PATCH /api/empresa/solicitacoes/{id}/atender - Marca solicitação como atendida
+app.MapPatch("/api/empresa/solicitacoes/{id:long}/atender", async (long id, HttpRequest request, ClaimsPrincipal user) =>
+{
+    int emp = int.Parse(user.FindFirst("empresa")!.Value);
+    string perfil = user.FindFirst("perfil")?.Value ?? "";
+    int uid = int.Parse(user.FindFirst("uid")!.Value);
+
+    if (!new[] { "admin", "nutricionista", "superadmin" }.Contains(perfil))
+        return Results.Forbid();
+
+    var form = await request.ReadFormAsync();
+    string novoStatus = form["status"].ToString().Trim().ToLower();
+    if (!new[] { "em_analise", "atendida", "recusada" }.Contains(novoStatus))
+        return Results.BadRequest(new { mensagem = "Status inválido." });
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+
+    using var cmd = new NpgsqlCommand(@"
+        UPDATE solicitacoes_lgpd
+        SET status = @status, resolvido_em = CASE WHEN @status IN ('atendida','recusada') THEN CURRENT_TIMESTAMP ELSE NULL END
+        WHERE id = @id AND empresa_id = @emp
+        RETURNING id;", conn);
+    cmd.Parameters.AddWithValue("id", id);
+    cmd.Parameters.AddWithValue("emp", emp);
+    cmd.Parameters.AddWithValue("status", novoStatus);
+
+    var result = await cmd.ExecuteScalarAsync();
+    if (result == null) return Results.NotFound(new { mensagem = "Solicitação não encontrada." });
+
+    return Results.Ok(new { id, status = novoStatus });
 });
 
 // =====================================================================

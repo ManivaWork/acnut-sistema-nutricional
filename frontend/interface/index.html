@@ -5,6 +5,7 @@
         <script>window.ENV_API_URL = "https://acnut-sistema-nutricional.onrender.com";</script>
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>AC hub</title>
@@ -1290,6 +1291,12 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         class="acnut-rail-item">
         <i class="fa-solid fa-envelope-open-text"></i>
         <span class="acnut-rail-label">Convites</span>
+        </button>
+        <button type="button" data-nav="lgpd" data-tip="LGPD / Solicitações"
+        onclick="navegar('lgpd'); fecharMenuMobile();"
+        class="acnut-rail-item">
+        <i class="fa-solid fa-shield-halved"></i>
+        <span class="acnut-rail-label">LGPD / Solicitações</span>
         </button>
         <button type="button" data-nav="empresas" data-tip="Empresas"
         onclick="navegar('empresas'); fecharMenuMobile();"
@@ -3456,6 +3463,7 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         <h3 id="mev-heading" class="text-lg font-bold text-white">Novo registro de evolução</h3>
         <button type="button" onclick="fecharModal('modal-evolucao')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
         </div>
+        <div id="mev-referencia"></div>
         <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
         <div class="col-span-2 md:col-span-1">
         <label class="block text-[11px] text-slate-500 mb-1">Data</label>
@@ -4228,6 +4236,12 @@ function mostrarLogin() {
             </table>
           </div>
         </div>
+        </section>
+
+        <!-- =========================================================SEÇÃO: LGPD / SOLICITAÇÕES========================================================= -->
+        <section id="sec-lgpd" class="hidden space-y-6">
+        <!-- Conteúdo renderizado dinamicamente via renderSecaoLgpd() -->
+        <div id="sec-lgpd-container"></div>
         </section>
         <!-- Importa o app.js apenas no fim, com defer ou logo antes de fechar -->
 <script src="app.js"></script>

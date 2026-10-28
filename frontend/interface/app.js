@@ -68,7 +68,30 @@ function alternarVisibilidadeSenha(inputId) {
     }
 }
 
-const urlArquivo = id => `${API_URL}/arquivos/${id}?t=${encodeURIComponent(getToken() || "")}`;
+// Fetch arquivo com Authorization header e retorna blob URL
+async function fetchArquivoBlob(id) {
+    const res = await fetch(`${API_URL}/arquivos/${id}`, {
+        headers: { Authorization: `Bearer ${getToken() || ""}` }
+    });
+    if (!res.ok) throw new Error('Arquivo não encontrado');
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+}
+
+// Fetch arquivo do paciente com Authorization header e retorna blob URL
+async function fetchPacienteArquivoBlob(id) {
+    const res = await fetch(`${API_URL}/api/paciente/arquivos/${id}`, {
+        headers: { Authorization: `Bearer ${getToken() || ""}` }
+    });
+    if (!res.ok) throw new Error('Arquivo não encontrado');
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+}
+
+// Revogar blob URL quando não precisar mais
+function revogarBlob(url) {
+    if (url && url.startsWith('blob:')) URL.revokeObjectURL(url);
+}
 
 // Todo fetch para a API leva o token automaticamente
 const _fetch = window.fetch.bind(window);
@@ -89,6 +112,30 @@ window.fetch = async (url, opts = {}) => {
     }
     return res;
 };
+
+// ===== Auto-logout após 30 min de inatividade =====
+const AUTO_LOGOUT_MS = 30 * 60 * 1000; // 30 minutos
+let autoLogoutTimer = null;
+
+function resetAutoLogoutTimer() {
+    if (autoLogoutTimer) clearTimeout(autoLogoutTimer);
+    autoLogoutTimer = setTimeout(() => {
+        if (getToken()) {
+            alert("Sessão encerrada por inatividade (30 min).");
+            fazerLogout();
+            document.getElementById("area-paciente").style.display = "none";
+            if (typeof modoLogin === "function") modoLogin("equipe");
+        }
+    }, AUTO_LOGOUT_MS);
+}
+
+// Reset timer on user activity
+["mousedown", "keydown", "touchstart", "scroll"].forEach(evt => {
+    document.addEventListener(evt, resetAutoLogoutTimer, { passive: true });
+});
+
+// Iniciar timer se já houver token
+if (getToken()) resetAutoLogoutTimer();
 
 function sessaoValida() {
     const t = getToken();
@@ -116,6 +163,80 @@ async function calcularTMB_GET(dados) {
     } catch (err) {
         console.error("Erro ao calcular TMB/GET:", err);
         return null;
+    }
+}
+
+// ===== HISTÓRICO DE VALORES (Fase A: pré-preencher a partir do último registro) =====
+// Busca últimos valores do paciente (peso, altura, % gordura) das 3 fontes
+async function buscarUltimosValores(pacienteId, isEquipe = true) {
+    try {
+        const endpoint = isEquipe
+            ? `${API_URL}/historico-valores/${pacienteId}`
+            : `${API_URL}/paciente/ultimos-valores`;
+        const res = await fetch(endpoint);
+        if (!res.ok) return null;
+        return await res.json();
+    } catch (err) {
+        console.error("Erro ao buscar últimos valores:", err);
+        return null;
+    }
+}
+
+// Preenche campo se estiver vazio, adiciona badge "automático" e não sobrescreve valor digitado
+function preencherSeVazio(inputId, valor, label = "automático") {
+    const input = document.getElementById(inputId);
+    if (!input) return false;
+    if (input.value === "" || input.value === "0") {
+        input.value = valor;
+        // Adiciona badge visual
+        const container = input.closest('div');
+        if (container) {
+            // Remove badge anterior se existir
+            const badgeAntigo = container.querySelector('.badge-auto');
+            if (badgeAntigo) badgeAntigo.remove();
+            const badge = document.createElement('span');
+            badge.className = 'badge-auto absolute right-2 top-1/2 -translate-y-1/2 text-[10px] px-1.5 py-0.5 bg-emerald-600/20 text-emerald-400 rounded border border-emerald-500/30 font-medium';
+            badge.textContent = label;
+            badge.style.pointerEvents = 'none';
+            if (getComputedStyle(container).position === 'static') {
+                container.style.position = 'relative';
+            }
+            container.appendChild(badge);
+        }
+        // Flash visual
+        input.style.borderColor = "#22b8a0";
+        setTimeout(() => { input.style.borderColor = ""; }, 1500);
+        return true;
+    }
+    return false;
+}
+
+// Remove badges "automático" de um formulário
+function removerBadgesAuto(formOrContainer) {
+    const container = formOrContainer.closest ? formOrContainer : document;
+    container.querySelectorAll('.badge-auto').forEach(b => b.remove());
+}
+
+// Fase A: Buscar últimos valores e pré-preencher na anamnese do paciente
+async function preencherUltimosValoresAnamnese() {
+    try {
+        const token = sessionStorage.getItem('paciente_token') || sessionStorage.getItem('bybar_token');
+        if (!token) return;
+        const res = await fetch(`${API_URL}/api/paciente/ultimos-valores`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const vals = await res.json();
+        if (vals.mais_recente) {
+            if (vals.mais_recente.peso) {
+                preencherSeVazio('anamnese-peso-atual', vals.mais_recente.peso);
+            }
+            if (vals.mais_recente.altura) {
+                preencherSeVazio('anamnese-altura', vals.mais_recente.altura.toFixed(1));
+            }
+        }
+    } catch (e) {
+        console.warn("Não foi possível buscar últimos valores para anamnese:", e);
     }
 }
 
@@ -163,6 +284,7 @@ function navegar(secao) {
         }
         if (secao === 'prontuario') restaurarProntuarioAtivo();
         if (secao === 'empresas') carregarEmpresas();
+        if (secao === 'lgpd') renderSecaoLgpd();
         document.querySelectorAll(".acnut-rail-item[data-nav]").forEach(btn => {
         btn.classList.toggle("ativo", btn.dataset.nav === secao);
         });
@@ -183,6 +305,9 @@ async function carregarPacientes() {
         if (elementoTotal) elementoTotal.innerText = listaPacientes.length;
         const tabela = document.getElementById("tabela-pacientes");
         if (!tabela) return;
+        // Verifica se o usuário é admin ou super_admin
+        const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
+        const isAdmin = ['admin', 'super_admin'].includes(user.perfil);
         tabela.innerHTML = listaPacientes.map(p => `
         <tr class="border-b border-slate-700 hover:bg-slate-800/50">
         <td class="py-3 px-4 text-white">#${p.id}</td>
@@ -196,6 +321,7 @@ async function carregarPacientes() {
         <button onclick="abrirProntuarioDireto(${p.id})" class="bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600 hover:text-white px-3 py-1 rounded text-xs font-semibold transition">Prontuário</button>
         <button onclick="editarPaciente(${p.id})" class="bg-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-white px-3 py-1 rounded text-xs font-semibold transition">Editar</button>
         <button onclick="excluirPaciente(${p.id})" class="bg-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-white px-3 py-1 rounded text-xs font-semibold transition">Excluir</button>
+        ${isAdmin ? `<button onclick="anonimizarPaciente(${p.id})" class="bg-slate-600/20 text-slate-400 hover:bg-slate-600 hover:text-white px-3 py-1 rounded text-xs font-semibold transition" title="Anonimizar paciente (LGPD) - IRREVERSÍVEL">Anonimizar</button>` : ''}
         </td>
         </tr>`).join("");
         } catch (err) {
@@ -375,7 +501,7 @@ async function gerarAvaliacao(e) {
         }
         }
 
-// ===================== AVALIAÇÃO: AUTO-PREENCHER IDADE =====================
+// ===================== AVALIAÇÃO: AUTO-PREENCHER IDADE E ÚLTIMOS VALORES =====================
 async function carregarDadosPacienteAvaliacao(pacienteId) {
         if (!pacienteId) return;
         const id = parseInt(pacienteId);
@@ -403,6 +529,17 @@ async function carregarDadosPacienteAvaliacao(pacienteId) {
         // Opcional: preencher sexo se vier do paciente
         if (paciente.sexo) {
                 document.getElementById("a-sexo").value = paciente.sexo;
+        }
+
+        // Fase A: Buscar últimos valores (peso, altura, % gordura) e pré-preencher
+        const historico = await buscarUltimosValores(id, true);
+        if (historico?.mais_recente) {
+            const v = historico.mais_recente;
+            preencherSeVazio("a-peso", v.peso?.toFixed(1) ?? "");
+            preencherSeVazio("a-altura", v.altura?.toFixed(1) ?? "");
+            preencherSeVazio("a-gordura", v.percentual_gordura?.toFixed(1) ?? "");
+            // Atualiza massa magra automaticamente se peso e gordura foram preenchidos
+            setTimeout(calcularMassaMagraAutomatica, 100);
         }
 }
 
@@ -469,6 +606,35 @@ function calcularMassaMagraAutomatica() {
                         clearTimeout(timeoutId);
                         timeoutId = setTimeout(() => {
                                 carregarDadosPacienteAvaliacao(e.target.value);
+                        }, 500);
+                });
+        }
+
+        // Check-in: auto-buscar último peso ao digitar ID do paciente (com debounce)
+        const checkinPacienteIdInput = document.getElementById("c-paciente-id");
+        if (checkinPacienteIdInput) {
+                let timeoutId;
+                checkinPacienteIdInput.addEventListener("input", (e) => {
+                        clearTimeout(timeoutId);
+                        timeoutId = setTimeout(async () => {
+                                const id = parseInt(e.target.value);
+                                if (!isNaN(id) && id > 0) {
+                                        const historico = await buscarUltimosValores(id, true);
+                                        if (historico?.mais_recente?.peso != null) {
+                                                const peso = historico.mais_recente.peso.toFixed(1);
+                                                const preenchido = preencherSeVazio("c-peso", peso);
+                                                if (preenchido) {
+                                                        // Mostrar variação se houver check-in anterior
+                                                        const checkinAnterior = historico.fontes?.checkin;
+                                                        if (checkinAnterior?.peso != null) {
+                                                                const variacao = (historico.mais_recente.peso - checkinAnterior.peso).toFixed(1);
+                                                                const cor = variacao < 0 ? "text-emerald-400" : variacao > 0 ? "text-amber-400" : "text-slate-400";
+                                                                const sinal = variacao > 0 ? "+" : "";
+                                                                mostrarToast(`Último check-in: ${checkinAnterior.peso.toFixed(1)} kg (${sinal}${variacao} kg)`, "info");
+                                                        }
+                                                }
+                                        }
+                                }
                         }, 500);
                 });
         }
@@ -2296,23 +2462,24 @@ function validarArquivos(input, somenteImagem) {
         return true;
         }
         // Visualização no card (clique abre em nova aba)
-function htmlAnexos(arquivos) {
+async function htmlAnexos(arquivos) {
         if (!arquivos || !arquivos.length) return "";
-        return `<div class="flex flex-wrap gap-2 mt-3">` + arquivos.map(a => {
-        const url = urlArquivo(a.id);
+        const items = await Promise.all(arquivos.map(async a => {
+        const url = await fetchArquivoBlob(a.id);
         return ehImagem(a)
         ? `<a href="${url}" target="_blank" title="${escaparHtml(a.nome)}"><img src="${url}" loading="lazy" class="w-24 h-24 object-cover rounded-lg border border-slate-700 hover:border-emerald-500 transition"></a>`
         : `<a href="${url}" target="_blank" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 hover:border-emerald-500 text-xs text-slate-200 transition max-w-[220px]">
         <i class="fa-solid fa-file-pdf text-red-400"></i><span class="truncate">${escaparHtml(a.nome)}</span>
         </a>`;
-        }).join("") + `</div>`;
+        }));
+        return `<div class="flex flex-wrap gap-2 mt-3">` + items.join("") + `</div>`;
         }
         // Arquivos já salvos dentro do modal de edição (com botão de remover)
-function renderAnexosExistentes(containerId, arquivos, tipo) {
+async function renderAnexosExistentes(containerId, arquivos, tipo) {
         const el = document.getElementById(containerId);
         if (!el) return;
-        el.innerHTML = (arquivos || []).map(a => {
-        const url = urlArquivo(a.id);
+        const items = await Promise.all((arquivos || []).map(async a => {
+        const url = await fetchArquivoBlob(a.id);
         const mini = ehImagem(a)
         ? `<img src="${url}" class="w-20 h-20 object-cover rounded-lg border border-slate-700">`
         : `<div class="w-20 h-20 rounded-lg bg-slate-800 border border-slate-700 flex flex-col items-center justify-center gap-1 px-1">
@@ -2323,7 +2490,8 @@ function renderAnexosExistentes(containerId, arquivos, tipo) {
         <button type="button" title="Excluir arquivo" onclick="removerAnexo(${a.id}, '${tipo}')"
         class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-600 hover:bg-rose-500 text-white text-[10px] flex items-center justify-center">
         <i class="fa-solid fa-xmark"></i></button></div>`;
-        }).join("");
+        }));
+        el.innerHTML = items.join("");
         }
 async function removerAnexo(id, tipo) {
         if (!confirm("Excluir este arquivo definitivamente?")) return;
@@ -2331,11 +2499,11 @@ async function removerAnexo(id, tipo) {
         if (!res.ok) { alert(await lerErro(res)); return; }
         if (tipo === "evolucao") {
         formEvolucao.fotos = formEvolucao.fotos.filter(a => a.id !== id);
-        renderAnexosExistentes("mev-existentes", formEvolucao.fotos, "evolucao");
+        await renderAnexosExistentes("mev-existentes", formEvolucao.fotos, "evolucao");
         await carregarEvolucao(window.pacienteIdAtivo);
         } else {
         formExame.arquivos = formExame.arquivos.filter(a => a.id !== id);
-        renderAnexosExistentes("mex-existentes", formExame.arquivos, "exame");
+        await renderAnexosExistentes("mex-existentes", formExame.arquivos, "exame");
         await carregarExames(window.pacienteIdAtivo);
         }
         }
@@ -2359,7 +2527,7 @@ async function carregarEvolucao(pacienteId) {
         const res = await fetch(`${API_URL}/evolucao/${pacienteId}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         evolucaoAtual = await res.json();
-        renderizarEvolucao();
+        await renderizarEvolucao();
         renderizarGraficoEvolucao();
         await carregarGraficoEvolucao(pacienteId); // gráfico do topo (check-ins + evolução)
         } catch (err) {
@@ -2379,11 +2547,11 @@ function evolucaoFiltrada() {
         const limite = corte.toLocaleDateString("en-CA");
         return evolucaoAtual.filter(r => r.data >= limite);
 }
-function aplicarPeriodoEvolucao() {
-        renderizarEvolucao();
+async function aplicarPeriodoEvolucao() {
+        await renderizarEvolucao();
         renderizarGraficoEvolucao();
 }
-function renderizarEvolucao() {
+async function renderizarEvolucao() {
         const lista = document.getElementById("evolucao-lista");
         const resumo = document.getElementById("evolucao-resumo");
         if (!lista) return;
@@ -2419,7 +2587,7 @@ function renderizarEvolucao() {
         <p class="text-sm text-slate-400">Nenhum registro neste período. Escolha "Todo o período" para ver tudo.</p></div>`;
         return;
         }
-        lista.innerHTML = visiveis.map(r => {
+        const items = await Promise.all(visiveis.map(async r => {
         // Variação em relação ao registro anterior, mesmo que ele esteja fora do filtro
         let delta = "";
         if (r.peso != null) {
@@ -2437,6 +2605,7 @@ function renderizarEvolucao() {
         <span class="text-slate-500">${METRICAS_EVOLUCAO[k].rotulo}</span>
         <strong class="ml-1">${fmtNum(r[k], k === "peso" ? 2 : 1)}</strong> ${METRICAS_EVOLUCAO[k].un}</span>`)
         .join("");
+        const anexosHtml = await htmlAnexos(r.fotos);
         return `
         <div class="bg-slate-900/60 border border-slate-700/70 rounded-2xl p-5">
         <div class="flex flex-wrap items-start justify-between gap-3">
@@ -2451,9 +2620,10 @@ function renderizarEvolucao() {
         </div>
         ${chips ? `<div class="flex flex-wrap gap-2 mt-3">${chips}</div>` : ""}
         ${r.observacao ? `<p class="text-sm text-slate-300 mt-3 whitespace-pre-wrap">${escaparHtml(r.observacao)}</p>` : ""}
-        ${htmlAnexos(r.fotos)}
+        ${anexosHtml}
         </div>`;
-        }).join("");
+        }));
+        lista.innerHTML = items.join("");
         }
 function renderizarGraficoEvolucao() {
         const canvas = document.getElementById("graficoEvolucaoDetalhe");
@@ -2492,7 +2662,7 @@ function renderizarGraficoEvolucao() {
         }
         });
         }
-function abrirModalEvolucao(id) {
+async function abrirModalEvolucao(id) {
         if (!exigirPaciente()) return;
         const r = id ? evolucaoAtual.find(x => x.id === id) : null;
         formEvolucao = { id: r ? r.id : null, fotos: r ? [...r.fotos] : [] };
@@ -2508,7 +2678,44 @@ function abrirModalEvolucao(id) {
         document.getElementById("mev-coxa").value = r ? v(r.coxa) : "";
         document.getElementById("mev-obs").value = r ? r.observacao : "";
         document.getElementById("mev-fotos").value = "";
-        renderAnexosExistentes("mev-existentes", formEvolucao.fotos, "evolucao");
+
+        // Fase A: Para novo registro, buscar últimos valores como referência
+        if (!r) {
+            const historico = await buscarUltimosValores(window.pacienteIdAtivo, true);
+            if (historico?.fontes) {
+                // Preencher automaticamente se vazio
+                if (historico.mais_recente) {
+                    const vRecente = historico.mais_recente;
+                    preencherSeVazio("mev-peso", vRecente.peso?.toFixed(1) ?? "");
+                    preencherSeVazio("mev-gordura", vRecente.percentual_gordura?.toFixed(1) ?? "");
+                }
+                // Mostrar referência do último registro de evolução (se houver)
+                const ev = historico.fontes.evolucao;
+                if (ev) {
+                    const refContainer = document.getElementById("mev-referencia");
+                    if (refContainer) {
+                        let html = `<div class="p-3 bg-slate-800/50 border border-slate-700/50 rounded-xl mb-4">`;
+                        html += `<p class="text-[10px] uppercase tracking-wider text-slate-400 mb-2">Referência: último registro de evolução (${formatarData(ev.data)})</p>`;
+                        html += `<div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">`;
+                        if (ev.peso != null) html += `<span class="text-slate-300">Peso: <strong class="text-white">${fmtNum(ev.peso, 1)} kg</strong></span>`;
+                        if (ev.gordura != null) html += `<span class="text-slate-300">Gordura: <strong class="text-white">${fmtNum(ev.gordura, 1)}%</strong></span>`;
+                        if (ev.cintura != null) html += `<span class="text-slate-300">Cintura: <strong class="text-white">${fmtNum(ev.cintura, 1)} cm</strong></span>`;
+                        if (ev.quadril != null) html += `<span class="text-slate-300">Quadril: <strong class="text-white">${fmtNum(ev.quadril, 1)} cm</strong></span>`;
+                        if (ev.abdomen != null) html += `<span class="text-slate-300">Abdômen: <strong class="text-white">${fmtNum(ev.abdomen, 1)} cm</strong></span>`;
+                        if (ev.braco != null) html += `<span class="text-slate-300">Braço: <strong class="text-white">${fmtNum(ev.braco, 1)} cm</strong></span>`;
+                        if (ev.coxa != null) html += `<span class="text-slate-300">Coxa: <strong class="text-white">${fmtNum(ev.coxa, 1)} cm</strong></span>`;
+                        html += `</div></div>`;
+                        refContainer.innerHTML = html;
+                    }
+                }
+            }
+        } else {
+            // Limpar referência se estiver editando
+            const refContainer = document.getElementById("mev-referencia");
+            if (refContainer) refContainer.innerHTML = "";
+        }
+
+        await renderAnexosExistentes("mev-existentes", formEvolucao.fotos, "evolucao");
         abrirModal("modal-evolucao");
         }
 async function salvarEvolucao(e) {
@@ -2548,7 +2755,7 @@ async function excluirEvolucao(id) {
         else alert(await lerErro(res));
         }
 // ---------- Comparar fotos ----------
-function abrirComparacaoFotos() {
+async function abrirComparacaoFotos() {
         if (!exigirPaciente()) return;
         const comFotos = evolucaoAtual.filter(r => r.fotos && r.fotos.length);
         if (comFotos.length < 2) {
@@ -2564,14 +2771,13 @@ function abrirComparacaoFotos() {
         b.innerHTML = opcoes;
         a.value = comFotos[comFotos.length - 1].id; // mais antigo
         b.value = comFotos[0].id;                   // mais recente
-        renderizarComparacaoFotos();
+        await renderizarComparacaoFotos();
         abrirModal("modal-comparar");
         }
-function renderizarComparacaoFotos() {
+async function renderizarComparacaoFotos() {
         let r1 = evolucaoAtual.find(r => r.id === parseInt(document.getElementById("cmp-a").value));
         let r2 = evolucaoAtual.find(r => r.id === parseInt(document.getElementById("cmp-b").value));
         if (!r1 || !r2) return;
-        // Antes = data menor, Depois = data maior
         if (r1.data > r2.data) [r1, r2] = [r2, r1];
         const dias = Math.round((new Date(r2.data) - new Date(r1.data)) / 86400000);
         let resumo = `<strong>${dias}</strong> dia${dias === 1 ? "" : "s"} entre os registros`;
@@ -2580,20 +2786,22 @@ function renderizarComparacaoFotos() {
         resumo += ` • peso <strong class="${d <= 0 ? "text-emerald-400" : "text-amber-400"}">${d > 0 ? "+" : ""}${fmtNum(d, 1)} kg</strong>`;
         }
         document.getElementById("cmp-resumo").innerHTML = resumo;
-        const coluna = (titulo, r) => `
-        <div class="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4">
+        const coluna = async (titulo, r) => {
+        const fotosHtml = await Promise.all(r.fotos.filter(ehImagem).map(async f => {
+        const url = await fetchArquivoBlob(f.id);
+        return `<a href="${url}" target="_blank"><img src="${url}" class="w-full aspect-[3/4] object-cover rounded-lg border border-slate-700 hover:border-emerald-500 transition"></a>`;
+        }));
+        return `<div class="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4">
         <p class="text-[10px] uppercase tracking-wider text-emerald-400 font-bold">${titulo}</p>
         <p class="text-white font-bold">${formatarData(r.data)}
         ${r.peso != null ? `<span class="text-slate-400 text-sm font-normal ml-2">${fmtNum(r.peso, 1)} kg</span>` : ""}</p>
         <div class="grid grid-cols-2 gap-2 mt-3">
-        ${r.fotos.filter(ehImagem).map(f => {
-        const url = urlArquivo(f.id);
-        return `<a href="${url}" target="_blank"><img src="${url}" class="w-full aspect-[3/4] object-cover rounded-lg border border-slate-700 hover:border-emerald-500 transition"></a>`;
-        }).join("")}
+        ${fotosHtml.join("")}
         </div>
         </div>`;
-        document.getElementById("cmp-colunas").innerHTML = coluna("Antes", r1) + coluna("Depois", r2);
-}
+        };
+        document.getElementById("cmp-colunas").innerHTML = await coluna("Antes", r1) + await coluna("Depois", r2);
+        }
 // ===================================================== // EXAMES =====================================================
 let examesAtuais = [];
 let formExame = { id: null, arquivos: [] };
@@ -2604,13 +2812,13 @@ async function carregarExames(pacienteId) {
         const res = await fetch(`${API_URL}/exames/${pacienteId}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         examesAtuais = await res.json();
-        renderizarExames();
+        await renderizarExames();
         } catch (err) {
         console.error("Erro ao carregar exames:", err);
         el.innerHTML = `<p class="text-rose-400 text-sm">Não foi possível carregar os exames.</p>`;
         }
         }
-function renderizarExames() {
+async function renderizarExames() {
         const el = document.getElementById("exames-lista");
         if (!el) return;
         if (!examesAtuais.length) {
@@ -2618,7 +2826,9 @@ function renderizarExames() {
         <p class="text-sm text-slate-400">Nenhum exame anexado. Clique em <strong>Novo exame</strong>.</p></div>`;
         return;
         }
-        el.innerHTML = examesAtuais.map(x => `
+        const items = await Promise.all(examesAtuais.map(async x => {
+        const anexosHtml = await htmlAnexos(x.arquivos);
+        return `
         <div class="bg-slate-900/60 border border-slate-700/70 rounded-2xl p-5">
         <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
@@ -2635,10 +2845,12 @@ function renderizarExames() {
         ${x.observacao ? `<div class="mt-3 bg-slate-800/60 border border-slate-700/60 rounded-xl p-3">
         <p class="text-[10px] uppercase tracking-wider text-amber-400 font-bold mb-1">Observação</p>
         <p class="text-sm text-slate-300 whitespace-pre-wrap">${escaparHtml(x.observacao)}</p></div>` : ""}
-        ${htmlAnexos(x.arquivos)}
-        </div>`).join("");
+        ${anexosHtml}
+        </div>`;
+        }));
+        el.innerHTML = items.join("");
         }
-function abrirModalExame(id) {
+async function abrirModalExame(id) {
         if (!exigirPaciente()) return;
         const x = id ? examesAtuais.find(e => e.id === id) : null;
         formExame = { id: x ? x.id : null, arquivos: x ? [...x.arquivos] : [] };
@@ -2647,7 +2859,7 @@ function abrirModalExame(id) {
         document.getElementById("mex-data").value = x ? x.data : hojeISO();
         document.getElementById("mex-obs").value = x ? x.observacao : "";
         document.getElementById("mex-arquivos").value = "";
-        renderAnexosExistentes("mex-existentes", formExame.arquivos, "exame");
+        await renderAnexosExistentes("mex-existentes", formExame.arquivos, "exame");
         abrirModal("modal-exame");
         }
 async function salvarExame(e) {
@@ -2716,14 +2928,14 @@ async function carregarExamesPaciente() {
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const exames = await res.json();
-        renderizarExamesPaciente(exames);
+        await renderizarExamesPaciente(exames);
     } catch (err) {
         console.error("Erro ao carregar exames do paciente:", err);
         el.innerHTML = `<p class="text-rose-400 text-sm text-center py-4">Não foi possível carregar seus exames.</p>`;
     }
 }
 
-function renderizarExamesPaciente(exames) {
+async function renderizarExamesPaciente(exames) {
     const el = document.getElementById("pac-exames-lista");
     if (!el) return;
     if (!exames || !exames.length) {
@@ -2733,9 +2945,9 @@ function renderizarExamesPaciente(exames) {
         return;
     }
     const ehImagem = (mime) => (mime || "").startsWith("image/");
-    el.innerHTML = exames.map(ex => {
+    const items = await Promise.all(exames.map(async ex => {
         const mime = ex.mime_type || ex.mime || "";
-        const url = `${API_URL}/api/paciente/arquivos/${ex.id}`;
+        const url = await fetchPacienteArquivoBlob(ex.id);
         return `
         <div class="bg-slate-800/50 border border-white/10 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-4">
             <div class="flex items-center gap-3 shrink-0">
@@ -2764,7 +2976,8 @@ function renderizarExamesPaciente(exames) {
                 </button>
             </div>
         </div>`;
-    }).join("");
+    }));
+    el.innerHTML = items.join("");
 }
 
 async function enviarExamePaciente() {
@@ -3128,7 +3341,33 @@ async function salvarOrientacoes(pacienteId) {
         console.error("Erro de conexão:", err);
         alert("Erro de conexão com o servidor.");
         }
-        }    
+        }
+async function anonimizarPaciente(id) {
+        // Dupla confirmação
+        if (!confirm("⚠️ ATENÇÃO: Esta ação é IRREVERSÍVEL.\n\nIsto vai:\n• Apagar TODOS os exames, arquivos, anamnese, observações e fotos do paciente\n• Substituir nome, CPF, e-mail, telefone e nascimento por valores anônimos\n• Registrar na auditoria\n\nTem a certeza absoluta de que deseja continuar?")) {
+        return;
+        }
+        if (!prompt("Para confirmar, digite EXATAMENTE: ANONIMIZAR") === "ANONIMIZAR") {
+        alert("Confirmação incorreta. Operação cancelada.");
+        return;
+        }
+
+        try {
+        const response = await fetch(`${API_URL}/pacientes/${id}/anonimizar`, {
+            method: 'POST'
+        });
+        const data = await response.json();
+        if (response.ok) {
+            alert(data.mensagem);
+            carregarPacientes();
+        } else {
+            alert("Erro: " + (data.mensagem || "Não foi possível anonimizar."));
+        }
+        } catch (err) {
+        console.error("Erro de conexão:", err);
+        alert("Erro de conexão com o servidor ao tentar anonimizar.");
+        }
+        }
 async function excluirPaciente(id) {
         if (!confirm("Tens a certeza de que pretendes excluir este paciente?")) {
         return;
@@ -3360,6 +3599,7 @@ function entrarNoSistema(nome) {
 
 // ---------- Área do paciente (somente leitura) ----------
 let dadosPaciente = null;
+let consentimentoAceito = false;
 
 function entrarComoPaciente(nome) {
     document.getElementById("login-container").style.display = "none";
@@ -3367,6 +3607,450 @@ function entrarComoPaciente(nome) {
     document.getElementById("area-paciente").style.display = "block";
     document.getElementById("pac-nome").innerText = nome || "";
     carregarAreaPaciente();
+}
+
+// ===== CONSENTIMENTO LGPD =====
+async function verificarConsentimento() {
+    try {
+        const res = await fetch(`${API_URL}/paciente/consentimentos`);
+        if (!res.ok) return false;
+        const lista = await res.json();
+        const tratamento = lista.find(c => c.tipo === 'tratamento_dados' && c.versao_texto === '1.0' && c.aceito);
+        const saude = lista.find(c => c.tipo === 'dados_saude' && c.versao_texto === '1.0' && c.aceito);
+        return !!(tratamento && saude);
+    } catch {
+        return false;
+    }
+}
+
+async function salvarConsentimento(tipo) {
+    const formData = new FormData();
+    formData.append('tipo', tipo);
+    formData.append('versao_texto', '1.0');
+    const res = await fetch(`${API_URL}/paciente/consentimentos`, {
+        method: 'POST',
+        body: formData
+    });
+    return res.ok;
+}
+
+async function revogarConsentimento(tipo) {
+    const formData = new FormData();
+    formData.append('tipo', tipo);
+    formData.append('versao_texto', '1.0');
+    formData.append('aceito', 'false');
+    const res = await fetch(`${API_URL}/paciente/consentimentos`, {
+        method: 'POST',
+        body: formData
+    });
+    return res.ok;
+}
+
+function mostrarModalConsentimento() {
+    const modal = document.createElement('div');
+    modal.id = 'modal-consentimento';
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm';
+    modal.innerHTML = `
+        <div class="bg-slate-800 border border-white/10 rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div class="flex items-center justify-between p-5 border-b border-white/10 shrink-0">
+                <h2 class="text-xl font-bold text-white">Termos de Uso e Privacidade</h2>
+            </div>
+            <div class="overflow-y-auto p-5 space-y-5" style="max-height: 60vh;">
+                <div class="text-sm text-slate-300 space-y-3">
+                    <p>Ao usar o AC Hub / ACNUTRI, processamos seus dados pessoais e de saúde para prestar o atendimento nutricional. Leia nossa <a href="#" onclick="abrirPoliticaPrivacidade(event)" class="text-purple-400 hover:underline">Política de Privacidade completa</a>.</p>
+                    <p class="font-medium">Marque as duas opções abaixo para continuar:</p>
+                </div>
+                <div class="space-y-3">
+                    <label class="flex items-start gap-3 cursor-pointer p-4 rounded-2xl bg-slate-700/50 border border-white/5 hover:border-purple-500/30 transition">
+                        <input type="checkbox" id="consent-tratamento" class="mt-1 w-5 h-5 accent-purple-600" onchange="atualizarBotaoConsentimento()">
+                        <div>
+                            <p class="font-medium text-white">Tratamento de dados pessoais</p>
+                            <p class="text-xs text-slate-400">Autorizo o tratamento dos meus dados de identificação (nome, CPF, e-mail, telefone, data de nascimento) para cadastro, comunicação e gestão do atendimento.</p>
+                        </div>
+                    </label>
+                    <label class="flex items-start gap-3 cursor-pointer p-4 rounded-2xl bg-slate-700/50 border border-white/5 hover:border-purple-500/30 transition">
+                        <input type="checkbox" id="consent-saude" class="mt-1 w-5 h-5 accent-purple-600" onchange="atualizarBotaoConsentimento()">
+                        <div>
+                            <p class="font-medium text-white">Tratamento de dados de saúde <span class="text-rose-400 text-xs">(sensíveis)</span></p>
+                            <p class="text-xs text-slate-400">Autorizo o tratamento dos meus dados de saúde (anamnese, exames, avaliações, evolução, planos alimentares) para fins de atendimento nutricional clínico.</p>
+                        </div>
+                    </label>
+                </div>
+            </div>
+            <div class="p-5 border-t border-white/10 shrink-0 flex justify-end gap-3">
+                <button id="btn-salvar-consentimento" onclick="salvarConsentimentos()" class="acnut-btn-primary px-6" disabled>
+                    <i class="fa-solid fa-check mr-2"></i> Aceitar e continuar
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+function atualizarBotaoConsentimento() {
+    const t1 = document.getElementById('consent-tratamento').checked;
+    const t2 = document.getElementById('consent-saude').checked;
+    const btn = document.getElementById('btn-salvar-consentimento');
+    btn.disabled = !(t1 && t2);
+    btn.classList.toggle('opacity-50', !(t1 && t2));
+    btn.classList.toggle('cursor-not-allowed', !(t1 && t2));
+}
+
+async function salvarConsentimentos() {
+    const btn = document.getElementById('btn-salvar-consentimento');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Salvando...';
+    try {
+        const [r1, r2] = await Promise.all([
+            salvarConsentimento('tratamento_dados'),
+            salvarConsentimento('dados_saude')
+        ]);
+        if (r1 && r2) {
+            consentimentoAceito = true;
+            document.getElementById('modal-consentimento').remove();
+            mostrarToast('Consentimentos registrados com sucesso!', 'sucesso');
+            abaPaciente('dashboard');
+        } else {
+            throw new Error('Falha ao salvar');
+        }
+    } catch {
+        mostrarToast('Erro ao salvar consentimentos. Tente novamente.', 'erro');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-check mr-2"></i> Aceitar e continuar';
+    }
+}
+
+async function abrirPoliticaPrivacidade(e) {
+    e.preventDefault();
+    document.getElementById('modal-consentimento').style.display = 'none';
+    await renderPoliticaPrivacidade();
+}
+
+async function renderPoliticaPrivacidade() {
+    const area = document.getElementById('area-paciente');
+    area.innerHTML = `
+        <header class="sticky top-0 z-10 flex items-center justify-between px-5 md:px-8 py-3 border-b border-white/10" style="background:rgba(27,30,44,.92);backdrop-filter:blur(10px)">
+            <button onclick="voltarAreaPaciente()" class="h-10 px-4 rounded-xl text-sm text-slate-300 border border-white/10 hover:text-white hover:bg-white/5 transition flex items-center gap-2">
+                <i class="fa-solid fa-arrow-left text-xs"></i> Voltar
+            </button>
+            <h1 class="text-base font-bold text-white">Política de Privacidade</h1>
+            <div class="w-10"></div>
+        </header>
+        <div class="max-w-3xl mx-auto p-5 md:p-8 space-y-6">
+            <div id="politica-conteudo" class="bg-slate-800/50 border border-white/5 rounded-2xl p-6 prose prose-invert max-w-none text-sm" style="--tw-prose-body: #cbd5e1;">
+                <div class="flex items-center justify-center h-48 text-slate-500"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>
+            </div>
+        </div>
+    `;
+    try {
+        const res = await fetch('politica-de-privacidade.md');
+        if (!res.ok) throw new Error('Não encontrado');
+        const md = await res.text();
+        document.getElementById('politica-conteudo').innerHTML = marked.parse(md);
+    } catch {
+        document.getElementById('politica-conteudo').innerHTML = `
+            <p class="text-rose-400">Não foi possível carregar a política de privacidade.</p>
+            <p class="text-slate-400 mt-2 text-sm">O documento está disponível em <code>docs/lgpd/politica-de-privacidade.md</code> no repositório.</p>
+        `;
+    }
+}
+
+function voltarAreaPaciente() {
+    if (consentimentoAceito) {
+        abaPaciente('dashboard');
+    } else {
+        mostrarModalConsentimento();
+    }
+}
+
+async function abrirConfiguracoesPrivacidade() {
+    // Buscar consentimentos atuais
+    let consentimentos = [];
+    try {
+        const res = await fetch(`${API_URL}/paciente/consentimentos`);
+        if (res.ok) consentimentos = await res.json();
+    } catch {}
+
+    const tratamento = consentimentos.find(c => c.tipo === 'tratamento_dados' && c.versao_texto === '1.0');
+    const saude = consentimentos.find(c => c.tipo === 'dados_saude' && c.versao_texto === '1.0');
+
+    const modal = document.createElement('div');
+    modal.id = 'modal-privacidade';
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm';
+    modal.innerHTML = `
+        <div class="bg-slate-800 border border-white/10 rounded-3xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div class="flex items-center justify-between p-5 border-b border-white/10 shrink-0">
+                <h2 class="text-xl font-bold text-white">Privacidade e Dados</h2>
+                <button onclick="document.getElementById('modal-privacidade').remove()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="overflow-y-auto p-5 space-y-5">
+                <div class="text-sm text-slate-300">
+                    <p>Gerencie seus consentimentos conforme a LGPD (Lei Geral de Proteção de Dados).</p>
+                    <p class="mt-2"><a href="#" onclick="abrirPoliticaPrivacidade(event)" class="text-purple-400 hover:underline">Ver Política de Privacidade completa</a></p>
+                </div>
+
+                <div class="space-y-4">
+                    <div class="p-4 rounded-2xl bg-slate-700/50 border border-white/5">
+                        <div class="flex items-center justify-between mb-2">
+                            <div>
+                                <p class="font-medium text-white">Tratamento de dados pessoais</p>
+                                <p class="text-xs text-slate-400">Nome, CPF, e-mail, telefone, data de nascimento</p>
+                            </div>
+                            <span class="px-3 py-1 rounded-full text-xs font-medium ${tratamento?.aceito ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}">
+                                ${tratamento?.aceito ? 'Concedido' : 'Não concedido'}
+                            </span>
+                        </div>
+                        ${tratamento?.aceito ? `
+                            <button onclick="revogarConsentimentoUI('tratamento_dados')" class="w-full h-10 rounded-xl bg-rose-600/20 border border-rose-500/30 text-rose-400 hover:bg-rose-600/30 transition text-sm font-medium">
+                                <i class="fa-solid fa-ban mr-2"></i> Revogar consentimento
+                            </button>
+                        ` : `
+                            <button onclick="mostrarModalConsentimento(); document.getElementById('modal-privacidade').remove()" class="w-full h-10 rounded-xl bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/30 transition text-sm font-medium">
+                                <i class="fa-solid fa-check mr-2"></i> Conceder consentimento
+                            </button>
+                        `}
+                    </div>
+
+                    <div class="p-4 rounded-2xl bg-slate-700/50 border border-white/5">
+                        <div class="flex items-center justify-between mb-2">
+                            <div>
+                                <p class="font-medium text-white">Tratamento de dados de saúde <span class="text-rose-400 text-xs">(sensíveis)</span></p>
+                                <p class="text-xs text-slate-400">Anamnese, exames, avaliações, planos alimentares, evolução</p>
+                            </div>
+                            <span class="px-3 py-1 rounded-full text-xs font-medium ${saude?.aceito ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}">
+                                ${saude?.aceito ? 'Concedido' : 'Não concedido'}
+                            </span>
+                        </div>
+                        ${saude?.aceito ? `
+                            <button onclick="revogarConsentimentoUI('dados_saude')" class="w-full h-10 rounded-xl bg-rose-600/20 border border-rose-500/30 text-rose-400 hover:bg-rose-600/30 transition text-sm font-medium">
+                                <i class="fa-solid fa-ban mr-2"></i> Revogar consentimento
+                            </button>
+                        ` : `
+                            <button onclick="mostrarModalConsentimento(); document.getElementById('modal-privacidade').remove()" class="w-full h-10 rounded-xl bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/30 transition text-sm font-medium">
+                                <i class="fa-solid fa-check mr-2"></i> Conceder consentimento
+                            </button>
+                        `}
+                    </div>
+                </div>
+
+                <div class="pt-4 border-t border-white/10 text-xs text-slate-500">
+                    <p><i class="fa-solid fa-circle-info mr-1"></i> Ao revogar o consentimento, alguns recursos do sistema podem ficar indisponíveis. O tratamento baseado em outras bases legais (contrato, obrigação legal) continuará ocorrendo.</p>
+                </div>
+
+                <!-- Exportar Dados (Art. 18 LGPD) -->
+                <div class="pt-4 border-t border-white/10">
+                    <h3 class="font-medium text-white mb-3 flex items-center gap-2"><i class="fa-solid fa-download text-purple-400"></i> Exportar Meus Dados</h3>
+                    <p class="text-sm text-slate-400 mb-3">Baixe uma cópia completa de todos os seus dados (cadastro, anamnese, exames, metas, check-ins, evolução, planos, consentimentos, solicitações e acessos) em formato JSON.</p>
+                    <button onclick="baixarMeusDados()" class="w-full h-10 rounded-xl bg-purple-600/20 border border-purple-500/30 text-purple-400 hover:bg-purple-600/30 transition text-sm font-medium flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-file-export"></i> Baixar meus dados (JSON)
+                    </button>
+                </div>
+
+                <!-- Solicitações LGPD -->
+                <div class="pt-4 border-t border-white/10">
+                    <h3 class="font-medium text-white mb-3 flex items-center gap-2"><i class="fa-solid fa-file-contract text-amber-400"></i> Solicitações LGPD</h3>
+                    <p class="text-sm text-slate-400 mb-3">Exercite seus direitos: correção de dados, solicitação de exclusão (sujeita a prazos legais de guarda do prontuário) ou pedido de informação.</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
+                        <button onclick="abrirModalSolicitacao('correcao')" class="h-10 rounded-xl bg-blue-600/20 border border-blue-500/30 text-blue-400 hover:bg-blue-600/30 transition text-sm font-medium">
+                            <i class="fa-solid fa-pen-to-square mr-1"></i> Correção
+                        </button>
+                        <button onclick="abrirModalSolicitacao('exclusao')" class="h-10 rounded-xl bg-rose-600/20 border border-rose-500/30 text-rose-400 hover:bg-rose-600/30 transition text-sm font-medium">
+                            <i class="fa-solid fa-trash mr-1"></i> Exclusão
+                        </button>
+                        <button onclick="abrirModalSolicitacao('informacao')" class="h-10 rounded-xl bg-amber-600/20 border border-amber-500/30 text-amber-400 hover:bg-amber-600/30 transition text-sm font-medium">
+                            <i class="fa-solid fa-circle-info mr-1"></i> Informação
+                        </button>
+                    </div>
+                    <div id="lista-solicitacoes-paciente" class="space-y-2 max-h-60 overflow-y-auto">
+                        <p class="text-xs text-slate-500 text-center py-4">Carregando...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    carregarSolicitacoesPaciente();
+}
+
+async function revogarConsentimentoUI(tipo) {
+    const labels = { 'tratamento_dados': 'dados pessoais', 'dados_saude': 'dados de saúde' };
+    if (!confirm(`Tem certeza que deseja revogar o consentimento para ${labels[tipo]}?`)) return;
+
+    try {
+        const formData = new FormData();
+        formData.append('tipo', tipo);
+        formData.append('versao_texto', '1.0');
+        formData.append('aceito', 'false');
+
+        const res = await fetch(`${API_URL}/paciente/consentimentos`, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (res.ok) {
+            mostrarToast('Consentimento revogado com sucesso.', 'sucesso');
+            document.getElementById('modal-privacidade').remove();
+            // Se revogou algum dos dois, mostrar modal novamente
+            consentimentoAceito = await verificarConsentimento();
+            if (!consentimentoAceito) {
+                setTimeout(() => mostrarModalConsentimento(), 500);
+            }
+        } else {
+            mostrarToast('Erro ao revogar consentimento.', 'erro');
+        }
+    } catch {
+        mostrarToast('Erro de conexão ao revogar consentimento.', 'erro');
+    }
+}
+
+async function baixarMeusDados() {
+    try {
+        mostrarToast('Preparando download...', 'info');
+        const res = await fetch(`${API_URL}/paciente/meus-dados`);
+        if (!res.ok) throw new Error('Falha ao buscar dados');
+        const data = await res.json();
+
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `meus-dados-acnutri-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        mostrarToast('Download iniciado!', 'sucesso');
+    } catch {
+        mostrarToast('Erro ao baixar dados. Tente novamente.', 'erro');
+    }
+}
+
+function abrirModalSolicitacao(tipo) {
+    const labels = {
+        correcao: { titulo: 'Solicitação de Correção', desc: 'Descreva quais dados estão incorretos e qual a correção desejada.', icon: 'fa-pen-to-square', color: 'blue' },
+        exclusao: { titulo: 'Solicitação de Exclusão', desc: 'Descreva quais dados deseja excluir. Nota: o prontuário clínico pode ter prazos legais de guarda (ex: 10 anos perante CFN), impedindo a exclusão imediata.', icon: 'fa-trash', color: 'rose' },
+        informacao: { titulo: 'Pedido de Informação', desc: 'Solicite informações sobre como seus dados são tratados, com quem são compartilhados, prazos de retenção, etc.', icon: 'fa-circle-info', color: 'amber' }
+    };
+    const cfg = labels[tipo];
+
+    const modal = document.createElement('div');
+    modal.id = 'modal-solicitacao-lgpd';
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm';
+    modal.innerHTML = `
+        <div class="bg-slate-800 border border-white/10 rounded-3xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div class="flex items-center justify-between p-5 border-b border-white/10 shrink-0">
+                <h2 class="text-xl font-bold text-white">${cfg.titulo}</h2>
+                <button onclick="document.getElementById('modal-solicitacao-lgpd').remove()" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="overflow-y-auto p-5 space-y-4">
+                <p class="text-sm text-slate-300">${cfg.desc}</p>
+                <textarea id="solicitacao-descricao" rows="5" class="w-full p-4 rounded-xl bg-slate-700/50 border border-white/10 text-white text-sm resize-none focus:border-purple-500 focus:outline-none" placeholder="Descreva sua solicitação com detalhes (mín. 10 caracteres)..."></textarea>
+                <div class="flex justify-end gap-3 pt-2">
+                    <button onclick="document.getElementById('modal-solicitacao-lgpd').remove()" class="px-4 py-2 rounded-xl bg-slate-700/50 border border-white/10 text-slate-300 hover:text-white hover:bg-white/5 transition text-sm font-medium">Cancelar</button>
+                    <button onclick="criarSolicitacao('${tipo}')" class="px-4 py-2 rounded-xl bg-${cfg.color}-600 hover:bg-${cfg.color}-500 text-white transition text-sm font-medium">
+                        <i class="fa-solid fa-paper-plane mr-2"></i> Enviar solicitação
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    document.getElementById('solicitacao-descricao').focus();
+}
+
+async function criarSolicitacao(tipo) {
+    const descricao = document.getElementById('solicitacao-descricao').value.trim();
+    if (descricao.length < 10) {
+        mostrarToast('Descrição muito curta (mín. 10 caracteres).', 'aviso');
+        return;
+    }
+
+    const btn = document.querySelector('#modal-solicitacao-lgpd button:last-child');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Enviando...';
+
+    try {
+        const formData = new FormData();
+        formData.append('tipo', tipo);
+        formData.append('descricao', descricao);
+
+        const res = await fetch(`${API_URL}/paciente/solicitacoes`, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (res.ok) {
+            mostrarToast('Solicitação enviada com sucesso!', 'sucesso');
+            document.getElementById('modal-solicitacao-lgpd').remove();
+            carregarSolicitacoesPaciente();
+        } else {
+            const err = await res.json();
+            mostrarToast(err.mensagem || 'Erro ao enviar solicitação.', 'erro');
+        }
+    } catch {
+        mostrarToast('Erro de conexão.', 'erro');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-paper-plane mr-2"></i> Enviar solicitação';
+    }
+}
+
+async function carregarSolicitacoesPaciente() {
+    const el = document.getElementById('lista-solicitacoes-paciente');
+    if (!el) return;
+
+    try {
+        const res = await fetch(`${API_URL}/paciente/solicitacoes`);
+        if (!res.ok) throw new Error('Falha');
+        const lista = await res.json();
+
+        if (!lista.length) {
+            el.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">Nenhuma solicitação registrada.</p>';
+            return;
+        }
+
+        const statusColor = {
+            pendente: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+            em_analise: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+            atendida: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+            recusada: 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+        };
+        const statusLabel = {
+            pendente: 'Pendente',
+            em_analise: 'Em análise',
+            atendida: 'Atendida',
+            recusada: 'Recusada'
+        };
+        const tipoLabel = {
+            correcao: 'Correção',
+            exclusao: 'Exclusão',
+            informacao: 'Informação'
+        };
+
+        el.innerHTML = lista.map(s => `
+            <div class="p-3 rounded-xl bg-slate-700/50 border border-white/5">
+                <div class="flex items-start justify-between gap-2">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="font-medium text-white">${tipoLabel[s.tipo] || s.tipo}</span>
+                            <span class="px-2 py-0.5 rounded-full text-xs font-medium ${statusColor[s.status] || 'bg-slate-500/20 text-slate-400'}">${statusLabel[s.status] || s.status}</span>
+                        </div>
+                        <p class="text-sm text-slate-300">${escaparHtml(s.descricao)}</p>
+                        <p class="text-xs text-slate-500 mt-1">Enviada em ${formatarDataHora(s.criado_em)}${s.resolvido_em ? ` • Resolvida em ${formatarDataHora(s.resolvido_em)}` : ''}</p>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    } catch {
+        el.innerHTML = '<p class="text-xs text-rose-400 text-center py-4">Erro ao carregar solicitações.</p>';
+    }
+}
+
+function formatarDataHora(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 async function carregarAreaPaciente() {
@@ -3377,6 +4061,14 @@ async function carregarAreaPaciente() {
         if (!res.ok) throw new Error(res.status);
         dadosPaciente = await res.json();
         document.getElementById("pac-nome").innerText = dadosPaciente.nome.split(" ")[0];
+
+        // Verificar consentimento
+        consentimentoAceito = await verificarConsentimento();
+        if (!consentimentoAceito) {
+            mostrarModalConsentimento();
+            return;
+        }
+
         abaPaciente("dashboard");
     } catch {
         el.innerHTML = `<p class="text-rose-400 text-sm">Não foi possível carregar seus dados. Tente novamente.</p>`;
@@ -3384,6 +4076,17 @@ async function carregarAreaPaciente() {
 }
 
 function abaPaciente(aba) {
+    // Bloquear navegação se consentimento não foi dado
+    if (!consentimentoAceito && aba !== 'dashboard') {
+        mostrarModalConsentimento();
+        // Resetar aba ativa visualmente
+        document.querySelectorAll(".pac-aba").forEach(b => {
+            b.style.background = "#181430";
+            b.style.color = "#a99bd0";
+        });
+        return;
+    }
+
     document.querySelectorAll(".pac-aba").forEach(b => {
         const ativa = b.dataset.aba === aba;
         b.style.background = ativa ? "linear-gradient(90deg,#4c1d95,#be185d)" : "#181430";
@@ -3625,7 +4328,7 @@ async function carregarDashboardPaciente(pacienteId) {
             </div>
             <div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5">
                 <h3 class="font-bold text-white mb-4">Ações Rápidas</h3>
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
                     <button onclick="abaPaciente('anamnese')" class="h-14 rounded-xl bg-purple-600/20 border border-purple-500/30 text-white hover:bg-purple-600/30 transition flex flex-col items-center justify-center gap-2">
                         <i class="fa-solid fa-file-medical text-xl"></i>
                         <span class="text-sm font-medium">Anamnese</span>
@@ -3637,6 +4340,10 @@ async function carregarDashboardPaciente(pacienteId) {
                     <button onclick="abaPaciente('metas')" class="h-14 rounded-xl bg-amber-500/20 border border-amber-500/30 text-white hover:bg-amber-500/30 transition flex flex-col items-center justify-center gap-2">
                         <i class="fa-solid fa-bullseye text-xl"></i>
                         <span class="text-sm font-medium">Metas</span>
+                    </button>
+                    <button onclick="abrirConfiguracoesPrivacidade()" class="h-14 rounded-xl bg-slate-600/20 border border-slate-500/30 text-white hover:bg-slate-600/30 transition flex flex-col items-center justify-center gap-2">
+                        <i class="fa-solid fa-shield-halved text-xl"></i>
+                        <span class="text-sm font-medium">Privacidade</span>
                     </button>
                 </div>
             </div>
@@ -3803,6 +4510,11 @@ function renderAnamneseSection(sectionNum) {
     }
 
     contentEl.innerHTML = html;
+
+    // Fase A: Quando renderizar seção 2 (Dados Pessoais), buscar últimos valores e pré-preencher
+    if (sectionNum === 2) {
+        preencherUltimosValoresAnamnese();
+    }
 }
 
 // Section 1: Objetivo
@@ -3910,7 +4622,7 @@ function renderSectionDadosPessoais() {
                 </div>
                 <div class="space-y-2">
                     <label class="block text-sm font-medium text-slate-300">Peso atual (kg)</label>
-                    <input type="number" step="0.1"
+                    <input type="number" step="0.1" id="anamnese-peso-atual"
                         class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
                         placeholder="Ex: 75.5"
                         value="${data.peso_atual || ''}"
@@ -3939,6 +4651,14 @@ function renderSectionDadosPessoais() {
                         placeholder="Ex: 65"
                         value="${data.peso_minimo || ''}"
                         oninput="anamneseUpdateField('dados_pessoais', 'peso_minimo', this.value)">
+                </div>
+                <div class="space-y-2 sm:col-span-2">
+                    <label class="block text-sm font-medium text-slate-300">Altura (cm)</label>
+                    <input type="number" step="0.1" id="anamnese-altura"
+                        class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                        placeholder="Ex: 170"
+                        value="${data.altura || ''}"
+                        oninput="anamneseUpdateField('dados_pessoais', 'altura', this.value)">
                 </div>
                 <div class="space-y-2 sm:col-span-2">
                     <label class="block text-sm font-medium text-slate-300">Sexo</label>
@@ -4797,6 +5517,168 @@ function renderEmpresas(empresas) {
             <td class="py-3 px-4 text-slate-300">${new Date(emp.criadoEm).toLocaleDateString('pt-BR')}</td>
         </tr>
     `).join('');
+}
+
+// ===== LGPD - Solicitações da Empresa (Equipe) =====
+async function renderSecaoLgpd() {
+    // Verificar permissão (admin, nutricionista, superadmin)
+    const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
+    if (!['admin', 'nutricionista', 'super_admin'].includes(user.perfil)) {
+        alert('Acesso restrito.');
+        navegar('dashboard');
+        return;
+    }
+
+    const el = document.getElementById('sec-lgpd');
+    if (!el) return;
+
+    el.innerHTML = `
+        <header class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+            <div>
+                <div class="flex items-center gap-3">
+                    <div class="w-11 h-11 rounded-2xl bg-amber-500/15 text-amber-400 flex items-center justify-center">
+                        <i class="fa-solid fa-shield-halved"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-2xl font-bold text-white">LGPD / Solicitações de Titulares</h2>
+                        <p class="text-sm text-slate-400 mt-1">Gerencie solicitações de correção, exclusão e informação dos pacientes</p>
+                    </div>
+                </div>
+            </div>
+        </header>
+        <div class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
+            <div class="overflow-x-auto">
+                <table class="w-full" id="tabela-lgpd-solicitacoes">
+                    <thead>
+                        <tr class="text-left text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-white/10">
+                            <th class="pb-3 px-4">Paciente</th>
+                            <th class="pb-3 px-4">Tipo</th>
+                            <th class="pb-3 px-4">Descrição</th>
+                            <th class="pb-3 px-4">Status</th>
+                            <th class="pb-3 px-4">Criada em</th>
+                            <th class="pb-3 px-4">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-white/5" id="tbody-lgpd-solicitacoes">
+                        <tr><td colspan="6" class="py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Carregando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+
+    await carregarSolicitacoesEmpresa();
+}
+
+async function carregarSolicitacoesEmpresa() {
+    try {
+        const res = await fetch(`${API_URL}/empresa/solicitacoes`);
+        if (!res.ok) {
+            if (res.status === 403) throw new Error('Sem permissão');
+            throw new Error(`Erro HTTP: ${res.status}`);
+        }
+        const lista = await res.json();
+        renderSolicitacoesEmpresa(lista);
+    } catch (err) {
+        console.error('Erro ao carregar solicitações LGPD:', err);
+        document.getElementById('tbody-lgpd-solicitacoes').innerHTML =
+            '<tr><td colspan="6" class="py-8 text-center text-rose-400">Erro ao carregar solicitações</td></tr>';
+    }
+}
+
+function renderSolicitacoesEmpresa(lista) {
+    const tbody = document.getElementById('tbody-lgpd-solicitacoes');
+    if (!tbody) return;
+
+    if (!lista.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="py-8 text-center text-slate-400">Nenhuma solicitação registrada</td></tr>';
+        return;
+    }
+
+    const statusColor = {
+        pendente: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+        em_analise: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+        atendida: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+        recusada: 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+    };
+    const statusLabel = {
+        pendente: 'Pendente',
+        em_analise: 'Em análise',
+        atendida: 'Atendida',
+        recusada: 'Recusada'
+    };
+    const tipoLabel = {
+        correcao: 'Correção',
+        exclusao: 'Exclusão',
+        informacao: 'Informação'
+    };
+    const tipoIcon = {
+        correcao: 'fa-pen-to-square text-blue-400',
+        exclusao: 'fa-trash text-rose-400',
+        informacao: 'fa-circle-info text-amber-400'
+    };
+
+    tbody.innerHTML = lista.map(s => `
+        <tr class="hover:bg-slate-800/50">
+            <td class="py-4 px-4">
+                <div class="font-medium text-white">#${s.paciente_id} • ${escaparHtml(s.paciente_nome)}</div>
+            </td>
+            <td class="py-4 px-4">
+                <span class="flex items-center gap-1.5 text-sm">
+                    <i class="fa-solid ${tipoIcon[s.tipo] || 'fa-file'}"></i>
+                    ${tipoLabel[s.tipo] || s.tipo}
+                </span>
+            </td>
+            <td class="py-4 px-4 max-w-xs">
+                <p class="text-sm text-slate-300 truncate" title="${escaparHtml(s.descricao)}">${escaparHtml(s.descricao)}</p>
+            </td>
+            <td class="py-4 px-4">
+                <span class="px-3 py-1 rounded-full text-xs font-medium ${statusColor[s.status] || 'bg-slate-500/20 text-slate-400'}">
+                    ${statusLabel[s.status] || s.status}
+                </span>
+            </td>
+            <td class="py-4 px-4 text-sm text-slate-400">${formatarDataHora(s.criado_em)}</td>
+            <td class="py-4 px-4">
+                <div class="flex items-center gap-2">
+                    ${s.status === 'pendente' || s.status === 'em_analise' ? `
+                        <select onchange="atualizarStatusSolicitacao(${s.id}, this.value)" class="text-xs bg-slate-700 border border-white/10 rounded-xl px-3 py-1.5 text-white focus:border-purple-500 focus:outline-none" style="min-width: 140px;">
+                            <option value="em_analise" ${s.status === 'em_analise' ? 'selected' : ''}>Em análise</option>
+                            <option value="atendida" ${s.status === 'atendida' ? 'selected' : ''}>Atendida</option>
+                            <option value="recusada" ${s.status === 'recusada' ? 'selected' : ''}>Recusada</option>
+                        </select>
+                    ` : `
+                        <span class="text-xs text-slate-500">Finalizada</span>
+                    `}
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+async function atualizarStatusSolicitacao(id, novoStatus) {
+    if (!['em_analise', 'atendida', 'recusada'].includes(novoStatus)) return;
+
+    try {
+        const formData = new FormData();
+        formData.append('status', novoStatus);
+
+        const res = await fetch(`${API_URL}/empresa/solicitacoes/${id}/atender`, {
+            method: 'PATCH',
+            body: formData
+        });
+
+        if (res.ok) {
+            mostrarToast('Status atualizado com sucesso!', 'sucesso');
+            await carregarSolicitacoesEmpresa();
+        } else {
+            const err = await res.json();
+            mostrarToast(err.mensagem || 'Erro ao atualizar status.', 'erro');
+            await carregarSolicitacoesEmpresa(); // Reset select
+        }
+    } catch {
+        mostrarToast('Erro de conexão.', 'erro');
+        await carregarSolicitacoesEmpresa(); // Reset select
+    }
 }
 
 async function cadastrarEmpresa(event) {
