@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE exames_paciente
+ADD COLUMN IF NOT EXISTS enviado_por VARCHAR(20) NOT NULL DEFAULT 'equipe';
+
+COMMIT;

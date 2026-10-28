@@ -2622,7 +2622,9 @@ function renderizarExames() {
         <div class="bg-slate-900/60 border border-slate-700/70 rounded-2xl p-5">
         <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
-        <h4 class="font-bold text-white">${escaparHtml(x.titulo)}</h4>
+        <h4 class="font-bold text-white flex items-center gap-2">${escaparHtml(x.titulo)}
+        ${x.enviadoPor === 'paciente' ? '<span class="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">Enviado pelo paciente</span>' : ''}
+        </h4>
         <p class="text-xs text-slate-400 mt-1"><i class="fa-solid fa-calendar-day mr-1"></i>Exame de ${formatarData(x.data)}</p>
         </div>
         <div class="flex gap-1.5">
@@ -2681,7 +2683,168 @@ async function excluirExame(id) {
     const res = await fetch(`${API_URL}/exames/${id}`, { method: "DELETE" });
     if (res.ok) await carregarExames(window.pacienteIdAtivo);
     else alert(await lerErro(res));
-}  
+}
+
+// ===================================== EXAMES - ÁREA DO PACIENTE =====================================
+const LIMITE_EXAME_PACIENTE = 10 * 1024 * 1024; // 10 MB
+const TIPOS_EXAME_PERMITIDOS = ["application/pdf", "image/jpeg", "image/png"];
+
+function validarArquivoExamePaciente(input) {
+    const file = input.files[0];
+    if (!file) return true;
+    if (file.size > LIMITE_EXAME_PACIENTE) {
+        alert(`"${file.name}" passa de 10 MB.`);
+        input.value = "";
+        return false;
+    }
+    if (!TIPOS_EXAME_PERMITIDOS.includes(file.type)) {
+        alert(`"${file.name}": tipo não permitido. Use PDF, JPG ou PNG.`);
+        input.value = "";
+        return false;
+    }
+    return true;
+}
+
+async function carregarExamesPaciente() {
+    const el = document.getElementById("pac-exames-lista");
+    if (!el) return;
+    el.innerHTML = `<p class="text-sm text-slate-400 text-center py-4">Carregando exames...</p>`;
+    try {
+        const token = sessionStorage.getItem(TOKEN_KEY);
+        const res = await fetch(`${API_URL}/api/paciente/arquivos`, {
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const exames = await res.json();
+        renderizarExamesPaciente(exames);
+    } catch (err) {
+        console.error("Erro ao carregar exames do paciente:", err);
+        el.innerHTML = `<p class="text-rose-400 text-sm text-center py-4">Não foi possível carregar seus exames.</p>`;
+    }
+}
+
+function renderizarExamesPaciente(exames) {
+    const el = document.getElementById("pac-exames-lista");
+    if (!el) return;
+    if (!exames || !exames.length) {
+        el.innerHTML = `<div class="bg-slate-800/50 border border-white/5 rounded-xl p-5 text-center">
+            <p class="text-sm text-slate-400">Nenhum exame enviado ainda.</p>
+        </div>`;
+        return;
+    }
+    const ehImagem = (mime) => (mime || "").startsWith("image/");
+    el.innerHTML = exames.map(ex => {
+        const mime = ex.mime_type || ex.mime || "";
+        const url = `${API_URL}/api/paciente/arquivos/${ex.id}`;
+        return `
+        <div class="bg-slate-800/50 border border-white/10 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-4">
+            <div class="flex items-center gap-3 shrink-0">
+                ${ehImagem(mime)
+                    ? `<img src="${url}" alt="${escaparHtml(ex.titulo)}" class="w-16 h-16 object-cover rounded-lg border border-white/10">`
+                    : `<div class="w-16 h-16 rounded-lg bg-slate-900 border border-white/10 flex flex-col items-center justify-center gap-1">
+                        <i class="fa-solid fa-file-pdf text-red-400 text-2xl"></i>
+                        <span class="text-[9px] text-slate-400 truncate text-center px-1">${escaparHtml(ex.titulo)}</span>
+                       </div>`}
+            </div>
+            <div class="flex-1 min-w-0">
+                <h4 class="font-medium text-white truncate">${escaparHtml(ex.titulo)}</h4>
+                <p class="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
+                    <i class="fa-solid fa-calendar-day"></i> ${ex.data_exame ? formatarData(ex.data_exame) : "—"}
+                    ${ex.observacao ? `<span class="text-slate-500">•</span> <span class="truncate">${escaparHtml(ex.observacao)}</span>` : ""}
+                </p>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+                <a href="${url}" target="_blank" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-600/20 text-purple-400 hover:bg-purple-600/30 hover:text-purple-300 transition flex items-center gap-1"
+                   download="${escaparHtml(ex.nome_arquivo || ex.titulo)}">
+                    <i class="fa-solid fa-download"></i> Baixar
+                </a>
+                <button type="button" onclick="excluirExamePaciente(${ex.id})"
+                    class="px-3 py-1.5 text-xs font-medium rounded-lg bg-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-white transition flex items-center gap-1">
+                    <i class="fa-solid fa-trash"></i> Excluir
+                </button>
+            </div>
+        </div>`;
+    }).join("");
+}
+
+async function enviarExamePaciente() {
+    const arquivoInput = document.getElementById("pac-exame-arquivo");
+    const tituloInput = document.getElementById("pac-exame-titulo");
+    const dataInput = document.getElementById("pac-exame-data");
+    const obsInput = document.getElementById("pac-exame-obs");
+
+    if (!arquivoInput.files.length) {
+        alert("Selecione um arquivo.");
+        return;
+    }
+    if (!validarArquivoExamePaciente(arquivoInput)) return;
+    if (!tituloInput.value.trim()) {
+        alert("Informe o título do exame.");
+        tituloInput.focus();
+        return;
+    }
+    if (!dataInput.value) {
+        alert("Informe a data do exame.");
+        dataInput.focus();
+        return;
+    }
+
+    const btn = event.target;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Enviando...';
+    btn.disabled = true;
+
+    const fd = new FormData();
+    fd.append("arquivo", arquivoInput.files[0]);
+    fd.append("titulo", tituloInput.value.trim());
+    fd.append("data", dataInput.value);
+    fd.append("observacao", obsInput.value.trim());
+
+    try {
+        const token = sessionStorage.getItem(TOKEN_KEY);
+        const res = await fetch(`${API_URL}/api/paciente/arquivos`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${token}` },
+            body: fd
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.mensagem || `HTTP ${res.status}`);
+        }
+        alert("Exame enviado com sucesso!");
+        arquivoInput.value = "";
+        tituloInput.value = "";
+        dataInput.value = "";
+        obsInput.value = "";
+        await carregarExamesPaciente();
+    } catch (err) {
+        console.error("Erro ao enviar exame:", err);
+        alert(err.message || "Erro ao enviar exame.");
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
+
+async function excluirExamePaciente(id) {
+    if (!confirm("Excluir este exame definitivamente?")) return;
+    try {
+        const token = sessionStorage.getItem(TOKEN_KEY);
+        const res = await fetch(`${API_URL}/api/paciente/arquivos/${id}`, {
+            method: "DELETE",
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.mensagem || `HTTP ${res.status}`);
+        }
+        alert("Exame excluído.");
+        await carregarExamesPaciente();
+    } catch (err) {
+        console.error("Erro ao excluir exame:", err);
+        alert(err.message || "Erro ao excluir exame.");
+    }
+}
 
 // ===================================== OBSERVAÇÕES (semana do check-in e gerais)=====================================
 // Cole aqui o link do seu Google Forms (deixe "" para esconder o botão)
@@ -3309,6 +3472,7 @@ function abaPaciente(aba) {
     }
     else if (aba === "anamnese") {
         renderAnamneseForm(d.id);
+        carregarExamesPaciente();
     }
 }
 
@@ -4106,6 +4270,54 @@ function renderSectionSaude() {
                     class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
                     placeholder="Ex: Hemograma (01/2024), Lipidograma (01/2024), TSH (01/2024)..."
                     oninput="anamneseUpdateField('saude', 'exames_detalhes', this.value)">${data.exames_detalhes || ''}</textarea>
+            </div>
+
+            <!-- Seus exames (área do paciente) -->
+            <div class="space-y-5 pt-6 border-t border-white/10">
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-flask text-amber-400"></i>Seus exames
+                </h3>
+                <p class="text-sm text-slate-400">Envie e gerencie seus exames laboratoriais e de imagem</p>
+
+                <!-- Formulário de upload -->
+                <div class="bg-slate-800/50 border border-white/10 rounded-xl p-4 space-y-4">
+                    <h4 class="text-sm font-semibold text-slate-200">Enviar novo exame</h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div class="space-y-2 sm:col-span-2">
+                            <label class="block text-xs font-medium text-slate-300">Arquivo (PDF, JPG, PNG - máx. 10 MB)</label>
+                            <input type="file" id="pac-exame-arquivo" accept=".pdf,.jpg,.jpeg,.png"
+                                class="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-3 text-white file:mr-4 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-purple-600 file:text-white hover:file:bg-purple-500 transition"
+                                onchange="validarArquivoExamePaciente(this)">
+                        </div>
+                        <div class="space-y-2">
+                            <label class="block text-xs font-medium text-slate-300">Título do exame *</label>
+                            <input type="text" id="pac-exame-titulo"
+                                class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-2 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition text-sm"
+                                placeholder="Ex: Hemograma completo, Ressonância magnética...">
+                        </div>
+                        <div class="space-y-2">
+                            <label class="block text-xs font-medium text-slate-300">Data do exame *</label>
+                            <input type="date" id="pac-exame-data"
+                                class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-2 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition text-sm"
+                                max="${new Date().toISOString().split('T')[0]}">
+                        </div>
+                    </div>
+                    <div class="space-y-2">
+                        <label class="block text-xs font-medium text-slate-300">Observação (opcional)</label>
+                        <textarea id="pac-exame-obs" rows="2"
+                            class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-2 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition text-sm"
+                            placeholder="Ex: Exame de rotina, solicitação do médico..."></textarea>
+                    </div>
+                    <button type="button" onclick="enviarExamePaciente()"
+                        class="px-4 py-2 text-sm font-semibold rounded-xl text-white transition bg-amber-600 hover:bg-amber-500 flex items-center gap-2">
+                        <i class="fa-solid fa-upload"></i> Enviar exame
+                    </button>
+                </div>
+
+                <!-- Lista de exames -->
+                <div id="pac-exames-lista" class="space-y-3">
+                    <p class="text-sm text-slate-400 text-center py-4">Carregando exames...</p>
+                </div>
             </div>
 
             <div class="space-y-2">

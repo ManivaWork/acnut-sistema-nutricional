@@ -67,6 +67,7 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddHttpClient();
 builder.Services.Configure<EmailConfig>(builder.Configuration.GetSection("Email"));
 builder.Services.AddSingleton<IEmailService, EmailService>();
+builder.Services.AddHttpContextAccessor();
 
 // Registrar NpgsqlDataSource para injeção de dependência (usado no BillingModule)
 builder.Services.AddSingleton<NpgsqlDataSource>(_ => NpgsqlDataSource.Create(connString));
@@ -130,11 +131,18 @@ app.Use(async (ctx, next) =>
     }
     var u = ctx.User;
         if (u.Identity?.IsAuthenticated != true) { await Negar(401, "Sessão expirada. Entre novamente."); return; }
-    // Token de paciente: só GET em /api/paciente/*
+    // Token de paciente: GET em /api/paciente/* + POST/DELETE em /api/paciente/exames
     if (u.FindFirst("tipo")?.Value == "paciente")
     {
-        if (!path.StartsWith("/api/paciente/") || !HttpMethods.IsGet(m))
+        if (!path.StartsWith("/api/paciente/"))
         { await Negar(403, "Acesso não permitido."); return; }
+        if (!HttpMethods.IsGet(m))
+        {
+            // Permite apenas POST /api/paciente/exames e DELETE /api/paciente/exames/{id}
+            bool permitido = (path == "/api/paciente/exames" && HttpMethods.IsPost(m))
+                          || (path.StartsWith("/api/paciente/exames/") && HttpMethods.IsDelete(m));
+            if (!permitido) { await Negar(403, "Acesso não permitido."); return; }
+        }
         await next(); return;
     }
     if (u.FindFirst("tipo")?.Value != "equipe" || path.StartsWith("/api/paciente/"))
@@ -1405,7 +1413,7 @@ app.MapGet("/api/exames/{pacienteId}", async (int pacienteId) =>
     var lista = new List<object>();
 
     using var cmd = new NpgsqlCommand(@"
-        SELECT id, titulo_exame, data_exame, COALESCE(observacao, '')
+        SELECT id, titulo_exame, data_exame, COALESCE(observacao, ''), enviado_por
         FROM exames_paciente
         WHERE paciente_id = @p
         ORDER BY data_exame DESC, id DESC;", conn);
@@ -1420,6 +1428,7 @@ app.MapGet("/api/exames/{pacienteId}", async (int pacienteId) =>
             titulo = rd.GetString(1),
             data = rd.GetDateTime(2).ToString("yyyy-MM-dd"),
             observacao = rd.GetString(3),
+            enviadoPor = rd.GetString(4),
             arquivos = anexos.TryGetValue(id, out var a) ? a : new List<object>()
         });
     }
@@ -2847,6 +2856,161 @@ app.MapGet("/api/acessos/{pacienteId}", async (int pacienteId) =>
     using var rd = await c.ExecuteReaderAsync();
     while (await rd.ReadAsync()) lista.Add(new { em = rd.GetDateTime(0).ToString("yyyy-MM-ddTHH:mm:ss") });
     return Results.Ok(lista);
+});
+
+// =====================================================================
+// ÁREA DO PACIENTE: EXAMES
+// =====================================================================
+
+// POST /api/paciente/exames - Paciente envia exames (multipart: titulo, data, observacao, files)
+app.MapPost("/api/paciente/exames", async (HttpRequest request, ClaimsPrincipal user) =>
+{
+    int pid = int.Parse(user.FindFirst("pid")!.Value);
+    int emp = int.Parse(user.FindFirst("empresa")!.Value);
+
+    var form = await request.ReadFormAsync();
+    string titulo = form["titulo"].ToString().Trim();
+    if (titulo == "")
+        return Results.BadRequest(new { mensagem = "Informe o nome do exame." });
+    if (titulo.Length > 100) titulo = titulo[..100];
+
+    var erro = ArquivoHelper.Validar(form.Files, somenteImagem: false);
+    if (erro != null) return Results.BadRequest(new { mensagem = erro });
+
+    // Limite: até 5 arquivos por envio
+    if (form.Files.Count > 5)
+        return Results.BadRequest(new { mensagem = "Máximo 5 arquivos por envio." });
+
+    // Limite: 30 exames por paciente
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+    using (var cmdCount = new NpgsqlCommand("SELECT COUNT(*) FROM exames_paciente WHERE paciente_id = @p AND enviado_por = 'paciente'", conn))
+    {
+        cmdCount.Parameters.AddWithValue("p", pid);
+        var total = Convert.ToInt32(await cmdCount.ExecuteScalarAsync());
+        if (total >= 30)
+            return Results.BadRequest(new { mensagem = "Limite de 30 exames por paciente atingido." });
+    }
+
+    using var tx = await conn.BeginTransactionAsync();
+    try
+    {
+        using var cmd = new NpgsqlCommand(@"
+            INSERT INTO exames_paciente (paciente_id, empresa_id, titulo_exame, data_exame, observacao, enviado_por)
+            VALUES (@p, @emp, @titulo, @data, @obs, 'paciente') RETURNING id;", conn, tx);
+        cmd.Parameters.AddWithValue("p", pid);
+        cmd.Parameters.AddWithValue("emp", emp);
+        cmd.Parameters.AddWithValue("titulo", titulo);
+        cmd.Parameters.Add(new NpgsqlParameter("data", NpgsqlTypes.NpgsqlDbType.Date) { Value = EvolucaoCampos.LerData(form["data"]) });
+        cmd.Parameters.AddWithValue("obs", form["observacao"].ToString());
+        int id = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+
+        await ArquivoHelper.Salvar(conn, tx, pid, "exame", id, form.Files);
+        await tx.CommitAsync();
+
+        return Results.Created($"/api/paciente/exames/{id}", new { id, mensagem = "Exame enviado com sucesso!" });
+    }
+    catch
+    {
+        await tx.RollbackAsync();
+        throw;
+    }
+});
+
+// GET /api/paciente/exames - Lista exames do paciente (com arquivos)
+app.MapGet("/api/paciente/exames", async (ClaimsPrincipal user) =>
+{
+    int pid = int.Parse(user.FindFirst("pid")!.Value);
+    int emp = int.Parse(user.FindFirst("empresa")!.Value);
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+
+    var anexos = await ArquivoHelper.Listar(conn, pid, "exame");
+    var lista = new List<object>();
+
+    using var cmd = new NpgsqlCommand(@"
+        SELECT id, titulo_exame, data_exame, COALESCE(observacao, ''), enviado_por
+        FROM exames_paciente
+        WHERE paciente_id = @p
+        ORDER BY data_exame DESC, id DESC;", conn);
+    cmd.Parameters.AddWithValue("p", pid);
+    using var rd = await cmd.ExecuteReaderAsync();
+    while (await rd.ReadAsync())
+    {
+        int id = rd.GetInt32(0);
+        lista.Add(new
+        {
+            id,
+            titulo = rd.GetString(1),
+            data = rd.GetDateTime(2).ToString("yyyy-MM-dd"),
+            observacao = rd.GetString(3),
+            enviado_por = rd.GetString(4),
+            arquivos = anexos.TryGetValue(id, out var a) ? a : new List<object>()
+        });
+    }
+    return Results.Ok(lista);
+});
+
+// GET /api/paciente/arquivos/{id} - Devolve arquivo do exame do paciente
+app.MapGet("/api/paciente/arquivos/{id:int}", async (int id, ClaimsPrincipal user) =>
+{
+    int pid = int.Parse(user.FindFirst("pid")!.Value);
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+    using var cmd = new NpgsqlCommand("SELECT mime, dados FROM arquivos_paciente WHERE id = @id AND paciente_id = @p", conn);
+    cmd.Parameters.AddWithValue("id", id);
+    cmd.Parameters.AddWithValue("p", pid);
+    using var rd = await cmd.ExecuteReaderAsync();
+    if (!await rd.ReadAsync())
+        return Results.NotFound(new { mensagem = "Arquivo não encontrado." });
+
+    var result = Results.File(rd.GetFieldValue<byte[]>(1), rd.GetString(0));
+    // Adiciona header de segurança
+    var httpContext = app.Services.GetRequiredService<IHttpContextAccessor>().HttpContext;
+    if (httpContext != null)
+        httpContext.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    return result;
+});
+
+// DELETE /api/paciente/exames/{id} - Apaga exame enviado pelo próprio paciente (com arquivos)
+app.MapDelete("/api/paciente/exames/{id:int}", async (int id, ClaimsPrincipal user) =>
+{
+    int pid = int.Parse(user.FindFirst("pid")!.Value);
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+    using var tx = await conn.BeginTransactionAsync();
+
+    // Verifica se é exame do paciente e enviado_por = 'paciente'
+    using (var cmdCheck = new NpgsqlCommand("SELECT id FROM exames_paciente WHERE id = @id AND paciente_id = @p AND enviado_por = 'paciente'", conn, tx))
+    {
+        cmdCheck.Parameters.AddWithValue("id", id);
+        cmdCheck.Parameters.AddWithValue("p", pid);
+        if (await cmdCheck.ExecuteScalarAsync() == null)
+        {
+            await tx.RollbackAsync();
+            return Results.NotFound(new { mensagem = "Exame não encontrado ou não pode ser excluído." });
+        }
+    }
+
+    // Apaga arquivos
+    using (var cmdA = new NpgsqlCommand("DELETE FROM arquivos_paciente WHERE origem = 'exame' AND origem_id = @id", conn, tx))
+    {
+        cmdA.Parameters.AddWithValue("id", id);
+        await cmdA.ExecuteNonQueryAsync();
+    }
+
+    // Apaga exame
+    using var cmd = new NpgsqlCommand("DELETE FROM exames_paciente WHERE id = @id", conn, tx);
+    cmd.Parameters.AddWithValue("id", id);
+    var rows = await cmd.ExecuteNonQueryAsync();
+    await tx.CommitAsync();
+
+    return rows > 0
+        ? Results.Ok(new { mensagem = "Exame excluído com sucesso!" })
+        : Results.NotFound(new { mensagem = "Exame não encontrado." });
 });
 
 // =====================================================================
