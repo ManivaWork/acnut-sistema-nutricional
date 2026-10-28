@@ -1,6 +1,6 @@
 -- Migration: Add extended anamnese fields (JSONB column for 8-section form)
 -- Run this AFTER the existing schema is applied
--- Idempotent: uses IF NOT EXISTS, no DROP/DELETE, ends in ROLLBACK for safety
+-- Idempotent: uses IF NOT EXISTS, no DROP/DELETE
 
 BEGIN;
 
@@ -21,4 +21,4 @@ FROM information_schema.columns
 WHERE table_name = 'anamneses'
 AND column_name = 'dados_extendidos';
 
-ROLLBACK; -- Remove ROLLBACK and replace with COMMIT when ready to apply
+COMMIT;

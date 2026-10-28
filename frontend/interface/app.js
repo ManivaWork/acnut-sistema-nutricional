@@ -405,6 +405,222 @@ async function salvarAnamneseProntuario() {
         alert("Erro de conexão com o servidor.");
         }
         }
+// Renderiza anamnese completa no prontuário (somente leitura)
+async function renderizarAnamneseProntuario(an) {
+    const container = document.getElementById("prontuario-anamnese-content");
+    if (!container) return;
+
+    // Parsear dados_extendidos
+    let dadosExtendidos = {};
+    if (an.dados_extendidos) {
+        try {
+            dadosExtendidos = typeof an.dados_extendidos === 'string'
+                ? JSON.parse(an.dados_extendidos)
+                : an.dados_extendidos;
+        } catch (e) {
+            console.warn("Erro ao parsear dados_extendidos:", e);
+        }
+    }
+
+    // Função helper para formatar valores
+    const fmt = (val, fallback = "—") => {
+        if (val === null || val === undefined || val === "") return fallback;
+        if (Array.isArray(val)) return val.length > 0 ? val.join(", ") : fallback;
+        return val;
+    };
+
+    // Função helper para renderizar checklist
+    const renderChecklist = (items, label) => {
+        if (!items || items.length === 0) return `<p class="text-slate-400 text-sm">${label}: —</p>`;
+        return `
+            <div>
+                <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">${label}</p>
+                <div class="flex flex-wrap gap-2">
+                    ${items.map(item => `
+                        <span class="px-3 py-1 bg-purple-600/20 text-purple-300 text-xs rounded-full border border-purple-500/30">${item}</span>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    };
+
+    // Função helper para renderizar lista dinâmica
+    const renderLista = (items, label) => {
+        if (!items || items.length === 0) return `<p class="text-slate-400 text-sm">${label}: —</p>`;
+        return `
+            <div>
+                <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">${label}</p>
+                <ul class="space-y-1">
+                    ${items.map(item => `<li class="text-sm text-slate-300 flex items-center gap-2"><i class="fa-solid fa-circle text-[4px] text-purple-400"></i>${item}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    };
+
+    const objetivo = dadosExtendidos.objetivo || {};
+    const dadosPessoais = dadosExtendidos.dados_pessoais || {};
+    const rotinaEstilo = dadosExtendidos.rotina_estilo_vida || {};
+    const alimentacao = dadosExtendidos.alimentacao_atual || {};
+    const saude = dadosExtendidos.saude || {};
+    const sintomas = dadosExtendidos.sintomas || {};
+    const rotinaAlimentar = dadosExtendidos.rotina_alimentar || {};
+    const finalizando = dadosExtendidos.finalizando || {};
+
+    container.innerHTML = `
+        <!-- Seção 1: Objetivo -->
+        <div class="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
+            <h4 class="text-sm font-bold text-purple-400 flex items-center gap-2 mb-3">
+                <i class="fa-solid fa-bullseye"></i>1. Objetivo Principal
+            </h4>
+            <div class="space-y-2 text-sm">
+                <p><span class="text-slate-400">Objetivo:</span> <span class="text-white">${fmt(objetivo.objetivo)}</span></p>
+                <p><span class="text-slate-400">Detalhes:</span> <span class="text-white">${fmt(objetivo.detalhes)}</span></p>
+                <p><span class="text-slate-400">Meta/Prazo:</span> <span class="text-white">${fmt(objetivo.meta_prazo)}</span></p>
+            </div>
+        </div>
+
+        <!-- Seção 2: Dados Pessoais -->
+        <div class="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
+            <h4 class="text-sm font-bold text-purple-400 flex items-center gap-2 mb-3">
+                <i class="fa-solid fa-user"></i>2. Dados Pessoais
+            </h4>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                <p><span class="text-slate-400">Nome:</span> <span class="text-white">${fmt(dadosPessoais.nome)}</span></p>
+                <p><span class="text-slate-400">Idade:</span> <span class="text-white">${fmt(dadosPessoais.idade)}</span></p>
+                <p><span class="text-slate-400">E-mail:</span> <span class="text-white">${fmt(dadosPessoais.email)}</span></p>
+                <p><span class="text-slate-400">Sexo:</span> <span class="text-white">${fmt(dadosPessoais.sexo)}</span></p>
+                <p><span class="text-slate-400">Peso atual:</span> <span class="text-white">${fmt(dadosPessoais.peso_atual)} kg</span></p>
+                <p><span class="text-slate-400">Peso desejado:</span> <span class="text-white">${fmt(dadosPessoais.peso_desejado)} kg</span></p>
+                <p><span class="text-slate-400">Altura:</span> <span class="text-white">${fmt(dadosPessoais.altura)} cm</span></p>
+            </div>
+        </div>
+
+        <!-- Seção 3: Rotina e Estilo de Vida -->
+        <div class="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
+            <h4 class="text-sm font-bold text-purple-400 flex items-center gap-2 mb-3">
+                <i class="fa-solid fa-clock"></i>3. Rotina e Estilo de Vida
+            </h4>
+            <div class="space-y-2 text-sm">
+                <p><span class="text-slate-400">Rotina diária:</span> <span class="text-white">${fmt(rotinaEstilo.rotina_diaria)}</span></p>
+                <p><span class="text-slate-400">Sono:</span> <span class="text-white">${fmt(rotinaEstilo.sono)}</span></p>
+                <p><span class="text-slate-400">Nível de estresse:</span> <span class="text-white">${fmt(rotinaEstilo.estresse)}</span></p>
+                <p><span class="text-slate-400">Atividade física:</span> <span class="text-white">${fmt(rotinaEstilo.atividade_fisica)}</span></p>
+                ${rotinaEstilo.atividade_fisica_detalhes ? `<p><span class="text-slate-400">Detalhes da atividade:</span> <span class="text-white">${fmt(rotinaEstilo.atividade_fisica_detalhes)}</span></p>` : ''}
+                <p><span class="text-slate-400">Consumo de álcool:</span> <span class="text-white">${fmt(rotinaEstilo.alcool)}</span></p>
+                <p><span class="text-slate-400">Tabagismo:</span> <span class="text-white">${fmt(rotinaEstilo.fumo)}</span></p>
+            </div>
+        </div>
+
+        <!-- Seção 4: Alimentação Atual -->
+        <div class="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
+            <h4 class="text-sm font-bold text-purple-400 flex items-center gap-2 mb-3">
+                <i class="fa-solid fa-bowl-food"></i>4. Alimentação Atual
+            </h4>
+            <div class="space-y-2 text-sm">
+                <p><span class="text-slate-400">Dia alimentar completo:</span></p>
+                <p class="text-white whitespace-pre-wrap bg-slate-800/50 p-3 rounded">${fmt(alimentacao.dia_alimentar)}</p>
+                <p><span class="text-slate-400">Consumo de água:</span> <span class="text-white">${fmt(alimentacao.consumo_agua)} L/dia</span></p>
+                <p><span class="text-slate-400">Alimentos que gosta:</span> <span class="text-white">${fmt(alimentacao.alimentos_gosta)}</span></p>
+                <p><span class="text-slate-400">Restrições alimentares:</span> <span class="text-white">${fmt(alimentacao.restricoes_alimentares)}</span></p>
+                ${alimentacao.restricoes_alimentares === 'sim' && alimentacao.restricoes_detalhes ? `<p><span class="text-slate-400">Quais restrições:</span> <span class="text-white">${fmt(alimentacao.restricoes_detalhes)}</span></p>` : ''}
+                <p><span class="text-slate-400">Refeições fora de casa:</span> <span class="text-white">${fmt(alimentacao.refeicoes_fora_casa)}</span></p>
+            </div>
+        </div>
+
+        <!-- Seção 5: Saúde -->
+        <div class="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
+            <h4 class="text-sm font-bold text-purple-400 flex items-center gap-2 mb-3">
+                <i class="fa-solid fa-heart-pulse"></i>5. Saúde
+            </h4>
+            <div class="space-y-3">
+                ${renderLista(saude.doencas, "Doenças diagnosticadas")}
+                ${renderLista(saude.medicamentos, "Medicamentos em uso")}
+                ${renderLista(saude.suplementos, "Suplementos em uso")}
+                <div>
+                    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Exames recentes</p>
+                    <p class="text-sm text-white">${fmt(saude.fez_exames_recente === 'sim' ? 'Sim' : saude.fez_exames_recente === 'nao' ? 'Não' : '—')}</p>
+                    ${saude.exames_detalhes ? `<p class="text-sm text-slate-300 mt-1 whitespace-pre-wrap bg-slate-800/50 p-2 rounded">${fmt(saude.exames_detalhes)}</p>` : ''}
+                </div>
+                ${renderChecklist(
+                    Object.entries(saude.historico_familiar || {}).filter(([k, v]) => v).map(([k]) => k.charAt(0).toUpperCase() + k.slice(1).replace('_', ' ')),
+                    "Histórico familiar"
+                )}
+            </div>
+        </div>
+
+        <!-- Seção 6: Sintomas -->
+        <div class="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
+            <h4 class="text-sm font-bold text-purple-400 flex items-center gap-2 mb-3">
+                <i class="fa-solid fa-notes-medical"></i>6. Sintomas
+            </h4>
+            <div class="space-y-3">
+                ${renderChecklist(sintomas.lista, "Sintomas frequentes")}
+                ${sintomas.outros ? `
+                    <div>
+                        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Outros sintomas</p>
+                        <p class="text-sm text-white whitespace-pre-wrap bg-slate-800/50 p-2 rounded">${fmt(sintomas.outros)}</p>
+                    </div>
+                ` : ''}
+            </div>
+        </div>
+
+        <!-- Seção 7: Rotina Alimentar -->
+        <div class="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
+            <h4 class="text-sm font-bold text-purple-400 flex items-center gap-2 mb-3">
+                <i class="fa-solid fa-utensils"></i>7. Rotina Alimentar
+            </h4>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                <p><span class="text-slate-400">Café da manhã:</span> <span class="text-white">${fmt(rotinaAlimentar.cafe_manha)}</span></p>
+                <p><span class="text-slate-400">Lanche manhã:</span> <span class="text-white">${fmt(rotinaAlimentar.lanche_manha)}</span></p>
+                <p><span class="text-slate-400">Almoço:</span> <span class="text-white">${fmt(rotinaAlimentar.almoco)}</span></p>
+                <p><span class="text-slate-400">Lanche tarde:</span> <span class="text-white">${fmt(rotinaAlimentar.lanche_tarde)}</span></p>
+                <p><span class="text-slate-400">Jantar:</span> <span class="text-white">${fmt(rotinaAlimentar.jantar)}</span></p>
+                <p><span class="text-slate-400">Ceia:</span> <span class="text-white">${fmt(rotinaAlimentar.ceia)}</span></p>
+            </div>
+            <div class="mt-2">
+                <p class="text-sm"><span class="text-slate-400">Longos períodos sem comer:</span> <span class="text-white">${fmt(
+                    rotinaAlimentar.longos_periodos_sem_comer === 'sim' ? 'Sim' :
+                    rotinaAlimentar.longos_periodos_sem_comer === 'nao' ? 'Não' :
+                    rotinaAlimentar.longos_periodos_sem_comer === 'as_vezes' ? 'Às vezes' : '—'
+                )}</span></p>
+            </div>
+        </div>
+
+        <!-- Seção 8: Finalizando -->
+        <div class="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
+            <h4 class="text-sm font-bold text-purple-400 flex items-center gap-2 mb-3">
+                <i class="fa-solid fa-flag-checkered"></i>8. Finalizando
+            </h4>
+            <div class="space-y-3 text-sm">
+                <div>
+                    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Observações adicionais</p>
+                    <p class="text-white whitespace-pre-wrap bg-slate-800/50 p-2 rounded">${fmt(finalizando.observacoes_adicionais)}</p>
+                </div>
+                <div>
+                    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Expectativas do acompanhamento</p>
+                    <p class="text-white whitespace-pre-wrap bg-slate-800/50 p-2 rounded">${fmt(finalizando.expectativas)}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Campos legados (compatibilidade) -->
+        ${(an.historico_medico || an.alergias || an.intolerancias || an.rotina_diaria || an.historico_familiar) ? `
+        <div class="bg-slate-900/30 border border-slate-700/30 rounded-xl p-4 border-dashed">
+            <h4 class="text-sm font-bold text-slate-400 flex items-center gap-2 mb-3">
+                <i class="fa-solid fa-database"></i>Campos Legados (compatibilidade)
+            </h4>
+            <div class="space-y-2 text-sm">
+                ${an.historico_medico ? `<p><span class="text-slate-400">Histórico Médico:</span> <span class="text-white whitespace-pre-wrap">${fmt(an.historico_medico)}</span></p>` : ''}
+                ${an.alergias ? `<p><span class="text-slate-400">Alergias:</span> <span class="text-white whitespace-pre-wrap">${fmt(an.alergias)}</span></p>` : ''}
+                ${an.intolerancias ? `<p><span class="text-slate-400">Intolerâncias:</span> <span class="text-white whitespace-pre-wrap">${fmt(an.intolerancias)}</span></p>` : ''}
+                ${an.rotina_diaria ? `<p><span class="text-slate-400">Rotina Diária:</span> <span class="text-white whitespace-pre-wrap">${fmt(an.rotina_diaria)}</span></p>` : ''}
+                ${an.historico_familiar ? `<p><span class="text-slate-400">Histórico Familiar:</span> <span class="text-white whitespace-pre-wrap">${fmt(an.historico_familiar)}</span></p>` : ''}
+            </div>
+        </div>
+        ` : ''}
+    `;
+}
+
 function trocarAbaProntuario(nomeAba) {
         // Esconde todos os conteúdos das abas
         document.querySelectorAll(".aba-conteudo").forEach(el => el.classList.add("hidden"));
@@ -466,11 +682,7 @@ async function carregarProntuarioCompleto() {
         // Anamnese (o backend devolve campos vazios se não existir)
         const resAnamnese = await fetch(`${API_URL}/anamnese/${pacienteId}`);
         const an = resAnamnese.ok ? await resAnamnese.json() : {};
-        document.getElementById("p-an-historico").value = an.historico_medico || "";
-        document.getElementById("p-an-alergias").value = an.alergias || "";
-        document.getElementById("p-an-intolerancias").value = an.intolerancias || "";
-        document.getElementById("p-an-rotina").value = an.rotina_diaria || "";
-        document.getElementById("p-an-familiar").value = an.historico_familiar || "";
+        await renderizarAnamneseProntuario(an);
         // Plano, gráfico e orientações em paralelo
         await Promise.all([
         carregarPlanoAlimentarProntuario(pacienteId),

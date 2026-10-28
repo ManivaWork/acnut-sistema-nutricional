@@ -2923,42 +2923,14 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         </div>
         <div>
         <h3 class="text-lg font-bold text-white">Anamnese Clínica</h3>
-        <p class="text-xs text-slate-500 mt-1">Histórico e informações clínicas relevantes</p>
+        <p class="text-xs text-slate-500 mt-1">Visualização completa da anamnese do paciente (somente leitura)</p>
         </div>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <div>
-        <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Histórico Médico</label>
-        <textarea id="p-an-historico" rows="4" placeholder="Descreva o histórico médico..."
-        class="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl p-3.5 text-sm text-white placeholder-slate-600 resize-none focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all"></textarea>
+        <div id="prontuario-anamnese-content" class="space-y-5">
+        <div class="bg-slate-900/50 border border-slate-700/60 rounded-xl p-5 text-center text-slate-400">
+        <i class="fa-solid fa-spinner fa-spin text-purple-400 text-2xl mb-2"></i>
+        <p>Carregando anamnese...</p>
         </div>
-        <div>
-        <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Alergias Alimentares</label>
-        <textarea id="p-an-alergias" rows="4" placeholder="Registre alergias alimentares..."
-        class="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl p-3.5 text-sm text-white placeholder-slate-600 resize-none focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all"></textarea>
-        </div>
-        <div>
-        <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Intolerâncias</label>
-        <textarea id="p-an-intolerancias" rows="4" placeholder="Registre intolerâncias..."
-        class="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl p-3.5 text-sm text-white placeholder-slate-600 resize-none focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all"></textarea>
-        </div>
-        <div>
-        <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Rotina Diária & Hábitos</label>
-        <textarea id="p-an-rotina" rows="4" placeholder="Descreva rotina, horários e hábitos..."
-        class="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl p-3.5 text-sm text-white placeholder-slate-600 resize-none focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all"></textarea>
-        </div>
-        <div class="md:col-span-2">
-        <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Histórico Familiar</label>
-        <textarea id="p-an-familiar" rows="3" placeholder="Doenças na família (diabetes, hipertensão, etc.)..."
-        class="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl p-3.5 text-sm text-white placeholder-slate-600 resize-none focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all"></textarea>
-        </div>
-        </div>
-        <div class="flex justify-end">
-        <button onclick="salvarAnamneseProntuario()"
-        class="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 px-5 py-3 rounded-xl text-sm font-bold text-white transition-all shadow-lg shadow-emerald-600/20">
-        <i class="fa-solid fa-floppy-disk"></i>
-        Salvar Anamnese
-        </button>
         </div>
         </div>
 <!-- ================================================= 3. ALIMENTAÇÃO ================================================= -->                
