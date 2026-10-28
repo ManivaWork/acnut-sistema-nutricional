@@ -22,6 +22,14 @@ class DadosAvaliacao(BaseModel):
     nivel_atividade: str  # 'sedentario', 'leve', 'moderado', 'intenso', 'muito_intenso'
     objetivo: str  # 'perder_gordura', 'manter_peso', 'ganhar_massa'
 
+# Modelo simplificado para cálculo de TMB/GET apenas
+class DadosTMB(BaseModel):
+    idade: int
+    sexo: str  # 'M' ou 'F'
+    peso_kg: float
+    altura_cm: float
+    nivel_atividade: str  # 'sedentario', 'leve', 'moderado', 'intenso', 'muito_intenso'
+
 # Fatores de Atividade Física (Estatuto FAO/OMS)
 FATORES_ATIVIDADE = {
     "sedentario": 1.2,
@@ -34,6 +42,43 @@ FATORES_ATIVIDADE = {
 @app.get("/")
 def status():
     return {"servico": "Smart Nutri Python API", "status": "Ativo"}
+
+@app.post("/calculo/tmb")
+def calcular_tmb(dados: DadosTMB):
+    """
+    Calcula Taxa Metabólica Basal (TMB) e Gasto Energético Total (GET).
+
+    Entrada: peso_kg, altura_cm, idade, sexo (M/F), nivel_atividade
+    Saída: tmb_kcal, get_kcal, fator_atividade
+
+    Fórmula: Mifflin-St Jeor
+    - Homens: TMB = (10 × peso) + (6.25 × altura) - (5 × idade) + 5
+    - Mulheres: TMB = (10 × peso) + (6.25 × altura) - (5 × idade) - 161
+
+    GET = TMB × Fator de Atividade (FAO/OMS)
+    """
+    # Validação de sexo
+    sexo = dados.sexo.upper()
+    if sexo not in ('M', 'F'):
+        raise HTTPException(status_code=400, detail="Sexo deve ser 'M' ou 'F'")
+
+    # 1. Cálculo da TMB (Fórmula Mifflin-St Jeor)
+    if sexo == 'M':
+        tmb = (10 * dados.peso_kg) + (6.25 * dados.altura_cm) - (5 * dados.idade) + 5
+    else:
+        tmb = (10 * dados.peso_kg) + (6.25 * dados.altura_cm) - (5 * dados.idade) - 161
+
+    # 2. Cálculo do GET (Gasto Energético Total)
+    fator = FATORES_ATIVIDADE.get(dados.nivel_atividade.lower(), 1.2)
+    get_kcal = tmb * fator
+
+    return {
+        "tmb_kcal": round(tmb, 2),
+        "get_kcal": round(get_kcal, 2),
+        "fator_atividade": fator,
+        "nivel_atividade": dados.nivel_atividade.lower()
+    }
+
 
 @app.post("/calcular-plano")
 def calcular_plano(dados: DadosAvaliacao):

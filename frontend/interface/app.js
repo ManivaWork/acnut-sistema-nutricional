@@ -6,6 +6,13 @@ const ENV_API_URL = window.ENV_API_URL
     ? 'http://localhost:5290'
     : 'https://acnut-sistema-nutricional.onrender.com';
 const API_URL = ENV_API_URL.endsWith('/api') ? ENV_API_URL : ENV_API_URL + '/api';
+
+// Python Service URL (para cálculos nutricionais)
+const PYTHON_API_URL = window.ENV_PYTHON_API_URL
+  ? window.ENV_PYTHON_API_URL
+  : (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://localhost:5002'
+    : 'https://acnut-sistema-nutricional-python.onrender.com';
         const TOKEN_KEY = "bybar_token";
 const getToken = () => sessionStorage.getItem(TOKEN_KEY);
 const urlArquivo = id => `${API_URL}/arquivos/${id}?t=${encodeURIComponent(getToken() || "")}`;
@@ -38,6 +45,27 @@ function sessaoValida() {
         return p.exp * 1000 > Date.now();
     } catch { return false; }
 }
+
+// === PYTHON SERVICE: Cálculo de TMB/GET ===
+async function calcularTMB_GET(dados) {
+    // dados: { idade, sexo, peso_kg, altura_cm, nivel_atividade }
+    try {
+        const response = await fetch(`${PYTHON_API_URL}/calculo/tmb`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dados)
+        });
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || `Erro HTTP: ${response.status}`);
+        }
+        return await response.json();
+    } catch (err) {
+        console.error("Erro ao calcular TMB/GET:", err);
+        return null;
+    }
+}
+
 let pacienteEmEdicaoId = null; // Se for null, está a criar. Se tiver um número, está a editar.
 // ===== HELPERS =====
 let listaPacientes = [];
@@ -483,6 +511,34 @@ async function renderizarAnamneseProntuario(an) {
     const rotinaAlimentar = dadosExtendidos.rotina_alimentar || {};
     const finalizando = dadosExtendidos.finalizando || {};
 
+    // Mapear nível de atividade da anamnese para o fator FAO/OMS
+    const mapearNivelAtividade = (rotina) => {
+        if (!rotina.pratica_atividade_fisica || rotina.pratica_atividade_fisica === 'nao') {
+            return 'sedentario';
+        }
+        const freq = parseInt(rotina.atividade_fisica_frequencia) || 0;
+        if (freq <= 2) return 'leve';
+        if (freq <= 4) return 'moderado';
+        if (freq <= 6) return 'intenso';
+        return 'muito_intenso';
+    };
+
+    // Calcular TMB/GET se temos os dados necessários
+    let tmbGetResult = null;
+    if (dadosPessoais.peso_atual && dadosPessoais.altura && dadosPessoais.idade && dadosPessoais.sexo) {
+        const nivelAtividade = mapearNivelAtividade(rotinaEstilo);
+        const sexoMap = { 'Masculino': 'M', 'Feminino': 'F', 'M': 'M', 'F': 'F' };
+        const sexo = sexoMap[dadosPessoais.sexo] || dadosPessoais.sexo;
+
+        tmbGetResult = await calcularTMB_GET({
+            idade: parseInt(dadosPessoais.idade),
+            sexo: sexo,
+            peso_kg: parseFloat(dadosPessoais.peso_atual),
+            altura_cm: parseFloat(dadosPessoais.altura),
+            nivel_atividade: nivelAtividade
+        });
+    }
+
     container.innerHTML = `
         <!-- Seção 1: Objetivo -->
         <div class="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
@@ -511,6 +567,39 @@ async function renderizarAnamneseProntuario(an) {
                 <p><span class="text-slate-400">Altura:</span> <span class="text-white">${fmt(dadosPessoais.altura)} cm</span></p>
             </div>
         </div>
+
+        <!-- Cálculo de TMB/GET -->
+        ${tmbGetResult ? `
+        <div class="bg-emerald-900/30 border border-emerald-500/30 rounded-xl p-4">
+            <h4 class="text-sm font-bold text-emerald-400 flex items-center gap-2 mb-3">
+                <i class="fa-solid fa-calculator"></i>Cálculo Energético (Mifflin-St Jeor)
+            </h4>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+                <div class="bg-slate-800/50 rounded-lg p-3">
+                    <p class="text-xs text-emerald-300 uppercase tracking-wider">TMB</p>
+                    <p class="text-2xl font-bold text-emerald-400">${tmbGetResult.tmb_kcal.toFixed(0)} kcal</p>
+                    <p class="text-xs text-slate-400">Taxa Metabólica Basal</p>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-3">
+                    <p class="text-xs text-emerald-300 uppercase tracking-wider">GET</p>
+                    <p class="text-2xl font-bold text-emerald-400">${tmbGetResult.get_kcal.toFixed(0)} kcal</p>
+                    <p class="text-xs text-slate-400">Gasto Energético Total</p>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-3">
+                    <p class="text-xs text-emerald-300 uppercase tracking-wider">Nível de Atividade</p>
+                    <p class="text-lg font-bold text-emerald-400 capitalize">${tmbGetResult.nivel_atividade.replace('_', ' ')}</p>
+                    <p class="text-xs text-slate-400">Fator: ${tmbGetResult.fator_atividade}x</p>
+                </div>
+            </div>
+        </div>
+        ` : `
+        <div class="bg-amber-900/30 border border-amber-500/30 rounded-xl p-4">
+            <h4 class="text-sm font-bold text-amber-400 flex items-center gap-2 mb-3">
+                <i class="fa-solid fa-triangle-exclamation"></i>Cálculo Energético
+            </h4>
+            <p class="text-sm text-amber-300">Dados insuficientes para cálculo de TMB/GET. Preencha: peso, altura, idade e sexo na Seção 2.</p>
+        </div>
+        `}
 
         <!-- Seção 3: Rotina e Estilo de Vida -->
         <div class="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
