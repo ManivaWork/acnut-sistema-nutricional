@@ -3066,6 +3066,10 @@ function renderAnamneseSection(sectionNum) {
         html = renderSectionDadosPessoais();
     } else if (sectionNum === 3) {
         html = renderSectionRotinaEstiloVida();
+    } else if (sectionNum === 4) {
+        html = renderSectionAlimentacaoAtual();
+    } else if (sectionNum === 5) {
+        html = renderSectionSaude();
     } else {
         html = `<div class="text-center py-12 text-slate-500">
             <i class="fa-solid ${section.icon} text-3xl mb-3"></i>
@@ -3340,6 +3344,321 @@ function renderSectionRotinaEstiloVida() {
             </div>
         </div>
     `;
+}
+
+// Section 4: Alimentação atual
+function renderSectionAlimentacaoAtual() {
+    const data = anamneseState.data.alimentacao_atual || {};
+    return `
+        <div class="space-y-5">
+            <div>
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-bowl-food text-purple-400"></i>Alimentação atual
+                </h3>
+                <p class="text-sm text-slate-400 mt-1">Descreva seus hábitos alimentares</p>
+            </div>
+
+            <div class="space-y-2">
+                <label class="block text-sm font-medium text-slate-300">Descreva um dia alimentar completo (o que consome em cada refeição)</label>
+                <textarea rows="6"
+                    class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                    placeholder="Ex: Café da manhã: pão com ovo e café. Almoço: arroz, feijão, frango, salada. Lanche: fruta e iogurte. Jantar: sopa de legumes..."
+                    oninput="anamneseUpdateField('alimentacao_atual', 'dia_alimentar', this.value)">${data.dia_alimentar || ''}</textarea>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-slate-300">Consumo de água por dia (litros)</label>
+                    <input type="number" step="0.5"
+                        class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                        placeholder="Ex: 2.5"
+                        min="0" max="10"
+                        value="${data.consumo_agua || ''}"
+                        oninput="anamneseUpdateField('alimentacao_atual', 'consumo_agua', this.value)">
+                </div>
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-slate-300">Alimentos que você gosta</label>
+                    <input type="text"
+                        class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                        placeholder="Ex: frutas, carnes, doces..."
+                        value="${data.alimentos_gosta || ''}"
+                        oninput="anamneseUpdateField('alimentacao_atual', 'alimentos_gosta', this.value)">
+                </div>
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-slate-300">Possui restrições alimentares?</label>
+                    <select
+                        class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-purple-500 focus:outline-none transition"
+                        onchange="anamneseUpdateField('alimentacao_atual', 'restricoes_alimentares', this.value)">
+                        <option value="">Selecione</option>
+                        <option value="sim" ${data.restricoes_alimentares === 'sim' ? 'selected' : ''}>Sim</option>
+                        <option value="nao" ${data.restricoes_alimentares === 'nao' ? 'selected' : ''}>Não</option>
+                    </select>
+                </div>
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-slate-300">Frequência de refeições fora de casa</label>
+                    <select
+                        class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-purple-500 focus:outline-none transition"
+                        onchange="anamneseUpdateField('alimentacao_atual', 'refeicoes_fora_casa', this.value)">
+                        <option value="">Selecione</option>
+                        <option value="raramente" ${data.refeicoes_fora_casa === 'raramente' ? 'selected' : ''}>Raramente</option>
+                        <option value="1-2x_semana" ${data.refeicoes_fora_casa === '1-2x_semana' ? 'selected' : ''}>1-2x por semana</option>
+                        <option value="3-5x_semana" ${data.refeicoes_fora_casa === '3-5x_semana' ? 'selected' : ''}>3-5x por semana</option>
+                        <option value="quase_todos_dias" ${data.refeicoes_fora_casa === 'quase_todos_dias' ? 'selected' : ''}>Quase todos os dias</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="anamnese_restricoes_detalhes" class="space-y-4 ${data.restricoes_alimentares === 'sim' ? '' : 'hidden'}">
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-slate-300">Quais restrições?</label>
+                    <textarea rows="3"
+                        class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                        placeholder="Ex: intolerância à lactose, alergia a camarão, não como carne vermelha..."
+                        oninput="anamneseUpdateField('alimentacao_atual', 'restricoes_detalhes', this.value)">${data.restricoes_detalhes || ''}</textarea>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Section 5: Saúde
+function renderSectionSaude() {
+    const data = anamneseState.data.saude || {};
+    const doencas = data.doencas || [];
+    const medicamentos = data.medicamentos || [];
+    const suplementos = data.suplementos || [];
+    const historicoFamiliar = data.historico_familiar || {};
+
+    return `
+        <div class="space-y-5">
+            <div>
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-heart-pulse text-purple-400"></i>Saúde
+                </h3>
+                <p class="text-sm text-slate-400 mt-1">Informações sobre sua saúde atual e histórico</p>
+            </div>
+
+            <div class="space-y-2">
+                <label class="block text-sm font-medium text-slate-300">Possui alguma doença diagnosticada?</label>
+                <div id="anamnese_doencas_lista" class="space-y-2">
+                    ${doencas.length > 0 ? doencas.map((d, i) => `
+                        <div class="flex gap-2">
+                            <input type="text"
+                                class="flex-1 bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                                value="${d}"
+                                oninput="updateDoenca(${i}, this.value)">
+                            <button type="button"
+                                onclick="removeDoenca(${i})"
+                                class="px-3 py-2 bg-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-white rounded-xl text-sm transition">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </div>
+                    `).join('') : ''}
+                    <div class="flex gap-2">
+                        <input type="text"
+                            class="flex-1 bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                            placeholder="Digite uma doença e pressione Enter"
+                            onkeydown="if(event.key==='Enter'){event.preventDefault();addDoenca(this.value);this.value='';}">
+                        <button type="button"
+                            onclick="addDoenca(document.querySelector('#anamnese_doencas_lista input:last-of-type').value)"
+                            class="px-4 py-3 bg-purple-600/20 text-purple-400 hover:bg-purple-600 hover:text-white rounded-xl transition">
+                            <i class="fa-solid fa-plus"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="space-y-2">
+                <label class="block text-sm font-medium text-slate-300">Usa medicamentos? Se sim, quais?</label>
+                <div id="anamnese_medicamentos_lista" class="space-y-2">
+                    ${medicamentos.length > 0 ? medicamentos.map((m, i) => `
+                        <div class="flex gap-2">
+                            <input type="text"
+                                class="flex-1 bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                                value="${m}"
+                                oninput="updateMedicamento(${i}, this.value)">
+                            <button type="button"
+                                onclick="removeMedicamento(${i})"
+                                class="px-3 py-2 bg-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-white rounded-xl text-sm transition">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </div>
+                    `).join('') : ''}
+                    <div class="flex gap-2">
+                        <input type="text"
+                            class="flex-1 bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                            placeholder="Digite um medicamento e pressione Enter"
+                            onkeydown="if(event.key==='Enter'){event.preventDefault();addMedicamento(this.value);this.value='';}">
+                        <button type="button"
+                            onclick="addMedicamento(document.querySelector('#anamnese_medicamentos_lista input:last-of-type').value)"
+                            class="px-4 py-3 bg-purple-600/20 text-purple-400 hover:bg-purple-600 hover:text-white rounded-xl transition">
+                            <i class="fa-solid fa-plus"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="space-y-2">
+                <label class="block text-sm font-medium text-slate-300">Usa suplementos?</label>
+                <div id="anamnese_suplementos_lista" class="space-y-2">
+                    ${suplementos.length > 0 ? suplementos.map((s, i) => `
+                        <div class="flex gap-2">
+                            <input type="text"
+                                class="flex-1 bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                                value="${s}"
+                                oninput="updateSuplemento(${i}, this.value)">
+                            <button type="button"
+                                onclick="removeSuplemento(${i})"
+                                class="px-3 py-2 bg-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-white rounded-xl text-sm transition">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </div>
+                    `).join('') : ''}
+                    <div class="flex gap-2">
+                        <input type="text"
+                            class="flex-1 bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                            placeholder="Digite um suplemento e pressione Enter"
+                            onkeydown="if(event.key==='Enter'){event.preventDefault();addSuplemento(this.value);this.value='';}">
+                        <button type="button"
+                            onclick="addSuplemento(document.querySelector('#anamnese_suplementos_lista input:last-of-type').value)"
+                            class="px-4 py-3 bg-purple-600/20 text-purple-400 hover:bg-purple-600 hover:text-white rounded-xl transition">
+                            <i class="fa-solid fa-plus"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="space-y-2">
+                <label class="block text-sm font-medium text-slate-300">Fez exames recentemente?</label>
+                <select
+                    class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-purple-500 focus:outline-none transition"
+                    onchange="anamneseUpdateField('saude', 'fez_exames_recente', this.value)">
+                    <option value="">Selecione</option>
+                    <option value="sim" ${data.fez_exames_recente === 'sim' ? 'selected' : ''}>Sim</option>
+                    <option value="nao" ${data.fez_exames_recente === 'nao' ? 'selected' : ''}>Não</option>
+                </select>
+            </div>
+
+            <div id="anamnese_exames_detalhes" class="space-y-2 ${data.fez_exames_recente === 'sim' ? '' : 'hidden'}">
+                <label class="block text-sm font-medium text-slate-300">Quais exames e quando?</label>
+                <textarea rows="3"
+                    class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                    placeholder="Ex: Hemograma (01/2024), Lipidograma (01/2024), TSH (01/2024)..."
+                    oninput="anamneseUpdateField('saude', 'exames_detalhes', this.value)">${data.exames_detalhes || ''}</textarea>
+            </div>
+
+            <div class="space-y-2">
+                <label class="block text-sm font-medium text-slate-300">Histórico familiar (marque os que se aplicam)</label>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    ${[
+                        { key: 'diabetes', label: 'Diabetes' },
+                        { key: 'hipertensao', label: 'Hipertensão' },
+                        { key: 'colesterol', label: 'Colesterol alto' },
+                        { key: 'tireoide', label: 'Problemas na tireoide' },
+                        { key: 'outros', label: 'Outros' }
+                    ].map(item => `
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox"
+                                class="w-4 h-4 rounded border-white/20 bg-slate-800 text-purple-600 focus:ring-purple-500"
+                                ${historicoFamiliar[item.key] ? 'checked' : ''}
+                                onchange="anamneseUpdateField('saude', 'historico_familiar.${item.key}', this.checked)">
+                            <span class="text-sm text-slate-200">${item.label}</span>
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Helper functions for dynamic lists in Section 5
+function addDoenca(valor) {
+    if (!valor.trim()) return;
+    if (!anamneseState.data.saude) anamneseState.data.saude = {};
+    if (!anamneseState.data.saude.doencas) anamneseState.data.saude.doencas = [];
+    anamneseState.data.saude.doencas.push(valor.trim());
+    renderAnamneseSection(5);
+}
+
+function removeDoenca(index) {
+    if (anamneseState.data.saude?.doencas) {
+        anamneseState.data.saude.doencas.splice(index, 1);
+        renderAnamneseSection(5);
+    }
+}
+
+function updateDoenca(index, valor) {
+    if (anamneseState.data.saude?.doencas) {
+        anamneseState.data.saude.doencas[index] = valor;
+    }
+}
+
+function addMedicamento(valor) {
+    if (!valor.trim()) return;
+    if (!anamneseState.data.saude) anamneseState.data.saude = {};
+    if (!anamneseState.data.saude.medicamentos) anamneseState.data.saude.medicamentos = [];
+    anamneseState.data.saude.medicamentos.push(valor.trim());
+    renderAnamneseSection(5);
+}
+
+function removeMedicamento(index) {
+    if (anamneseState.data.saude?.medicamentos) {
+        anamneseState.data.saude.medicamentos.splice(index, 1);
+        renderAnamneseSection(5);
+    }
+}
+
+function updateMedicamento(index, valor) {
+    if (anamneseState.data.saude?.medicamentos) {
+        anamneseState.data.saude.medicamentos[index] = valor;
+    }
+}
+
+function addSuplemento(valor) {
+    if (!valor.trim()) return;
+    if (!anamneseState.data.saude) anamneseState.data.saude = {};
+    if (!anamneseState.data.saude.suplementos) anamneseState.data.saude.suplementos = [];
+    anamneseState.data.saude.suplementos.push(valor.trim());
+    renderAnamneseSection(5);
+}
+
+function removeSuplemento(index) {
+    if (anamneseState.data.saude?.suplementos) {
+        anamneseState.data.saude.suplementos.splice(index, 1);
+        renderAnamneseSection(5);
+    }
+}
+
+function updateSuplemento(index, valor) {
+    if (anamneseState.data.saude?.suplementos) {
+        anamneseState.data.saude.suplementos[index] = valor;
+    }
+}
+
+// Toggle restrictions details
+function toggleRestricoesDetalhes() {
+    const select = document.querySelector('[onchange*="restricoes_alimentares"]');
+    const details = document.getElementById('anamnese_restricoes_detalhes');
+    if (select && details) {
+        if (select.value === 'sim') {
+            details.classList.remove('hidden');
+        } else {
+            details.classList.add('hidden');
+        }
+    }
+}
+
+// Toggle exams details
+function toggleExamesDetalhes() {
+    const select = document.querySelector('[onchange*="fez_exames_recente"]');
+    const details = document.getElementById('anamnese_exames_detalhes');
+    if (select && details) {
+        if (select.value === 'sim') {
+            details.classList.remove('hidden');
+        } else {
+            details.classList.add('hidden');
+        }
+    }
 }
 
 // Toggle activity details visibility
