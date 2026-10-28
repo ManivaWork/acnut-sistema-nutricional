@@ -111,6 +111,7 @@ async function carregarPacientes() {
         <td class="py-3 px-4 text-slate-300">${escaparHtml(p.telefone) || '-'}</td>
         <td class="py-3 px-4">${badgeStatus(p.status)}</td>
         <td class="py-3 px-4 flex items-center gap-2">
+        <button onclick="abrirAnamneseProntuario(${p.id})" class="bg-purple-600/20 text-purple-400 hover:bg-purple-600 hover:text-white px-3 py-1 rounded text-xs font-semibold transition" title="Ver anamnese completa">Anamnese</button>
         <button onclick="abrirProntuarioDireto(${p.id})" class="bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600 hover:text-white px-3 py-1 rounded text-xs font-semibold transition">Prontuário</button>
         <button onclick="editarPaciente(${p.id})" class="bg-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-white px-3 py-1 rounded text-xs font-semibold transition">Editar</button>
         <button onclick="excluirPaciente(${p.id})" class="bg-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-white px-3 py-1 rounded text-xs font-semibold transition">Excluir</button>
@@ -146,7 +147,7 @@ function renderRecentes() {
         const lista = base.slice(0, dashFiltro ? 8 : 5);
         el.innerHTML = lista.length
         ? lista.map(p => `
-        <div onclick="abrirProntuarioDireto(${p.id})" class="flex items-center gap-4 px-5 py-3.5">
+        <div class="flex items-center gap-4 px-5 py-3.5">
         <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0"
         style="background:${corAvatar(p.nome)}">${escaparHtml(iniciais(p.nome))}</div>
         <div class="min-w-0 flex-1">
@@ -154,7 +155,14 @@ function renderRecentes() {
         <p class="text-xs text-slate-400 truncate">${escaparHtml(p.email)}</p>
         </div>
         <span class="hidden sm:inline-flex">${badgeStatus(p.status)}</span>
-        <span class="text-sm text-slate-300 shrink-0">Abrir <i class="fa-solid fa-arrow-right text-xs ml-1"></i></span>
+        <div class="flex gap-2 shrink-0">
+        <button onclick="event.stopPropagation(); abrirProntuarioDireto(${p.id})" class="text-sm text-slate-300 hover:text-white transition-colors px-3 py-1.5 rounded bg-slate-800/50 hover:bg-slate-700/50 flex items-center gap-1">
+        Abrir <i class="fa-solid fa-arrow-right text-xs"></i>
+        </button>
+        <button onclick="event.stopPropagation(); abrirAnamneseProntuario(${p.id})" class="text-sm text-emerald-300 hover:text-emerald-100 transition-colors px-3 py-1.5 rounded bg-emerald-900/30 hover:bg-emerald-900/50 flex items-center gap-1">
+        <i class="fa-solid fa-clipboard-list text-xs"></i> Anamnese
+        </button>
+        </div>
         </div>`).join("")
         : `<p class="px-5 py-4 text-sm text-slate-400">${dashFiltro ? "Nenhum paciente encontrado." : "Nenhum paciente cadastrado ainda."}</p>`;
         }
@@ -191,6 +199,15 @@ function atualizarDashboard() {
 function abrirProntuarioDireto(id) {
         document.getElementById("prontuario-paciente-id").value = id; // antes de navegar
         navegar('prontuario');  // o navegar já carrega se o paciente for outro
+        }
+// Abre prontuário direto na aba Anamnese (somente leitura)
+function abrirAnamneseProntuario(id) {
+        document.getElementById("prontuario-paciente-id").value = id;
+        navegar('prontuario');
+        // Aguarda o prontuário carregar e depois troca para aba anamnese
+        setTimeout(() => {
+            trocarAbaProntuario('anamnese');
+        }, 100);
         }
 function restaurarProntuarioAtivo() {
         const input = document.getElementById("prontuario-paciente-id");
