@@ -2929,7 +2929,7 @@ function abaPaciente(aba) {
         }).join("") : vazio("Nenhuma meta combinada ainda.");
     }
     else if (aba === "anamnese") {
-        renderAnamneseForm(d.paciente.id);
+        renderAnamneseForm(d.id);
     }
 }
 
@@ -3062,6 +3062,10 @@ function renderAnamneseSection(sectionNum) {
 
     if (sectionNum === 1) {
         html = renderSectionObjetivo();
+    } else if (sectionNum === 2) {
+        html = renderSectionDadosPessoais();
+    } else if (sectionNum === 3) {
+        html = renderSectionRotinaEstiloVida();
     } else {
         html = `<div class="text-center py-12 text-slate-500">
             <i class="fa-solid ${section.icon} text-3xl mb-3"></i>
@@ -3135,6 +3139,220 @@ function renderSectionObjetivo() {
             </div>
         </div>
     `;
+}
+
+// Section 2: Dados pessoais
+function renderSectionDadosPessoais() {
+    const data = anamneseState.data.dados_pessoais || {};
+    return `
+        <div class="space-y-5">
+            <div>
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-file-medical text-purple-400"></i>Dados pessoais
+                </h3>
+                <p class="text-sm text-slate-400 mt-1">Preencha suas informações básicas</p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-slate-300">Nome completo</label>
+                    <input type="text"
+                        class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                        placeholder="Seu nome completo"
+                        value="${data.nome_completo || ''}"
+                        oninput="anamneseUpdateField('dados_pessoais', 'nome_completo', this.value)">
+                </div>
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-slate-300">Idade</label>
+                    <input type="number"
+                        class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                        placeholder="Ex: 30"
+                        min="0" max="120"
+                        value="${data.idade || ''}"
+                        oninput="anamneseUpdateField('dados_pessoais', 'idade', this.value)">
+                </div>
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-slate-300">E-mail</label>
+                    <input type="email"
+                        class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                        placeholder="seu@email.com"
+                        value="${data.email || ''}"
+                        oninput="anamneseUpdateField('dados_pessoais', 'email', this.value)">
+                </div>
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-slate-300">Peso atual (kg)</label>
+                    <input type="number" step="0.1"
+                        class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                        placeholder="Ex: 75.5"
+                        value="${data.peso_atual || ''}"
+                        oninput="anamneseUpdateField('dados_pessoais', 'peso_atual', this.value)">
+                </div>
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-slate-300">Peso habitual (kg)</label>
+                    <input type="number" step="0.1"
+                        class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                        placeholder="Peso que costuma manter"
+                        value="${data.peso_habitual || ''}"
+                        oninput="anamneseUpdateField('dados_pessoais', 'peso_habitual', this.value)">
+                </div>
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-slate-300">Peso máximo nos últimos anos (kg)</label>
+                    <input type="number" step="0.1"
+                        class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                        placeholder="Ex: 90"
+                        value="${data.peso_maximo || ''}"
+                        oninput="anamneseUpdateField('dados_pessoais', 'peso_maximo', this.value)">
+                </div>
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-slate-300">Peso mínimo nos últimos anos (kg)</label>
+                    <input type="number" step="0.1"
+                        class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                        placeholder="Ex: 65"
+                        value="${data.peso_minimo || ''}"
+                        oninput="anamneseUpdateField('dados_pessoais', 'peso_minimo', this.value)">
+                </div>
+                <div class="space-y-2 sm:col-span-2">
+                    <label class="block text-sm font-medium text-slate-300">Sexo</label>
+                    <select
+                        class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-purple-500 focus:outline-none transition"
+                        onchange="anamneseUpdateField('dados_pessoais', 'sexo', this.value)">
+                        <option value="">Selecione</option>
+                        <option value="feminino" ${data.sexo === 'feminino' ? 'selected' : ''}>Feminino</option>
+                        <option value="masculino" ${data.sexo === 'masculino' ? 'selected' : ''}>Masculino</option>
+                        <option value="prefiro_nao_informar" ${data.sexo === 'prefiro_nao_informar' ? 'selected' : ''}>Prefiro não informar</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Section 3: Rotina e estilo de vida
+function renderSectionRotinaEstiloVida() {
+    const data = anamneseState.data.rotina_estilo_vida || {};
+    return `
+        <div class="space-y-5">
+            <div>
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-clock text-purple-400"></i>Rotina e estilo de vida
+                </h3>
+                <p class="text-sm text-slate-400 mt-1">Conte-nos sobre seu dia a dia</p>
+            </div>
+
+            <div class="space-y-2">
+                <label class="block text-sm font-medium text-slate-300">Como é sua rotina diária?</label>
+                <textarea rows="4"
+                    class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                    placeholder="Descreva sua rotina: horários de trabalho, refeições, atividades..."
+                    oninput="anamneseUpdateField('rotina_estilo_vida', 'rotina_diaria', this.value)">${data.rotina_diaria || ''}</textarea>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-slate-300">Quantas horas dorme por noite?</label>
+                    <input type="number"
+                        class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                        placeholder="Ex: 7"
+                        min="0" max="24"
+                        value="${data.horas_sono || ''}"
+                        oninput="anamneseUpdateField('rotina_estilo_vida', 'horas_sono', this.value)">
+                </div>
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-slate-300">Qualidade do sono</label>
+                    <select
+                        class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-purple-500 focus:outline-none transition"
+                        onchange="anamneseUpdateField('rotina_estilo_vida', 'qualidade_sono', this.value)">
+                        <option value="">Selecione</option>
+                        <option value="boa" ${data.qualidade_sono === 'boa' ? 'selected' : ''}>Boa</option>
+                        <option value="regular" ${data.qualidade_sono === 'regular' ? 'selected' : ''}>Regular</option>
+                        <option value="ruim" ${data.qualidade_sono === 'ruim' ? 'selected' : ''}>Ruim</option>
+                    </select>
+                </div>
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-slate-300">Nível de estresse</label>
+                    <select
+                        class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-purple-500 focus:outline-none transition"
+                        onchange="anamneseUpdateField('rotina_estilo_vida', 'nivel_estresse', this.value)">
+                        <option value="">Selecione</option>
+                        <option value="baixo" ${data.nivel_estresse === 'baixo' ? 'selected' : ''}>Baixo</option>
+                        <option value="moderado" ${data.nivel_estresse === 'moderado' ? 'selected' : ''}>Moderado</option>
+                        <option value="alto" ${data.nivel_estresse === 'alto' ? 'selected' : ''}>Alto</option>
+                    </select>
+                </div>
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-slate-300">Pratica atividade física?</label>
+                    <select
+                        class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-purple-500 focus:outline-none transition"
+                        id="anamnese_atividade_fisica"
+                        onchange="anamneseUpdateField('rotina_estilo_vida', 'pratica_atividade_fisica', this.value); toggleAtividadeFisicaDetalhes()">
+                        <option value="">Selecione</option>
+                        <option value="sim" ${data.pratica_atividade_fisica === 'sim' ? 'selected' : ''}>Sim</option>
+                        <option value="nao" ${data.pratica_atividade_fisica === 'nao' ? 'selected' : ''}>Não</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="anamnese_atividade_detalhes" class="space-y-4 ${data.pratica_atividade_fisica === 'sim' ? '' : 'hidden'}">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="space-y-2">
+                        <label class="block text-sm font-medium text-slate-300">Qual atividade?</label>
+                        <input type="text"
+                            class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                            placeholder="Ex: musculação, corrida, natação..."
+                            value="${data.atividade_fisica_tipo || ''}"
+                            oninput="anamneseUpdateField('rotina_estilo_vida', 'atividade_fisica_tipo', this.value)">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="block text-sm font-medium text-slate-300">Frequência (vezes por semana)</label>
+                        <input type="number"
+                            class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none transition"
+                            placeholder="Ex: 3"
+                            min="0" max="14"
+                            value="${data.atividade_fisica_frequencia || ''}"
+                            oninput="anamneseUpdateField('rotina_estilo_vida', 'atividade_fisica_frequencia', this.value)">
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-slate-300">Consome bebida alcoólica?</label>
+                    <select
+                        class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-purple-500 focus:outline-none transition"
+                        onchange="anamneseUpdateField('rotina_estilo_vida', 'consome_alcool', this.value)">
+                        <option value="">Selecione</option>
+                        <option value="sim" ${data.consome_alcool === 'sim' ? 'selected' : ''}>Sim</option>
+                        <option value="nao" ${data.consome_alcool === 'nao' ? 'selected' : ''}>Não</option>
+                        <option value="ocasionalmente" ${data.consome_alcool === 'ocasionalmente' ? 'selected' : ''}>Ocasionalmente</option>
+                    </select>
+                </div>
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-slate-300">Fuma?</label>
+                    <select
+                        class="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-purple-500 focus:outline-none transition"
+                        onchange="anamneseUpdateField('rotina_estilo_vida', 'fuma', this.value)">
+                        <option value="">Selecione</option>
+                        <option value="sim" ${data.fuma === 'sim' ? 'selected' : ''}>Sim</option>
+                        <option value="nao" ${data.fuma === 'nao' ? 'selected' : ''}>Não</option>
+                        <option value="ja_fumou" ${data.fuma === 'ja_fumou' ? 'selected' : ''}>Já fumei, mas parei</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Toggle activity details visibility
+function toggleAtividadeFisicaDetalhes() {
+    const select = document.getElementById('anamnese_atividade_fisica');
+    const details = document.getElementById('anamnese_atividade_detalhes');
+    if (select && details) {
+        if (select.value === 'sim') {
+            details.classList.remove('hidden');
+        } else {
+            details.classList.add('hidden');
+        }
+    }
 }
 
 // Navigation functions
