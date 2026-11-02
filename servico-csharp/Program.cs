@@ -232,6 +232,22 @@ app.Use(async (ctx, next) =>
     { await Negar(403, "Acesso não permitido."); return; }
     if (path.StartsWith("/api/usuarios") && u.FindFirst("perfil")?.Value is not ("admin" or "super_admin"))
     { await Negar(403, "Apenas administradores."); return; }
+
+    // ROTAS EXCLUSIVAS SUPER_ADMIN
+    var perfil = u.FindFirst("perfil")?.Value;
+    if (perfil != "super_admin")
+    {
+        if (path.StartsWith("/api/acessos")
+            || path.StartsWith("/api/empresas")
+            || path.StartsWith("/api/lgpd")
+            || path.StartsWith("/api/nutricionista/convites-paciente")
+            || (path.StartsWith("/api/empresas/") && path.Contains("/convite")))
+        {
+            await Negar(403, "Acesso restrito ao Super Admin.");
+            return;
+        }
+    }
+
     int nivel = Auth.Peso(u.FindFirst("mod_nutricao")?.Value);
     int exigido = HttpMethods.IsGet(m) ? 1
                 : (HttpMethods.IsDelete(m) && path.StartsWith("/api/pacientes")) ? 3
@@ -239,9 +255,8 @@ app.Use(async (ctx, next) =>
     if (nivel < exigido) { await Negar(403, "Seu perfil não tem permissão para esta ação."); return; }
 
     // VALIDAÇÃO: usuário pertence à empresa do token (exceto super_admin)
-    var perfil = u.FindFirst("perfil")?.Value;
 
-    // Bloquear perfil "profissional" no módulo LGPD
+    // Bloquear perfil "profissional" no módulo LGPD (redundante, mas mantido para clareza)
     if (perfil == "profissional" && path.StartsWith("/api/lgpd"))
     {
         await Negar(403, "Perfil profissional não tem acesso ao módulo LGPD.");
