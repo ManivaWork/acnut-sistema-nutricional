@@ -93,14 +93,37 @@ function revogarBlob(url) {
     if (url && url.startsWith('blob:')) URL.revokeObjectURL(url);
 }
 
-// Todo fetch para a API leva o token automaticamente
+// Rotas públicas que NÃO recebem Authorization header e NÃO disparam logout em 401
+const ROTAS_PUBLICAS = [
+    '/api/acesso/solicitar',           // POST - Solicitar acesso
+    '/api/definir-senha/',             // GET/POST - Definir senha (token na URL)
+    '/api/auth/login',                 // POST - Login equipe
+    '/api/auth/paciente',              // POST - Login paciente
+    '/api/auth/aceitar-convite',       // POST - Aceitar convite
+];
+
+function ehRotaPublica(url) {
+    const urlStr = String(url);
+    return ROTAS_PUBLICAS.some(rota => urlStr.includes(rota));
+}
+
+// Todo fetch para a API leva o token automaticamente (exceto rotas públicas)
 const _fetch = window.fetch.bind(window);
 let sessaoEncerrando = false;
 window.fetch = async (url, opts = {}) => {
-    const ehApi = String(url).startsWith(API_URL) && !String(url).startsWith(`${API_URL}/auth/`);
-    if (ehApi) opts = { ...opts, headers: { ...(opts.headers || {}), Authorization: `Bearer ${getToken() || ""}` } };
+    const urlStr = String(url);
+    const ehApi = urlStr.startsWith(API_URL);
+    const publica = ehApi && ehRotaPublica(urlStr);
+
+    // Injeta Authorization apenas em rotas autenticadas
+    if (ehApi && !publica) {
+        opts = { ...opts, headers: { ...(opts.headers || {}), Authorization: `Bearer ${getToken() || ""}` } };
+    }
+
     const res = await _fetch(url, opts);
-    if (ehApi && res.status === 401 && !sessaoEncerrando) {
+
+    // Trata 401 apenas em rotas autenticadas E se houver token salvo
+    if (ehApi && !publica && res.status === 401 && !sessaoEncerrando && getToken()) {
         sessaoEncerrando = true;
         mostrarToast("Sua sessão expirou. Entre novamente.", "erro");
         fazerLogout();
@@ -3996,7 +4019,15 @@ async function enviarSolicitacaoAcesso(e) {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-            msgErro.innerText = data.mensagem || 'Erro ao enviar solicitação.';
+            // Mensagens específicas por status code
+            let msg = 'Erro ao enviar solicitação.';
+            if (res.status === 400) msg = 'Campos inválidos. Verifique os dados.';
+            else if (res.status === 429) msg = 'Muitas tentativas, tente mais tarde.';
+            else if (res.status >= 500) msg = 'Erro no servidor, tente depois.';
+            else if (res.status === 401 || res.status === 404) msg = 'Serviço indisponível.';
+            else if (data.mensagem) msg = data.mensagem;
+
+            msgErro.innerText = msg;
             erroDiv.style.display = 'flex';
             return;
         }
@@ -4275,7 +4306,13 @@ async function inicializarDefinirSenha() {
         if (!res.ok || !data.valido) {
             estadoCarregando.style.display = 'none';
             estadoInvalido.style.display = 'block';
-            document.getElementById('ds-msg-erro').innerText = data.mensagem || 'Token inválido ou expirado.';
+            let msg = 'Token inválido ou expirado.';
+            if (res.status === 400) msg = 'Token inválido.';
+            else if (res.status === 429) msg = 'Muitas tentativas, tente mais tarde.';
+            else if (res.status >= 500) msg = 'Erro no servidor, tente depois.';
+            else if (res.status === 401 || res.status === 404) msg = 'Serviço indisponível.';
+            else if (data.mensagem) msg = data.mensagem;
+            document.getElementById('ds-msg-erro').innerText = msg;
             return;
         }
 
@@ -4327,7 +4364,14 @@ async function definirSenha(e) {
         const data = await res.json().catch(() => ({}));
 
         if (!res.ok) {
-            msgErro.innerText = data.mensagem || 'Erro ao definir senha.';
+            let msg = 'Erro ao definir senha.';
+            if (res.status === 400) msg = 'Campos inválidos. Verifique os dados.';
+            else if (res.status === 429) msg = 'Muitas tentativas, tente mais tarde.';
+            else if (res.status >= 500) msg = 'Erro no servidor, tente depois.';
+            else if (res.status === 401 || res.status === 404) msg = 'Serviço indisponível.';
+            else if (data.mensagem) msg = data.mensagem;
+
+            msgErro.innerText = msg;
             erroDiv.style.display = 'flex';
             return;
         }
