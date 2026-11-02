@@ -318,21 +318,17 @@ function navegar(secao) {
         document.querySelectorAll(".acnut-rail-item[data-nav]").forEach(btn => {
         btn.classList.toggle("ativo", btn.dataset.nav === secao);
         });
-        // Mostrar/ocultar itens conforme perfil
+        // Mostrar/ocultar itens conforme perfil (apenas super_admin vê)
         const navEmpresas = document.getElementById('nav-empresas');
         const navLgpd = document.getElementById('nav-lgpd');
         const navAcessos = document.getElementById('nav-acessos');
+        const navConvites = document.getElementById('nav-convites');
         const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
-        if (navEmpresas) {
-            navEmpresas.style.display = (user.perfil === 'super_admin') ? 'flex' : 'none';
-        }
-        if (navAcessos) {
-            navAcessos.style.display = (user.perfil === 'super_admin') ? 'flex' : 'none';
-        }
-        // Ocultar LGPD para perfil profissional
-        if (navLgpd) {
-            navLgpd.style.display = (user.perfil === 'profissional') ? 'none' : 'flex';
-        }
+        const ehSuperAdmin = user.perfil === 'super_admin';
+        if (navEmpresas) navEmpresas.style.display = ehSuperAdmin ? 'flex' : 'none';
+        if (navLgpd) navLgpd.style.display = ehSuperAdmin ? 'flex' : 'none';
+        if (navAcessos) navAcessos.style.display = ehSuperAdmin ? 'flex' : 'none';
+        if (navConvites) navConvites.style.display = ehSuperAdmin ? 'flex' : 'none';
         // Verificar banner de plano para profissionais
         if (secao !== 'login' && secao !== 'onboarding' && secao !== 'convite' && secao !== 'definir-senha') {
             verificarBannerPlano();
