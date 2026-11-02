@@ -81,13 +81,16 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
+
+// CORS e Auth devem vir ANTES do UseRouting para AllowAnonymous funcionar
+app.UseCors("Front");
+app.UseAuthentication();
+
 app.UseRouting();
 
 // Health endpoint for UptimeRobot (no auth, no DB)
 app.MapGet("/health", () => Results.Ok("ok")).AllowAnonymous();
 
-app.UseCors("Front");
-app.UseAuthentication();
 app.UseAuthorization();
 
 // Swagger UI apenas em Development
