@@ -204,6 +204,7 @@ app.Use(async (ctx, next) =>
     || path.StartsWith("/api/convites/info/")
     || path == "/api/onboarding"
     || path.StartsWith("/api/definir-senha/")
+    || path == "/api/acesso/solicitar"   // POST público - solicitar acesso
     || HttpMethods.IsOptions(m))
 { await next(); return; }
     async Task Negar(int status, string msg)
