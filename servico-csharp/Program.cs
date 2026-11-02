@@ -7,6 +7,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using System.Linq;
 using System.Collections.Generic;
+using Microsoft.AspNetCore.HttpOverrides; // para ForwardedHeadersOptions
 using ACNutri.Billing;
 using ACNutri.Email;
 
@@ -68,6 +69,16 @@ builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AsaasConfig>>().Value);
 
 var app = builder.Build();
+
+// Forwarded headers DEVE ser o PRIMEIRO middleware (antes de qualquer leitura de IP)
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+    ForwardLimit = 1, // Pega apenas o último IP da cadeia (o do cliente real)
+    KnownNetworks = { }, // Confia em todos (ajustar em produção se necessário)
+    KnownProxies = { }
+});
+
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseRouting();
@@ -78,6 +89,18 @@ app.MapGet("/health", () => Results.Ok("ok")).AllowAnonymous();
 app.UseCors("Front");
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Swagger UI apenas em Development
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "ACNUTRI API v1");
+        c.RoutePrefix = "swagger";
+    });
+}
+
 if (!string.IsNullOrEmpty(asaasCfg.ApiKey))
     app.MapBillingEndpoints(connString, asaasCfg);
 
@@ -177,6 +200,7 @@ app.Use(async (ctx, next) =>
     || path == "/api/empresas/count"
     || path.StartsWith("/api/convites/info/")
     || path == "/api/onboarding"
+    || path.StartsWith("/api/definir-senha/")
     || HttpMethods.IsOptions(m))
 { await next(); return; }
     async Task Negar(int status, string msg)
@@ -212,6 +236,14 @@ app.Use(async (ctx, next) =>
 
     // VALIDAÇÃO: usuário pertence à empresa do token (exceto super_admin)
     var perfil = u.FindFirst("perfil")?.Value;
+
+    // Bloquear perfil "profissional" no módulo LGPD
+    if (perfil == "profissional" && path.StartsWith("/api/lgpd"))
+    {
+        await Negar(403, "Perfil profissional não tem acesso ao módulo LGPD.");
+        return;
+    }
+
     if (perfil != "super_admin")
     {
         int uid = int.Parse(u.FindFirst("uid")!.Value);
@@ -266,8 +298,41 @@ app.MapGet("/api/pacientes", async (ClaimsPrincipal user) =>
     return Results.Ok(pacientes);
 });
 
+    // 1b. BUSCAR PACIENTES POR NOME
+    app.MapGet("/api/pacientes/buscar", async (string q, ClaimsPrincipal user) =>
+    {
+        if (string.IsNullOrWhiteSpace(q) || q.Length < 2)
+            return Results.Ok(new List<object>());
+
+        var empresaId = Auth.Empresa(user);
+        var resultados = new List<object>();
+        using var conn = new NpgsqlConnection(connString);
+        await conn.OpenAsync();
+        // unaccent + ILIKE para busca sem acento
+        using var cmd = new NpgsqlCommand(@"
+            SELECT id, nome, data_nascimento
+            FROM pacientes
+            WHERE empresa_id = @emp
+              AND unaccent(nome) ILIKE unaccent(@q)
+            ORDER BY nome
+            LIMIT 10;", conn);
+        cmd.Parameters.AddWithValue("emp", empresaId);
+        cmd.Parameters.AddWithValue("q", $"%{q}%");
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            resultados.Add(new
+            {
+                id = Convert.ToInt32(reader.GetValue(0)),
+                nome = reader.GetString(1),
+                data_nascimento = reader.GetDateTime(2).ToString("yyyy-MM-dd")
+            });
+        }
+        return Results.Ok(resultados);
+    });
+
 // 2. CADASTRAR PACIENTE
-app.MapPost("/api/pacientes", async (HttpRequest request, ClaimsPrincipal user) =>
+app.MapPost("/api/pacientes", async (HttpRequest request, ClaimsPrincipal user, NpgsqlDataSource db) =>
 {
     var data = await JsonSerializer.DeserializeAsync<JsonElement>(request.Body);
 
@@ -280,9 +345,23 @@ app.MapPost("/api/pacientes", async (HttpRequest request, ClaimsPrincipal user) 
     var cpf = Cpf.Limpar(data.TryGetProperty("cpf", out var cp) ? cp.GetString() : "");
     if (cpf != "" && !Cpf.Valido(cpf)) return Results.BadRequest(new { mensagem = "CPF inválido." });
 
-    using var conn = new NpgsqlConnection(connString);
-    await conn.OpenAsync();
-    using var cmd = new NpgsqlCommand(@"
+    int empresaId = Auth.Empresa(user);
+
+    // Verificar limite de pacientes conforme plano
+    var (podeCriar, maxPacientes, atual) = await PlanoEnforcement.VerificarLimitePacientesAsync(db, empresaId);
+    if (!podeCriar)
+    {
+        return Results.Json(new
+        {
+            mensagem = $"Limite de pacientes atingido ({atual}/{maxPacientes}). Assine um plano para adicionar mais.",
+            codigo = "plano_necessario",
+            limite = maxPacientes,
+            atual
+        }, statusCode: 403);
+    }
+
+    await using var conn = await db.OpenConnectionAsync();
+    await using var cmd = new NpgsqlCommand(@"
         INSERT INTO pacientes (nome, email, telefone, data_nascimento, sexo, status, empresa_id, cpf)
         VALUES (@nome, @email, @telefone, @data_nascimento, @sexo, @status, @emp, @cpf) RETURNING id;", conn);
 
@@ -306,7 +385,6 @@ app.MapPost("/api/pacientes", async (HttpRequest request, ClaimsPrincipal user) 
     }
     });
 // 3. ATUALIZAR PACIENTE
-// 3. ATUALIZAR PACIENTE
 app.MapPut("/api/pacientes/{id}", async (int id, HttpRequest request, ClaimsPrincipal user) =>
 {
     var data = await JsonSerializer.DeserializeAsync<JsonElement>(request.Body);
@@ -320,9 +398,11 @@ app.MapPut("/api/pacientes/{id}", async (int id, HttpRequest request, ClaimsPrin
     var cpf = Cpf.Limpar(data.TryGetProperty("cpf", out var cp) ? cp.GetString() : "");
     if (cpf != "" && !Cpf.Valido(cpf)) return Results.BadRequest(new { mensagem = "CPF inválido." });
 
-    using var conn = new NpgsqlConnection(connString);
+    int empresaId = Auth.Empresa(user);
+
+    await using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
-    using var cmd = new NpgsqlCommand(@"
+    await using var cmd = new NpgsqlCommand(@"
         UPDATE pacientes
         SET nome = @nome, email = @email, telefone = @telefone,
             data_nascimento = @data, sexo = @sexo, status = @status, cpf = @cpf
@@ -3001,6 +3081,635 @@ app.MapPost("/api/auth/aceitar-convite", async (AceitarConviteInput input) =>
     }
 });
 
+// =====================================================================
+// INPUT RECORDS PARA SOLICITAÇÕES DE ACESSO
+// =====================================================================
+
+// =====================================================================
+// SOLICITAÇÕES DE ACESSO (Público + Super Admin)
+// =====================================================================
+
+// POST /api/acesso/solicitar - Visitante solicita acesso (público)
+app.MapPost("/api/acesso/solicitar", async (SolicitarAcessoInput input, HttpContext http) =>
+{
+    // Rate limiting por IP
+    var clientIp = RateLimiter.GetClientIp(http);
+    if (!RateLimiter.TryConsume("solicitar:" + clientIp))
+        return Results.Json(new { mensagem = "Muitas solicitações. Tente novamente em uma hora." }, statusCode: 429);
+
+    var nome = (input.Nome ?? "").Trim();
+    var email = (input.Email ?? "").Trim().ToLowerInvariant();
+    var telefone = (input.Telefone ?? "").Trim();
+    var registroProfissional = (input.RegistroProfissional ?? "").Trim();
+    var clinicaNome = (input.ClinicaNome ?? "").Trim();
+    var mensagem = (input.Mensagem ?? "").Trim();
+
+    if (string.IsNullOrWhiteSpace(nome) || string.IsNullOrWhiteSpace(email) || !email.Contains("@"))
+        return Results.BadRequest(new { mensagem = "Nome e e-mail válido são obrigatórios." });
+
+    if (string.IsNullOrWhiteSpace(registroProfissional))
+        return Results.BadRequest(new { mensagem = "Registro profissional (CRN/CRM) é obrigatório." });
+
+    if (string.IsNullOrWhiteSpace(clinicaNome))
+        return Results.BadRequest(new { mensagem = "Nome da clínica/empresa é obrigatório." });
+
+    var userAgent = http.Request.Headers["User-Agent"].ToString();
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+
+    try
+    {
+        // Inserir solicitação (constraint única por email pendente impede duplicatas)
+        using var cmd = new NpgsqlCommand(@"
+            INSERT INTO solicitacoes_acesso (nome, email, telefone, registro_profissional, clinica_nome, mensagem, ip, user_agent)
+            VALUES (@nome, @email, @tel, @reg, @clinica, @msg, @ip::inet, @ua) RETURNING id;", conn);
+        cmd.Parameters.AddWithValue("nome", nome);
+        cmd.Parameters.AddWithValue("email", email);
+        cmd.Parameters.AddWithValue("tel", string.IsNullOrEmpty(telefone) ? DBNull.Value : (object)telefone);
+        cmd.Parameters.AddWithValue("reg", registroProfissional);
+        cmd.Parameters.AddWithValue("clinica", clinicaNome);
+        cmd.Parameters.AddWithValue("msg", string.IsNullOrEmpty(mensagem) ? DBNull.Value : (object)mensagem);
+        cmd.Parameters.AddWithValue("ip", clientIp);
+        cmd.Parameters.AddWithValue("ua", string.IsNullOrEmpty(userAgent) ? DBNull.Value : (object)userAgent);
+
+        await cmd.ExecuteNonQueryAsync();
+    }
+    catch (PostgresException ex) when (ex.SqlState == "23505") // unique_violation
+    {
+        // Silenciosamente ignorar - não revelar se email já tem solicitação pendente
+    }
+
+    // Sempre retornar sucesso genérico (anti-enumeração de email)
+    return Results.Ok(new { mensagem = "Se os dados estiverem corretos, sua solicitação será analisada em até 2 dias úteis." });
+})
+.AllowAnonymous();
+
+// GET /api/acessos - Lista solicitações (super_admin)
+app.MapGet("/api/acessos", async (ClaimsPrincipal user, string? status = null, int page = 1, int pageSize = 20) =>
+{
+    if (user.FindFirst("perfil")?.Value != "super_admin")
+        return Results.Forbid();
+
+    if (page < 1) page = 1;
+    if (pageSize < 1 || pageSize > 100) pageSize = 20;
+    var offset = (page - 1) * pageSize;
+
+    var whereClause = "";
+    var parameters = new List<NpgsqlParameter>();
+
+    if (!string.IsNullOrEmpty(status) && new[] { "pendente", "aprovado", "recusado", "excluido" }.Contains(status))
+    {
+        whereClause = "WHERE sa.status = @status";
+        parameters.Add(new NpgsqlParameter("@status", status));
+    }
+
+    var sqlCount = $@"
+        SELECT COUNT(*) FROM solicitacoes_acesso sa
+        LEFT JOIN empresas e ON e.id = sa.empresa_id
+        LEFT JOIN usuarios u ON u.id = sa.usuario_id
+        {whereClause};";
+
+    var sqlList = $@"
+        SELECT sa.id, sa.nome, sa.email, sa.telefone, sa.registro_profissional, sa.clinica_nome, sa.mensagem,
+               sa.status, sa.empresa_id, sa.usuario_id, sa.criado_em, sa.atualizado_em,
+               e.nome as empresa_nome, u.nome as usuario_nome
+        FROM solicitacoes_acesso sa
+        LEFT JOIN empresas e ON e.id = sa.empresa_id
+        LEFT JOIN usuarios u ON u.id = sa.usuario_id
+        {whereClause}
+        ORDER BY sa.criado_em DESC
+        LIMIT @limit OFFSET @offset;";
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+
+    // Total count
+    int total;
+    using (var cmdCount = new NpgsqlCommand(sqlCount, conn))
+    {
+        foreach (var p in parameters) cmdCount.Parameters.Add(p);
+        total = Convert.ToInt32(await cmdCount.ExecuteScalarAsync());
+    }
+
+    // List
+    var lista = new List<object>();
+    using (var cmd = new NpgsqlCommand(sqlList, conn))
+    {
+        foreach (var p in parameters) cmd.Parameters.Add(p);
+        cmd.Parameters.AddWithValue("@limit", pageSize);
+        cmd.Parameters.AddWithValue("@offset", offset);
+        using var rd = await cmd.ExecuteReaderAsync();
+        while (await rd.ReadAsync())
+        {
+            lista.Add(new
+            {
+                id = rd.GetInt64(0),
+                nome = rd.GetString(1),
+                email = rd.GetString(2),
+                telefone = rd.IsDBNull(3) ? null : rd.GetString(3),
+                registroProfissional = rd.GetString(4),
+                clinicaNome = rd.GetString(5),
+                mensagem = rd.IsDBNull(6) ? null : rd.GetString(6),
+                status = rd.GetString(7),
+                empresaId = rd.IsDBNull(8) ? (long?)null : rd.GetInt64(8),
+                usuarioId = rd.IsDBNull(9) ? (long?)null : rd.GetInt64(9),
+                criadoEm = rd.GetDateTime(10).ToString("yyyy-MM-ddTHH:mm:ss"),
+                atualizadoEm = rd.GetDateTime(11).ToString("yyyy-MM-ddTHH:mm:ss"),
+                empresaNome = rd.IsDBNull(12) ? null : rd.GetString(12),
+                usuarioNome = rd.IsDBNull(13) ? null : rd.GetString(13)
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        total,
+        page,
+        pageSize,
+        totalPages = (int)Math.Ceiling((double)total / pageSize),
+        data = lista
+    });
+})
+.RequireAuthorization();
+
+// POST /api/acessos/{id}/aprovar - Super admin aprova solicitação
+app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput input, ClaimsPrincipal user, IEmailService emailService) =>
+{
+    if (user.FindFirst("perfil")?.Value != "super_admin")
+        return Results.Forbid();
+
+    var adminId = Auth.UsuarioId(user);
+    var adminNome = Auth.Nome(user) ?? "Super Admin";
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+    using var tx = await conn.BeginTransactionAsync();
+
+    try
+    {
+        // Buscar solicitação pendente
+        long solicitacaoId = 0;
+        string nome = "", email = "", telefone = "", registroProfissional = "", clinicaNome = "", mensagem = "";
+        using (var cmd = new NpgsqlCommand(@"
+            SELECT id, nome, email, telefone, registro_profissional, clinica_nome, mensagem
+            FROM solicitacoes_acesso
+            WHERE id = @id AND status = 'pendente';", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("@id", id);
+            using var rd = await cmd.ExecuteReaderAsync();
+            if (!await rd.ReadAsync())
+                return Results.NotFound(new { mensagem = "Solicitação não encontrada ou já processada." });
+
+            solicitacaoId = rd.GetInt64(0);
+            nome = rd.GetString(1);
+            email = rd.GetString(2);
+            telefone = rd.IsDBNull(3) ? "" : rd.GetString(3);
+            registroProfissional = rd.GetString(4);
+            clinicaNome = rd.GetString(5);
+            mensagem = rd.IsDBNull(6) ? "" : rd.GetString(6);
+        }
+
+        // SEMPRE criar nova empresa (isolamento total)
+        var empresaNome = !string.IsNullOrWhiteSpace(clinicaNome) ? clinicaNome : nome;
+        int empresaId;
+        using (var cmd = new NpgsqlCommand("INSERT INTO empresas (nome) VALUES (@n) RETURNING id;", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("@n", empresaNome);
+            empresaId = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+        }
+
+        // Ativar módulo nutricao
+        using (var cmd = new NpgsqlCommand("INSERT INTO empresa_modulos (empresa_id, modulo) VALUES (@e, 'nutricao') ON CONFLICT DO NOTHING;", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("@e", empresaId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // Criar usuário profissional
+        var senhaTemporaria = Guid.NewGuid().ToString("N")[..12]; // senha aleatória temporária
+        var hash = BCrypt.Net.BCrypt.HashPassword(senhaTemporaria);
+        int usuarioId;
+        using (var cmd = new NpgsqlCommand(@"
+            INSERT INTO usuarios (empresa_id, nome, email, senha_hash, perfil, ativo)
+            VALUES (@emp, @nome, @email, @hash, 'profissional', true) RETURNING id;", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("@emp", empresaId);
+            cmd.Parameters.AddWithValue("@nome", !string.IsNullOrWhiteSpace(input.NomeProfissional) ? input.NomeProfissional!.Trim() : nome);
+            cmd.Parameters.AddWithValue("@email", email);
+            cmd.Parameters.AddWithValue("@hash", hash);
+            usuarioId = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+        }
+
+        // Nível de acesso nutricao = total (profissional dono da clínica)
+        using (var cmd = new NpgsqlCommand(
+            "INSERT INTO usuario_modulos (usuario_id, modulo, nivel) VALUES (@u, 'nutricao', 'total');", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("@u", usuarioId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // Criar assinatura com status 'sem_plano' (sem customer Asaas ainda)
+        using (var cmd = new NpgsqlCommand(@"
+            INSERT INTO assinaturas (empresa_id, plano, status, valor_centavos, ciclo)
+            VALUES (@emp, 'basico', 'sem_plano', 0, 'monthly');", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("@emp", empresaId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // Gerar token de definição de senha (expira em 48h, SHA-256 no banco, uso único)
+        // Token: 32 bytes aleatórios, base64url
+        var tokenBytes = new byte[32];
+        using (var rng = System.Security.Cryptography.RandomNumberGenerator.Create())
+        {
+            rng.GetBytes(tokenBytes);
+        }
+        var tokenRaw = System.Convert.ToBase64String(tokenBytes)
+            .Replace('+', '-').Replace('/', '_').TrimEnd('=');
+        // Guardar SHA-256(hex) como token_hash
+        var tokenHash = System.Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(tokenRaw))
+        ).ToLowerInvariant();
+        var expiraEm = DateTime.UtcNow.AddHours(48);
+
+        // Invalidar tokens pendentes anteriores do mesmo usuário
+        using (var cmd = new NpgsqlCommand(@"
+            UPDATE tokens_redefinicao_senha
+            SET usado_em = CURRENT_TIMESTAMP
+            WHERE usuario_id = @u AND expira_em > CURRENT_TIMESTAMP AND usado_em IS NULL;", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("@u", usuarioId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        using (var cmd = new NpgsqlCommand(@"
+            INSERT INTO tokens_redefinicao_senha (usuario_id, token_hash, expira_em, usado_em, criado_em)
+            VALUES (@u, @th, @exp, NULL, CURRENT_TIMESTAMP);", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("@u", usuarioId);
+            cmd.Parameters.AddWithValue("@th", tokenHash);
+            cmd.Parameters.AddWithValue("@exp", expiraEm);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // Atualizar solicitação como aprovada
+        using (var cmd = new NpgsqlCommand(@"
+            UPDATE solicitacoes_acesso
+            SET status = 'aprovado', empresa_id = @emp, usuario_id = @u, atualizado_em = CURRENT_TIMESTAMP
+            WHERE id = @id;", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("@emp", empresaId);
+            cmd.Parameters.AddWithValue("@u", usuarioId);
+            cmd.Parameters.AddWithValue("@id", solicitacaoId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // Auditoria
+        await RegistrarAuditoriaDetalhada(conn, tx, empresaId, adminId, "aprovacao_acesso", $"/api/acessos/{id}/aprovar", solicitacaoId,
+            $"Solicitação de {nome} ({email}) aprovada. Empresa criada: {empresaNome} (ID: {empresaId}), Usuário: {usuarioId}");
+
+        await tx.CommitAsync();
+
+        // Enviar e-mail com link para definir senha (token raw, não hash)
+        var frontendUrl = GetFrontendUrl();
+        var linkDefinirSenha = $"{frontendUrl.TrimEnd('/')}/definir-senha/{tokenRaw}";
+        var assunto = $"Sua solicitação de acesso foi aprovada - {empresaNome}";
+        var htmlBody = $@"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8'>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: #059669; color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }}
+        .content {{ background: #f8fafc; padding: 30px; border-radius: 0 0 8px 8px; }}
+        .btn {{ display: inline-block; background: #059669; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; margin-top: 20px; }}
+        .btn:hover {{ background: #047857; }}
+        .info {{ background: white; padding: 20px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #059669; }}
+        .footer {{ text-align: center; color: #64748b; font-size: 14px; margin-top: 30px; }}
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <div class='header'>
+            <h1>🍎 ACNUTRI</h1>
+            <p>Sistema de Nutrição Inteligente</p>
+        </div>
+        <div class='content'>
+            <h2>Solicitação Aprovada! ✅</h2>
+            <p>Olá <strong>{nome}</strong>,</p>
+            <p>Sua solicitação de acesso ao <strong>ACNUTRI</strong> foi <strong>aprovada</strong>.</p>
+
+            <div class='info'>
+                <p><strong>Empresa/Clínica:</strong> {empresaNome}</p>
+                <p><strong>Perfil:</strong> Profissional de Nutrição</p>
+                <p><strong>Validade do link:</strong> 48 horas</p>
+            </div>
+
+            <p>Clique no botão abaixo para definir sua senha e acessar o sistema:</p>
+
+            <p style='text-align: center;'>
+                <a href='{linkDefinirSenha}' class='btn'>Definir Minha Senha e Acessar</a>
+            </p>
+
+            <p style='font-size: 14px; color: #64748b;'>
+                Ou copie este link no navegador:<br>
+                <a href='{linkDefinirSenha}'>{linkDefinirSenha}</a>
+            </p>
+
+            <p style='font-size: 14px; color: #ef4444;'>
+                ⚠️ Este link expira em 48 horas e pode ser usado apenas uma vez.
+            </p>
+        </div>
+        <div class='footer'>
+            <p>Este e-mail foi enviado automaticamente pelo ACNUTRI.<br>
+            Se você não solicitou este acesso, pode ignorar este e-mail.</p>
+        </div>
+    </div>
+</body>
+</html>";
+
+        await emailService.EnviarEmailAsync(email, assunto, htmlBody);
+
+        return Results.Ok(new
+        {
+            mensagem = "Solicitação aprovada! Empresa, usuário e assinatura 'sem_plano' criados. E-mail com link para definir senha enviado.",
+            empresaId,
+            usuarioId
+        });
+    }
+    catch (Exception ex)
+    {
+        await tx.RollbackAsync();
+        return Results.BadRequest(new { mensagem = "Erro ao aprovar: " + ex.Message });
+    }
+})
+.RequireAuthorization();
+
+// POST /api/acessos/{id}/recusar - Super admin recusa solicitação
+app.MapPost("/api/acessos/{id:long}/recusar", async (long id, ClaimsPrincipal user) =>
+{
+    if (user.FindFirst("perfil")?.Value != "super_admin")
+        return Results.Forbid();
+
+    var adminId = Auth.UsuarioId(user);
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+    using var tx = await conn.BeginTransactionAsync();
+
+    try
+    {
+        // Buscar solicitação pendente
+        string nome = "", email = "";
+        using (var cmd = new NpgsqlCommand(@"
+            SELECT nome, email FROM solicitacoes_acesso
+            WHERE id = @id AND status = 'pendente';", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("@id", id);
+            using var rd = await cmd.ExecuteReaderAsync();
+            if (!await rd.ReadAsync())
+                return Results.NotFound(new { mensagem = "Solicitação não encontrada ou já processada." });
+
+            nome = rd.GetString(0);
+            email = rd.GetString(1);
+        }
+
+        // Atualizar status para recusado
+        using (var cmd = new NpgsqlCommand(@"
+            UPDATE solicitacoes_acesso
+            SET status = 'recusado', atualizado_em = CURRENT_TIMESTAMP
+            WHERE id = @id;", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("@id", id);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // Auditoria
+        await RegistrarAuditoriaDetalhada(conn, tx, 0, adminId, "recusa_acesso", $"/api/acessos/{id}/recusar", id,
+            $"Solicitação de {nome} ({email}) recusada.");
+
+        await tx.CommitAsync();
+
+        return Results.Ok(new { mensagem = "Solicitação recusada." });
+    }
+    catch (Exception ex)
+    {
+        await tx.RollbackAsync();
+        return Results.BadRequest(new { mensagem = "Erro ao recusar: " + ex.Message });
+    }
+})
+.RequireAuthorization();
+
+// DELETE /api/acessos/{id} - Super admin exclui solicitação
+app.MapDelete("/api/acessos/{id:long}", async (long id, ClaimsPrincipal user) =>
+{
+    if (user.FindFirst("perfil")?.Value != "super_admin")
+        return Results.Forbid();
+
+    var adminId = Auth.UsuarioId(user);
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+    using var tx = await conn.BeginTransactionAsync();
+
+    try
+    {
+        // Buscar solicitação
+        string status = "", nome = "", email = "";
+        long? empresaId = null, usuarioId = null;
+        using (var cmd = new NpgsqlCommand(@"
+            SELECT status, nome, email, empresa_id, usuario_id
+            FROM solicitacoes_acesso WHERE id = @id;", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("@id", id);
+            using var rd = await cmd.ExecuteReaderAsync();
+            if (!await rd.ReadAsync())
+                return Results.NotFound(new { mensagem = "Solicitação não encontrada." });
+
+            status = rd.GetString(0);
+            nome = rd.GetString(1);
+            email = rd.GetString(2);
+            empresaId = rd.IsDBNull(3) ? null : rd.GetInt64(3);
+            usuarioId = rd.IsDBNull(4) ? null : rd.GetInt64(4);
+        }
+
+        if (status == "aprovado" && empresaId.HasValue && usuarioId.HasValue)
+        {
+            // Soft delete: desativar usuário (não excluir empresa nem dados)
+            using (var cmd = new NpgsqlCommand("UPDATE usuarios SET ativo = false WHERE id = @id;", conn, tx))
+            {
+                cmd.Parameters.AddWithValue("@id", usuarioId.Value);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            // Atualizar solicitação para excluido
+            using (var cmd = new NpgsqlCommand(@"
+                UPDATE solicitacoes_acesso
+                SET status = 'excluido', atualizado_em = CURRENT_TIMESTAMP
+                WHERE id = @id;", conn, tx))
+            {
+                cmd.Parameters.AddWithValue("@id", id);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            // Auditoria
+            await RegistrarAuditoriaDetalhada(conn, tx, (int)empresaId.Value, adminId, "exclusao_acesso", $"/api/acessos/{id}", id,
+                $"Acesso aprovado de {nome} ({email}) excluído (soft delete). Usuário {usuarioId} desativado, empresa {empresaId} mantida.");
+        }
+        else
+        {
+            // Hard delete para pendente/recusado
+            using (var cmd = new NpgsqlCommand("DELETE FROM solicitacoes_acesso WHERE id = @id;", conn, tx))
+            {
+                cmd.Parameters.AddWithValue("@id", id);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            // Auditoria (empresa_id = 0 pois não há empresa associada)
+            await RegistrarAuditoriaDetalhada(conn, tx, 0, adminId, "exclusao_acesso", $"/api/acessos/{id}", id,
+                $"Solicitação {status} de {nome} ({email}) excluída permanentemente.");
+        }
+
+        await tx.CommitAsync();
+
+        return Results.Ok(new { mensagem = status == "aprovado" ? "Acesso desativado (usuário desativado, empresa mantida)." : "Solicitação excluída permanentemente." });
+    }
+    catch (Exception ex)
+    {
+        await tx.RollbackAsync();
+        return Results.BadRequest(new { mensagem = "Erro ao excluir: " + ex.Message });
+    }
+})
+.RequireAuthorization();
+
+// =====================================================================
+// DEFINIR SENHA (token de 48h, uso único, hash no banco)
+// =====================================================================
+
+// GET /api/definir-senha/{token} - Valida token (para página frontend)
+app.MapGet("/api/definir-senha/{token}", async (string token) =>
+{
+    if (string.IsNullOrWhiteSpace(token) || token.Length < 32)
+        return Results.NotFound(new { mensagem = "Token inválido.", valido = false });
+
+    // Calcular SHA-256 do token recebido
+    var tokenHash = System.Convert.ToHexString(
+        System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(token))
+    ).ToLowerInvariant();
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+
+    // Buscar token válido por hash (não usado, não expirado)
+    int usuarioId = 0;
+    string email = "", nome = "";
+    using (var cmd = new NpgsqlCommand(@"
+        SELECT tr.usuario_id, u.email, u.nome
+        FROM tokens_redefinicao_senha tr
+        JOIN usuarios u ON u.id = tr.usuario_id
+        WHERE tr.token_hash = @th AND tr.expira_em > CURRENT_TIMESTAMP AND tr.usado_em IS NULL;", conn))
+    {
+        cmd.Parameters.AddWithValue("@th", tokenHash);
+        using var rd = await cmd.ExecuteReaderAsync();
+        if (await rd.ReadAsync())
+        {
+            usuarioId = rd.GetInt32(0);
+            email = rd.GetString(1);
+            nome = rd.GetString(2);
+        }
+    }
+
+    if (usuarioId == 0)
+        return Results.NotFound(new { mensagem = "Token inválido ou expirado.", valido = false });
+
+    return Results.Ok(new { valido = true, email, nome });
+})
+.AllowAnonymous();
+
+// POST /api/definir-senha/{token} - Define nova senha
+app.MapPost("/api/definir-senha/{token}", async (string token, DefinirSenhaInput input, HttpContext http) =>
+{
+    var senha = input.Senha ?? "";
+    var confirmar = input.ConfirmarSenha ?? "";
+
+    if (string.IsNullOrWhiteSpace(token) || token.Length < 32)
+        return Results.BadRequest(new { mensagem = "Token inválido." });
+
+    if (senha.Length < 8)
+        return Results.BadRequest(new { mensagem = "A senha precisa ter pelo menos 8 caracteres." });
+
+    if (senha != confirmar)
+        return Results.BadRequest(new { mensagem = "As senhas não conferem." });
+
+    // Rate limiting por IP (5 req/hora)
+    var clientIp = RateLimiter.GetClientIp(http);
+    if (!RateLimiter.TryConsume("definir-senha:" + clientIp))
+        return Results.Json(new { mensagem = "Muitas tentativas. Tente novamente em uma hora." }, statusCode: 429);
+
+    // Calcular SHA-256 do token recebido
+    var tokenHash = System.Convert.ToHexString(
+        System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(token))
+    ).ToLowerInvariant();
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+    using var tx = await conn.BeginTransactionAsync();
+
+    try
+    {
+        // Consumir token atomicamente: só procede se token válido, não usado e não expirado
+        int usuarioId = 0;
+        using (var cmd = new NpgsqlCommand(@"
+            UPDATE tokens_redefinicao_senha
+            SET usado_em = CURRENT_TIMESTAMP
+            WHERE token_hash = @th AND expira_em > CURRENT_TIMESTAMP AND usado_em IS NULL
+            RETURNING usuario_id;", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("@th", tokenHash);
+            var result = await cmd.ExecuteScalarAsync();
+            if (result == null)
+                return Results.BadRequest(new { mensagem = "Token inválido, expirado ou já utilizado." });
+            usuarioId = Convert.ToInt32(result);
+        }
+
+        // Verificar se usuário está ativo
+        bool ativo = false;
+        using (var cmd = new NpgsqlCommand("SELECT ativo FROM usuarios WHERE id = @id", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("@id", usuarioId);
+            var result = await cmd.ExecuteScalarAsync();
+            if (result == null)
+                return Results.BadRequest(new { mensagem = "Usuário não encontrado." });
+            ativo = Convert.ToBoolean(result);
+        }
+
+        if (!ativo)
+            return Results.BadRequest(new { mensagem = "Usuário desativado. Contate o administrador." });
+
+        // Atualizar senha
+        var novoHash = BCrypt.Net.BCrypt.HashPassword(senha);
+        using (var cmd = new NpgsqlCommand("UPDATE usuarios SET senha_hash = @hash WHERE id = @id", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("@hash", novoHash);
+            cmd.Parameters.AddWithValue("@id", usuarioId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        await tx.CommitAsync();
+
+        return Results.Ok(new { mensagem = "Senha definida com sucesso! Faça login para acessar." });
+    }
+    catch (Exception ex)
+    {
+        await tx.RollbackAsync();
+        return Results.BadRequest(new { mensagem = "Erro ao definir senha: " + ex.Message });
+    }
+})
+.AllowAnonymous();
+
 app.MapGet("/api/usuarios", async (ClaimsPrincipal user) =>
 {
     var lista = new List<object>();
@@ -3762,8 +4471,8 @@ app.MapGet("/api/empresa/solicitacoes", async (ClaimsPrincipal user) =>
     int emp = int.Parse(user.FindFirst("empresa")!.Value);
     string perfil = user.FindFirst("perfil")?.Value ?? "";
 
-    // Apenas admin/nutricionista podem ver
-    if (!new[] { "admin", "nutricionista", "superadmin" }.Contains(perfil))
+    // Apenas admin e super_admin podem ver (profissional NÃO tem acesso ao LGPD)
+    if (!new[] { "admin", "super_admin" }.Contains(perfil))
         return Results.Forbid();
 
     using var conn = new NpgsqlConnection(connString);
@@ -3804,7 +4513,8 @@ app.MapPatch("/api/empresa/solicitacoes/{id:long}/atender", async (long id, Http
     string perfil = user.FindFirst("perfil")?.Value ?? "";
     int uid = int.Parse(user.FindFirst("uid")!.Value);
 
-    if (!new[] { "admin", "nutricionista", "superadmin" }.Contains(perfil))
+    // Apenas admin e super_admin podem atender (profissional NÃO tem acesso ao LGPD)
+    if (!new[] { "admin", "super_admin" }.Contains(perfil))
         return Results.Forbid();
 
     var form = await request.ReadFormAsync();
@@ -3897,6 +4607,55 @@ app.MapGet("/api/historico/{pacienteId}", async (int pacienteId) =>
 
 // ===========================EXECUÇÃO DA APLICAÇÃO=========================================
 app.Run();
+
+// =====================================================================
+// TYPE DECLARATIONS (moved to end for top-level statements)
+// =====================================================================
+
+record SolicitarAcessoInput(string? Nome, string? Email, string? Telefone, string? RegistroProfissional, string? ClinicaNome, string? Mensagem);
+record AprovarAcessoInput(string? NomeProfissional); // opcional: sobrescrever nome do profissional
+
+// =====================================================================
+// RATE LIMITING EM MEMÓRIA (para /api/acesso/solicitar)
+// =====================================================================
+static class RateLimiter
+{
+    private static readonly Dictionary<string, (int count, DateTime windowStart)> _requests = new();
+    private static readonly object _lock = new();
+    private const int MaxRequests = 5;
+    private static readonly TimeSpan Window = TimeSpan.FromHours(1);
+
+    public static bool TryConsume(string ip)
+    {
+        lock (_lock)
+        {
+            var now = DateTime.UtcNow;
+            if (_requests.TryGetValue(ip, out var entry))
+            {
+                if (now - entry.windowStart > Window)
+                {
+                    _requests[ip] = (1, now);
+                    return true;
+                }
+                if (entry.count >= MaxRequests)
+                    return false;
+                _requests[ip] = (entry.count + 1, entry.windowStart);
+                return true;
+            }
+            _requests[ip] = (1, now);
+            return true;
+        }
+    }
+
+    public static string GetClientIp(HttpContext ctx)
+    {
+        // UseForwardedHeaders já preenche RemoteIpAddress com o IP real do cliente (ForwardLimit=1)
+        return ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    }
+}
+
+record DefinirSenhaInput(string? Senha, string? ConfirmarSenha);
+
 // ===============================================DTOs===============================================================
 
 record PacienteLoginInput(string? Cpf, string? Nascimento);
@@ -4177,6 +4936,73 @@ static class Auth
         var token = new JwtSecurityToken("bybarhub", "bybarhub-app", claims,
             expires: DateTime.UtcNow.AddHours(2), signingCredentials: cred);
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+}
+
+// =====================================================================
+// PLANO ENFORCEMENT - Verifica limites de assinatura
+// =====================================================================
+static class PlanoEnforcement
+{
+    // Verifica se a empresa tem assinatura ativa e retorna os limites
+    // Retorna null se não tem assinatura ou está cancelada/past_due
+    // Para "sem_plano", retorna limites restritos (max 3 pacientes, sem PDF)
+    public static async Task<(bool temAcesso, PlanoLimites limites, string? erro)> VerificarAcessoAsync(
+        NpgsqlDataSource db, int empresaId, string acaoRequerida)
+    {
+        // Buscar assinatura ativa
+        await using var cmd = db.CreateCommand(@"
+            SELECT status, plano, limites
+            FROM assinaturas
+            WHERE empresa_id = @emp
+            ORDER BY id DESC
+            LIMIT 1;");
+        cmd.Parameters.AddWithValue("emp", empresaId);
+        await using var rd = await cmd.ExecuteReaderAsync();
+
+        if (!await rd.ReadAsync())
+        {
+            // Sem assinatura = plano básico sem assinatura ativa (sem_plano)
+            return (false, new PlanoLimites(3, 1, 50, 1), "plano_necessario");
+        }
+
+        var status = rd.GetString(0);
+        var plano = rd.GetString(1);
+        var limitesJson = rd.IsDBNull(2) ? null : rd.GetString(2);
+
+        // Se status é sem_plano, cancelada, past_due, inativa -> restrições
+        if (status != "ativa" && status != "trial")
+        {
+            return (false, new PlanoLimites(3, 1, 50, 1), "plano_necessario");
+        }
+
+        // Tem assinatura ativa - desserializar limites
+        var limites = string.IsNullOrEmpty(limitesJson)
+            ? Planos.Catalogo.GetValueOrDefault(plano).Limites
+            : JsonSerializer.Deserialize<PlanoLimites>(limitesJson) ?? Planos.Catalogo["basico"].Limites;
+
+        // Verificar ação específica
+        if (acaoRequerida == "pdf_export" && status != "ativa")
+        {
+            return (false, limites, "plano_necessario");
+        }
+
+        return (true, limites, null);
+    }
+
+    // Verifica limite de pacientes para a empresa
+    public static async Task<(bool podeCriar, int maxPacientes, int atual)> VerificarLimitePacientesAsync(
+        NpgsqlDataSource db, int empresaId)
+    {
+        var (temAcesso, limites, _) = await VerificarAcessoAsync(db, empresaId, "pacientes");
+        if (!temAcesso) return (false, limites.MaxPacientes, 0);
+
+        await using var cmd = db.CreateCommand(
+            "SELECT COUNT(*) FROM pacientes WHERE empresa_id = @emp AND COALESCE(status, 'ativo') = 'ativo';");
+        cmd.Parameters.AddWithValue("emp", empresaId);
+        var atual = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+
+        return (atual < limites.MaxPacientes, limites.MaxPacientes, atual);
     }
 }
 

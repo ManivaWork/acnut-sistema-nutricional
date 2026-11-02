@@ -26,12 +26,37 @@ def get_conn_string():
         with open(appsettings_path, "r", encoding="utf-8") as f:
             config = json_mod.load(f)
             if conn := config.get("ConnectionStrings", {}).get("Default"):
-                return conn
+                # Converter formato C# (Host=...) para formato psycopg2 (host=...)
+                return _convert_cs_conn_str(conn)
 
     # 3. user-secrets (não acessível facilmente via script)
     raise RuntimeError(
         "Connection string não encontrada. Defina POSTGRES_CONN ou configure appsettings.json"
     )
+
+
+def _convert_cs_conn_str(cs: str) -> str:
+    """Converte 'Host=...;Database=...;Username=...;Password=...' para 'host=... dbname=... user=... password=...'"""
+    mapping = {
+        "Host": "host",
+        "Database": "dbname",
+        "Username": "user",
+        "Password": "password",
+        "Port": "port",
+        "SslMode": "sslmode",
+        "TrustServerCertificate": "sslrootcert",  # approximate
+    }
+    parts = []
+    for kv in cs.split(";"):
+        kv = kv.strip()
+        if not kv or "=" not in kv:
+            continue
+        k, v = kv.split("=", 1)
+        k = k.strip()
+        v = v.strip()
+        pk = mapping.get(k, k.lower())
+        parts.append(f"{pk}={v}")
+    return " ".join(parts)
 
 try:
     import psycopg2
@@ -83,7 +108,17 @@ def importar():
             # UPSERT - atualiza se existe, insere se não existe (evita TRUNCATE com FK)
             # Usa 0 para macros faltantes (tabela tem NOT NULL; Python service usa JSON que tem None)
             inserted = 0
+            skipped = 0
             for a in alimentos:
+                # Valida/converte ID - BIGSERIAL precisa de inteiro
+                raw_id = a["id"]
+                try:
+                    food_id = int(str(raw_id).strip().split("\n")[-1])
+                except (ValueError, TypeError):
+                    print(f"  ⚠️  ID inválido '{raw_id}' — pulando '{a.get('nome', 'sem nome')}'")
+                    skipped += 1
+                    continue
+
                 def nz(v):
                     return v if v is not None else 0
 
@@ -100,7 +135,7 @@ def importar():
                         gorduras_100g = EXCLUDED.gorduras_100g,
                         fibras_100g = EXCLUDED.fibras_100g
                 """, (
-                    a["id"],
+                    food_id,
                     a["nome"],
                     a.get("categoria", ""),
                     nz(a.get("kcal_100g")),
@@ -113,7 +148,7 @@ def importar():
                     inserted += 1
 
             conn.commit()
-            print(f"Processados {inserted} alimentos (insert/update)")
+            print(f"Processados {inserted} alimentos (insert/update), {skipped} pulados (ID inválido)")
 
             # Verificação rápida
             cur.execute("SELECT COUNT(*) FROM alimentos")

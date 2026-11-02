@@ -2,7 +2,8 @@
 <html lang="pt-BR">
 <head>
         <!-- API_URL configurável: definido no build (Vercel: VITE_API_URL) ou fallback localhost -->
-        <script>window.ENV_API_URL = "https://acnut-sistema-nutricional.onrender.com";</script>
+        <!-- Em desenvolvimento, app.js detecta localhost e usa http://localhost:5290 automaticamente -->
+        <script>window.ENV_API_URL = "";</script>
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -378,6 +379,58 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
     box-shadow: 0 0 0 3px rgba(108,52,235,.2) !important;
 }
  
+/* ---------- INPUT WRAPPER (Avaliação Nutricional) ---------- */
+.input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: var(--bg-secondary);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 10px;
+    padding: 0 12px;
+    transition: border-color .2s ease, box-shadow .2s ease;
+}
+.input-wrapper:focus-within {
+    border-color: rgba(132,71,240,.9) !important;
+    box-shadow: 0 0 0 3px rgba(108,52,235,.2) !important;
+}
+.input-wrapper i {
+    flex-shrink: 0;
+    width: 20px;
+    text-align: center;
+    color: #9199b3;
+}
+.input-field {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    color: var(--text-main);
+    padding: 10px 0;
+    font-size: 14px;
+    outline: none;
+    width: 100%;
+}
+.input-field::placeholder { color: #6f7894; }
+.input-unit {
+    flex-shrink: 0;
+    white-space: nowrap;
+    font-size: 12px;
+    color: #9199b3;
+    padding-right: 4px;
+}
+.badge-auto {
+    flex-shrink: 0;
+    white-space: nowrap;
+    font-size: 11px;
+    padding: 2px 8px;
+    background: rgba(34,184,160,.15);
+    color: var(--teal);
+    border: 1px solid rgba(34,184,160,.3);
+    border-radius: 4px;
+    font-weight: 500;
+}
+
 /* ---------- SCROLLBAR ---------- */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -944,8 +997,13 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         </div>
         <div class="lg-options">
         <a href="#" class="lg-link"
-        onclick="alert('Entre em contato com o administrador do sistema para redefinir sua senha.'); return false;">
+        onclick="mostrarToast('Entre em contato com o administrador do sistema para redefinir sua senha.', 'info'); return false;">
         Esqueci minha senha
+        </a>
+        </div>
+        <div class="lg-options" style="margin-top: 8px;">
+        <a href="#" class="lg-link" onclick="abrirModalSolicitarAcesso()">
+        Solicitar acesso
         </a>
         </div>
         <div id="login-erro" class="lg-error">
@@ -981,6 +1039,51 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
             <p class="lg-foot"><i class="fa-solid fa-shield-halved"></i>Acesso restrito à equipe AC System </p>
         </div>
     </div>
+</div>
+
+<!-- Modal Solicitar Acesso -->
+<div id="modal-solicitar-acesso" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+  <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md mx-4 p-6 space-y-5">
+    <div class="flex items-center justify-between">
+      <h4 class="text-lg font-bold text-white">Solicitar Acesso ao ACNUTRI</h4>
+      <button onclick="fecharModal('modal-solicitar-acesso')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <p class="text-sm text-slate-300">Preencha seus dados para solicitar acesso ao sistema. Nossa equipe analisará em até 2 dias úteis.</p>
+    <form id="form-solicitar-acesso" onsubmit="enviarSolicitacaoAcesso(event)" class="space-y-4">
+      <div>
+        <label class="block text-sm text-slate-300 mb-1">Nome completo <span class="text-rose-400">*</span></label>
+        <input type="text" id="sa-nome" class="acnut-input" placeholder="Seu nome completo" required>
+      </div>
+      <div>
+        <label class="block text-sm text-slate-300 mb-1">E-mail <span class="text-rose-400">*</span></label>
+        <input type="email" id="sa-email" class="acnut-input" placeholder="seu@email.com" required>
+      </div>
+      <div>
+        <label class="block text-sm text-slate-300 mb-1">Telefone <span class="text-rose-400">*</span></label>
+        <input type="tel" id="sa-telefone" class="acnut-input" placeholder="(11) 99999-9999" oninput="mascararTelefone(this)" required>
+      </div>
+      <div>
+        <label class="block text-sm text-slate-300 mb-1">Registro Profissional (CRN/CRF/CRM) <span class="text-rose-400">*</span></label>
+        <input type="text" id="sa-registro" class="acnut-input" placeholder="Ex: CRN-12345" required>
+      </div>
+      <div>
+        <label class="block text-sm text-slate-300 mb-1">Nome da Clínica/Empresa <span class="text-rose-400">*</span></label>
+        <input type="text" id="sa-clinica" class="acnut-input" placeholder="Nome da clínica ou empresa" required>
+      </div>
+      <div>
+        <label class="block text-sm text-slate-300 mb-1">Mensagem (opcional)</label>
+        <textarea id="sa-mensagem" class="acnut-input" rows="3" placeholder="Conte-nos brevemente sobre sua necessidade..."></textarea>
+      </div>
+      <div id="sa-erro" class="hidden lg-error"><i class="fa-solid fa-circle-exclamation"></i><span></span></div>
+      <div id="sa-sucesso" class="hidden p-4 rounded-xl bg-emerald-900/30 border border-emerald-500/30 text-emerald-300 text-sm"></div>
+      <div class="flex gap-3 pt-2">
+        <button type="button" onclick="fecharModal('modal-solicitar-acesso')" class="flex-1 acnut-btn-secondary">Cancelar</button>
+        <button type="submit" class="flex-1 acnut-btn-primary" id="btn-enviar-sa">
+          <i class="fa-solid fa-paper-plane"></i> Enviar Solicitação
+        </button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <!-- ====================================================== ONBOARDING (Primeira Empresa + Super-Admin) ======================================================= -->
@@ -1085,6 +1188,118 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
                 </button>
             </form>
             <p class="lg-foot"><i class="fa-solid fa-shield-halved"></i>Configuração inicial - executada apenas uma vez</p>
+        </div>
+    </div>
+</div>
+
+<!-- ====================================================== DEFINIR SENHA (Token 48h) ======================================================= -->
+<div id="definir-senha-container" class="lg-screen" style="display: none;">
+    <div class="lg-art" aria-hidden="true">
+        <svg viewBox="0 0 800 800" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+        <linearGradient id="dsSky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0"    stop-color="#12082b"/>
+        <stop offset="0.38" stop-color="#3b1a78"/>
+        <stop offset="0.62" stop-color="#9d3aa8"/>
+        <stop offset="0.80" stop-color="#ec5f8f"/>
+        <stop offset="1"    stop-color="#fb923c"/>
+        </linearGradient>
+        <radialGradient id="dsGlow" cx="0.55" cy="0.62" r="0.45">
+        <stop offset="0" stop-color="#fdba74" stop-opacity=".55"/>
+        <stop offset="1" stop-color="#fdba74" stop-opacity="0"/>
+        </radialGradient>
+        <symbol id="dsPine" viewBox="-20 -64 40 70">
+        <path d="M0 -62 L12 -38 L6 -38 L16 -16 L8 -16 L18 2 L-18 2 L-8 -16 L-16 -16 L-6 -38 L-12 -38 Z"/>
+        </symbol>
+        </defs>
+        <rect width="800" height="800" fill="url(#dsSky)"/>
+        <rect width="800" height="800" fill="url(#dsGlow)"/>
+        <g fill="#fff">
+        <circle cx="90"  cy="70"  r="1.6" opacity=".9"/>
+        <circle cx="210" cy="140" r="1.1" opacity=".7"/>
+        <circle cx="330" cy="60"  r="1.4" opacity=".85"/>
+        <circle cx="450" cy="170" r="1"   opacity=".6"/>
+        <circle cx="560" cy="90"  r="2"   opacity=".95"/>
+        <circle cx="690" cy="150" r="1.2" opacity=".75"/>
+        <circle cx="740" cy="55"  r="1.5" opacity=".8"/>
+        <circle cx="150" cy="260" r="1"   opacity=".55"/>
+        <circle cx="400" cy="250" r="1.2" opacity=".6"/>
+        <circle cx="620" cy="260" r="1"   opacity=".5"/>
+        </g>
+        <path d="M0 520 L120 430 L220 490 L360 330 L470 440 L560 385 L680 480 L800 410 L800 800 L0 800Z" fill="#4a2186"/>
+        <path d="M0 600 L140 520 L260 580 L400 470 L520 560 L650 500 L800 585 L800 800 L0 800Z" fill="#2c1257"/>
+        <path d="M0 690 L180 625 L330 675 L480 615 L640 670 L800 635 L800 800 L0 800Z" fill="#170a33"/>
+        <g fill="#0c0620">
+        <use href="#dsPine" x="30"  y="730" width="60" height="105"/>
+        <use href="#dsPine" x="95"  y="745" width="48" height="84"/>
+        <use href="#dsPine" x="160" y="735" width="56" height="98"/>
+        <use href="#dsPine" x="560" y="740" width="52" height="92"/>
+        <use href="#dsPine" x="625" y="725" width="64" height="112"/>
+        <use href="#dsPine" x="700" y="745" width="54" height="94"/>
+        <use href="#dsPine" x="755" y="720" width="70" height="122"/>
+        </g>
+        <rect y="770" width="800" height="30" fill="#0c0620"/>
+        </svg>
+    </div>
+    <div class="lg-panel">
+        <div class="lg-box">
+        <div class="lg-brand">
+        <img src="../assets/logo.png" alt="AC Hub" class="lg-logo-img">
+        </div>
+        <h1 class="lg-title">Definir sua senha<span>.</span></h1>
+        <div class="lg-bar"></div>
+        <div id="ds-estado-carregando" class="text-center py-8">
+            <div class="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p class="text-slate-400">Validando token...</p>
+        </div>
+        <div id="ds-estado-valido" style="display: none;">
+            <p class="text-slate-400 text-sm mb-6" id="ds-boasvindas">Olá, <span id="ds-nome-usuario"></span>. Defina sua senha de acesso.</p>
+            <form id="form-definir-senha" onsubmit="definirSenha(event)" class="space-y-4">
+                <div class="lg-field">
+                <div class="lg-input">
+                <i class="fa-solid fa-lock lg-ico"></i>
+                <input id="ds-senha" type="password" placeholder="Nova senha (mín. 8 caracteres)" autocomplete="new-password" required minlength="8">
+                <button type="button" class="lg-eye" onclick="alternarVisibilidadeSenha('ds-senha')" aria-label="Mostrar senha">
+                <i id="ds-senha-icon" class="fa-solid fa-eye"></i>
+                </button>
+                </div>
+                </div>
+                <div class="lg-field">
+                <div class="lg-input">
+                <i class="fa-solid fa-lock lg-ico"></i>
+                <input id="ds-senha-conf" type="password" placeholder="Confirmar senha" autocomplete="new-password" required minlength="8">
+                </div>
+                </div>
+                <div id="ds-erro" class="lg-error" style="display: none;">
+                <i class="fa-solid fa-circle-exclamation"></i><span></span>
+                </div>
+                <button type="submit" class="lg-btn" id="btn-definir-senha">
+                <span>Definir Senha</span>
+                <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </form>
+        </div>
+        <div id="ds-estado-invalido" style="display: none;" class="text-center py-8">
+            <div class="w-16 h-16 mx-auto mb-4 bg-rose-500/20 rounded-full flex items-center justify-center">
+            <i class="fa-solid fa-triangle-exclamation text-rose-400 text-3xl"></i>
+            </div>
+            <h2 class="text-xl font-bold text-white mb-2">Token inválido ou expirado</h2>
+            <p class="text-slate-400 mb-6" id="ds-msg-erro">Este link de definição de senha não é mais válido. Ele pode ter expirado (válido por 48h) ou já ter sido usado.</p>
+            <a href="#" onclick="event.preventDefault(); modoLogin('equipe'); document.getElementById('definir-senha-container').style.display='none'; document.getElementById('login-container').style.display='flex';" class="lg-link">Voltar para o login</a>
+        </div>
+        <div id="ds-estado-sucesso" style="display: none;" class="text-center py-8">
+            <div class="w-16 h-16 mx-auto mb-4 bg-emerald-500/20 rounded-full flex items-center justify-center">
+            <i class="fa-solid fa-circle-check text-emerald-400 text-3xl"></i>
+            </div>
+            <h2 class="text-xl font-bold text-white mb-2">Senha definida com sucesso!</h2>
+            <p class="text-slate-400 mb-6">Sua senha foi configurada. Agora você pode fazer login no sistema.</p>
+            <button onclick="modoLogin('equipe'); document.getElementById('definir-senha-container').style.display='none'; document.getElementById('login-container').style.display='flex';" class="lg-btn">
+            <span>Ir para o Login</span>
+            <i class="fa-solid fa-arrow-right"></i>
+            </button>
+        </div>
+
+            <p class="lg-foot"><i class="fa-solid fa-shield-halved"></i>Acesso restrito à equipe AC System </p>
         </div>
     </div>
 </div>
@@ -1286,7 +1501,13 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         <i class="fa-solid fa-credit-card"></i>
         <span class="acnut-rail-label">Plano & Assinatura</span>
         </button>
-        <button type="button" data-nav="convites" data-tip="Convites"
+        <button type="button" data-nav="acessos" data-tip="Acessos"
+        onclick="navegar('acessos'); fecharMenuMobile();"
+        class="acnut-rail-item" id="nav-acessos" style="display:none;">
+        <i class="fa-solid fa-users-cog"></i>
+        <span class="acnut-rail-label">Acessos</span>
+        </button>
+        <button type="button" data-nav="convites" data-tip="Convites de Pacientes"
         onclick="navegar('convites'); fecharMenuMobile();"
         class="acnut-rail-item">
         <i class="fa-solid fa-envelope-open-text"></i>
@@ -1294,7 +1515,7 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         </button>
         <button type="button" data-nav="lgpd" data-tip="LGPD / Solicitações"
         onclick="navegar('lgpd'); fecharMenuMobile();"
-        class="acnut-rail-item">
+        class="acnut-rail-item" id="nav-lgpd">
         <i class="fa-solid fa-shield-halved"></i>
         <span class="acnut-rail-label">LGPD / Solicitações</span>
         </button>
@@ -1500,6 +1721,8 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         </div>
         </div>
         </header>
+<!-- Banner contador de pacientes (visível para profissionais sem_plano) -->
+<div id="contador-pacientes-banner" class="hidden"></div>
 <!-- ===================================================== FORMULÁRIO ====================================================== -->
         <div class="
         bg-slate-800/70
@@ -2068,26 +2291,17 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         <label class="block text-xs font-semibold text-slate-400 mb-2">
         Peso
         </label>
-        <div class="relative">
-        <i class="fa-solid fa-weight-scale absolute left-4 top-1/2
-        -translate-y-1/2 text-emerald-500/70 text-sm"></i>
+        <div class="input-wrapper">
+        <i class="fa-solid fa-weight-scale text-emerald-500/70 text-sm"></i>
         <input
         type="number"
         step="0.1"
         id="a-peso"
         placeholder="Ex: 75.5"
         required
-        class="w-full bg-slate-900/90 border border-slate-700/80
-        p-3.5 pl-11 pr-12 rounded-xl text-sm text-white
-        placeholder-slate-600
-        focus:outline-none focus:border-emerald-500
-        focus:ring-2 focus:ring-emerald-500/20
-        transition-all"
+        class="input-field"
         >
-        <span class="absolute right-4 top-1/2 -translate-y-1/2
-        text-xs text-slate-500">
-        kg
-        </span>
+        <span class="input-unit">kg</span>
         </div>
         </div>
 <!-- ALTURA -->
@@ -2095,26 +2309,17 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         <label class="block text-xs font-semibold text-slate-400 mb-2">
         Altura
         </label>
-        <div class="relative">
-        <i class="fa-solid fa-ruler-vertical absolute left-4 top-1/2
-        -translate-y-1/2 text-blue-500/70 text-sm"></i>
+        <div class="input-wrapper">
+        <i class="fa-solid fa-ruler-vertical text-blue-500/70 text-sm"></i>
         <input
         type="number"
         step="0.1"
         id="a-altura"
         placeholder="Ex: 175"
         required
-        class="w-full bg-slate-900/90 border border-slate-700/80
-        p-3.5 pl-11 pr-12 rounded-xl text-sm text-white
-        placeholder-slate-600
-        focus:outline-none focus:border-blue-500
-        focus:ring-2 focus:ring-blue-500/20
-        transition-all"
+        class="input-field"
         >
-        <span class="absolute right-4 top-1/2 -translate-y-1/2
-        text-xs text-slate-500">
-        cm
-        </span>
+        <span class="input-unit">cm</span>
         </div>
         </div>
 <!-- GORDURA -->
@@ -2122,25 +2327,16 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         <label class="block text-xs font-semibold text-slate-400 mb-2">
         Gordura corporal
         </label>
-        <div class="relative">
-        <i class="fa-solid fa-percent absolute left-4 top-1/2
-        -translate-y-1/2 text-purple-500/70 text-sm"></i>
+        <div class="input-wrapper">
+        <i class="fa-solid fa-percent text-purple-500/70 text-sm"></i>
         <input
         type="number"
         step="0.1"
         id="a-gordura"
         placeholder="Ex: 18"
-        class="w-full bg-slate-900/90 border border-slate-700/80
-        p-3.5 pl-11 pr-12 rounded-xl text-sm text-white
-        placeholder-slate-600
-        focus:outline-none focus:border-purple-500
-        focus:ring-2 focus:ring-purple-500/20
-        transition-all"
+        class="input-field"
         >
-        <span class="absolute right-4 top-1/2 -translate-y-1/2
-        text-xs text-slate-500">
-        %
-        </span>
+        <span class="input-unit">%</span>
         </div>
         </div>
 <!-- MASSA MAGRA -->
@@ -2148,25 +2344,16 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         <label class="block text-xs font-semibold text-slate-400 mb-2">
         Massa magra
         </label>
-        <div class="relative">
-        <i class="fa-solid fa-person-running absolute left-4 top-1/2
-        -translate-y-1/2 text-cyan-500/70 text-sm"></i>
+        <div class="input-wrapper">
+        <i class="fa-solid fa-person-running text-cyan-500/70 text-sm"></i>
         <input
         type="number"
         step="0.1"
         id="a-massa"
         placeholder="Ex: 61.5"
-        class="w-full bg-slate-900/90 border border-slate-700/80
-        p-3.5 pl-11 pr-12 rounded-xl text-sm text-white
-        placeholder-slate-600
-        focus:outline-none focus:border-cyan-500
-        focus:ring-2 focus:ring-cyan-500/20
-        transition-all"
+        class="input-field"
         >
-        <span class="absolute right-4 top-1/2 -translate-y-1/2
-        text-xs text-slate-500">
-        kg
-        </span>
+        <span class="input-unit">kg</span>
         </div>
         </div>
         </div>
@@ -2665,7 +2852,8 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         <div class="w-full xl:w-auto">
         <div class="flex flex-col sm:flex-row
         gap-2">
-        <div class="relative">
+        <!-- Campo ID do paciente -->
+        <div class="relative flex-1 min-w-0">
         <i class="fa-solid fa-user
         absolute left-4 top-1/2
         -translate-y-1/2
@@ -2674,7 +2862,7 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         type="number"
         id="prontuario-paciente-id"
         placeholder="ID do paciente"
-        class="w-full sm:w-48
+        class="w-full
         bg-slate-900/90
         border border-slate-700/80
         rounded-xl
@@ -2688,6 +2876,42 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         focus:ring-emerald-500/20
         transition-all"
         >
+        </div>
+        <!-- Campo Buscar por nome -->
+        <div class="relative flex-1 min-w-0">
+        <i class="fa-solid fa-search
+        absolute left-4 top-1/2
+        -translate-y-1/2
+        text-slate-500 text-sm"></i>
+        <input
+        type="text"
+        id="prontuario-paciente-busca"
+        placeholder="Buscar por nome..."
+        class="w-full
+        bg-slate-900/90
+        border border-slate-700/80
+        rounded-xl
+        px-4 py-3 pl-11
+        text-sm
+        text-white
+        placeholder-slate-500
+        focus:outline-none
+        focus:border-emerald-500
+        focus:ring-2
+        focus:ring-emerald-500/20
+        transition-all"
+        autocomplete="off"
+        >
+        <!-- Dropdown resultados -->
+        <div
+        id="prontuario-busca-resultados"
+        class="hidden absolute top-full left-0 right-0 mt-1
+        bg-slate-900/95 border border-slate-700/80
+        rounded-xl shadow-xl z-50 overflow-hidden
+        max-h-60 overflow-y-auto"
+        role="listbox"
+        aria-label="Resultados da busca de pacientes"
+        ></div>
         </div>
         <button
         onclick="carregarProntuarioCompleto()"
@@ -2935,20 +3159,37 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         </div>
 <!-- ================================================= 2. ANAMNESE ================================================= -->
         <div id="sub-anamnese" class="aba-conteudo hidden space-y-5">
-        <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center">
-        <i class="fa-solid fa-notes-medical text-purple-400"></i>
-        </div>
-        <div>
-        <h3 class="text-lg font-bold text-white">Anamnese Clínica</h3>
-        <p class="text-xs text-slate-500 mt-1">Visualização completa da anamnese do paciente (somente leitura)</p>
-        </div>
-        </div>
-        <div id="prontuario-anamnese-content" class="space-y-5">
-        <div class="bg-slate-900/50 border border-slate-700/60 rounded-xl p-5 text-center text-slate-400">
-        <i class="fa-solid fa-spinner fa-spin text-purple-400 text-2xl mb-2"></i>
-        <p>Carregando anamnese...</p>
-        </div>
+        <!-- Cabeçalho colapsável -->
+        <div id="anamnese-card" class="bg-slate-800/50 border border-slate-700/50 rounded-xl overflow-hidden">
+            <button type="button"
+                    id="anamnese-toggle"
+                    class="w-full flex items-center justify-between gap-3 p-4 bg-slate-800/50 hover:bg-slate-700/50 transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-slate-900"
+                    aria-expanded="true"
+                    aria-controls="anamnese-body"
+                    onclick="toggleAnamneseCollapse()">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center">
+                        <i class="fa-solid fa-notes-medical text-purple-400"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold text-white">Anamnese Clínica</h3>
+                        <p class="text-xs text-slate-500 mt-1">Visualização completa da anamnese do paciente (somente leitura)</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 text-slate-400 transition-transform duration-200" id="anamnese-toggle-icon">
+                    <span class="text-sm" id="anamnese-toggle-text">Ocultar</span>
+                    <i class="fa-solid fa-chevron-up text-lg"></i>
+                </div>
+            </button>
+            <!-- Corpo colapsável -->
+            <div id="anamnese-body" class="space-y-5 p-5 transition-all duration-200 ease-in-out overflow-hidden" style="max-height: 5000px; opacity: 1;">
+                <div id="prontuario-anamnese-content" class="space-y-5">
+                <div class="bg-slate-900/50 border border-slate-700/60 rounded-xl p-5 text-center text-slate-400">
+                <i class="fa-solid fa-spinner fa-spin text-purple-400 text-2xl mb-2"></i>
+                <p>Carregando anamnese...</p>
+                </div>
+                </div>
+            </div>
         </div>
         </div>
 <!-- ================================================= 3. ALIMENTAÇÃO ================================================= -->                
@@ -3737,7 +3978,7 @@ async function fazerOnboarding(event) {
 
     try {
         // Chamar o endpoint de onboarding que cria empresa + super-admin em uma única operação
-        const res = await fetch(`${API_URL}/onboarding`, {
+        const res = await fetch(`${API_URL}/api/onboarding`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -3905,6 +4146,166 @@ function mostrarLogin() {
                   <tr><td colspan="4" class="py-6 text-center text-slate-400">Carregando…</td></tr>
                 </tbody>
               </table>
+            </div>
+          </div>
+        </section>
+        <!-- ========================================================= SEÇÃO: ACESSOS (super_admin) ========================================================= -->
+        <section id="sec-acessos" class="hidden space-y-6">
+          <!-- Cabeçalho -->
+          <header class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
+            <button type="button" onclick="abrirMenuMobile()" class="btn-menu-mobile lg:hidden p-2 rounded-xl bg-slate-800 border border-white/10 text-slate-300 hover:text-white hover:bg-white/5 transition" aria-label="Abrir menu">
+                <i class="fa-solid fa-bars text-lg"></i>
+            </button>
+            <div class="flex items-center gap-4">
+              <div class="w-12 h-12 rounded-2xl bg-purple-500/15 border border-purple-500/20 flex items-center justify-center">
+                <i class="fa-solid fa-users-cog text-purple-400 text-lg"></i>
+              </div>
+              <div>
+                <h2 class="text-2xl font-extrabold text-white tracking-tight">Acessos</h2>
+                <p class="text-sm text-slate-400 mt-1">Gerencie solicitações de acesso ao sistema.</p>
+              </div>
+            </div>
+          </header>
+
+          <!-- Tabs -->
+          <div class="bg-slate-800/70 backdrop-blur-xl p-4 rounded-3xl border border-slate-700/60 shadow-xl">
+            <div class="flex gap-2" role="tablist">
+              <button type="button" role="tab" id="tab-acessos-pendentes" class="aba-item flex-1 py-3 px-4 rounded-xl text-sm font-semibold transition" onclick="trocarAbaAcessos('pendentes')">
+                <i class="fa-solid fa-clock mr-2"></i>Pendentes
+              </button>
+              <button type="button" role="tab" id="tab-acessos-aprovados" class="aba-item flex-1 py-3 px-4 rounded-xl text-sm font-semibold transition" onclick="trocarAbaAcessos('aprovados')">
+                <i class="fa-solid fa-check-circle mr-2"></i>Aprovados
+              </button>
+              <button type="button" role="tab" id="tab-acessos-recusados" class="aba-item flex-1 py-3 px-4 rounded-xl text-sm font-semibold transition" onclick="trocarAbaAcessos('recusados')">
+                <i class="fa-solid fa-xmark-circle mr-2"></i>Recusados
+              </button>
+            </div>
+          </div>
+
+          <!-- Conteúdo das Tabs -->
+          <div id="acessos-conteudo" class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
+            <!-- Pendentes -->
+            <div id="acessos-tab-pendentes" class="aba-conteudo">
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm" id="tabela-acessos-pendentes">
+                  <thead>
+                    <tr class="text-left text-[11px] font-bold uppercase text-slate-500 border-b border-slate-700/50">
+                      <th class="py-3 px-4">Nome</th>
+                      <th class="py-3 px-4">E-mail</th>
+                      <th class="py-3 px-4">Telefone</th>
+                      <th class="py-3 px-4">Registro Prof.</th>
+                      <th class="py-3 px-4">Clínica</th>
+                      <th class="py-3 px-4">Data</th>
+                      <th class="py-3 px-4">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody id="acessos-tbody-pendentes" class="divide-y divide-slate-700/40">
+                    <tr><td colspan="7" class="py-6 text-center text-slate-400">Carregando…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Aprovados -->
+            <div id="acessos-tab-aprovados" class="aba-conteudo hidden">
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm" id="tabela-acessos-aprovados">
+                  <thead>
+                    <tr class="text-left text-[11px] font-bold uppercase text-slate-500 border-b border-slate-700/50">
+                      <th class="py-3 px-4">Nome</th>
+                      <th class="py-3 px-4">E-mail</th>
+                      <th class="py-3 px-4">Clínica</th>
+                      <th class="py-3 px-4">Empresa ID</th>
+                      <th class="py-3 px-4">Usuário ID</th>
+                      <th class="py-3 px-4">Data Aprovação</th>
+                      <th class="py-3 px-4">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody id="acessos-tbody-aprovados" class="divide-y divide-slate-700/40">
+                    <tr><td colspan="7" class="py-6 text-center text-slate-400">Carregando…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Recusados -->
+            <div id="acessos-tab-recusados" class="aba-conteudo hidden">
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm" id="tabela-acessos-recusados">
+                  <thead>
+                    <tr class="text-left text-[11px] font-bold uppercase text-slate-500 border-b border-slate-700/50">
+                      <th class="py-3 px-4">Nome</th>
+                      <th class="py-3 px-4">E-mail</th>
+                      <th class="py-3 px-4">Clínica</th>
+                      <th class="py-3 px-4">Data Recusa</th>
+                      <th class="py-3 px-4">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody id="acessos-tbody-recusados" class="divide-y divide-slate-700/40">
+                    <tr><td colspan="5" class="py-6 text-center text-slate-400">Carregando…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Modal Aprovar -->
+          <div id="modal-acessos-aprovar" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md mx-4 p-6 space-y-5">
+              <div class="flex items-center justify-between">
+                <h4 class="text-lg font-bold text-white" id="modal-acessos-aprovar-title">Aprovar Solicitação</h4>
+                <button onclick="fecharModal('modal-acessos-aprovar')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+              </div>
+              <p class="text-sm text-slate-300">Confirme a aprovação. Será criada uma nova empresa, um usuário profissional e uma assinatura "sem_plano". O profissional receberá e-mail para definir senha.</p>
+              <div class="space-y-4">
+                <div>
+                  <label class="block text-sm text-slate-300 mb-1">Nome do Profissional (opcional, usa o da solicitação se vazio)</label>
+                  <input type="text" id="acessos-aprovar-nome" class="acnut-input" placeholder="Nome do profissional">
+                </div>
+                <div id="modal-acessos-aprovar-erro" class="hidden lg-error"><i class="fa-solid fa-circle-exclamation"></i><span></span></div>
+              </div>
+              <div class="flex gap-3 pt-2">
+                <button onclick="fecharModal('modal-acessos-aprovar')" class="flex-1 acnut-btn-secondary">Cancelar</button>
+                <button onclick="confirmarAprovarAcesso()" class="flex-1 acnut-btn-primary" id="btn-confirmar-aprovar-acesso">
+                  <i class="fa-solid fa-check"></i> Aprovar
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Modal Recusar -->
+          <div id="modal-acessos-recusar" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md mx-4 p-6 space-y-5">
+              <div class="flex items-center justify-between">
+                <h4 class="text-lg font-bold text-white" id="modal-acessos-recusar-title">Recusar Solicitação</h4>
+                <button onclick="fecharModal('modal-acessos-recusar')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+              </div>
+              <p class="text-sm text-slate-300" id="modal-acessos-recusar-msg">Tem certeza que deseja recusar esta solicitação?</p>
+              <div id="modal-acessos-recusar-erro" class="hidden lg-error"><i class="fa-solid fa-circle-exclamation"></i><span></span></div>
+              <div class="flex gap-3 pt-2">
+                <button onclick="fecharModal('modal-acessos-recusar')" class="flex-1 acnut-btn-secondary">Cancelar</button>
+                <button onclick="confirmarRecusarAcesso()" class="flex-1 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-xl transition flex items-center justify-center gap-2">
+                  <i class="fa-solid fa-xmark"></i> Recusar
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Modal Excluir -->
+          <div id="modal-acessos-excluir" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+            <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md mx-4 p-6 space-y-5">
+              <div class="flex items-center justify-between">
+                <h4 class="text-lg font-bold text-white" id="modal-acessos-excluir-title">Excluir Solicitação</h4>
+                <button onclick="fecharModal('modal-acessos-excluir')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+              </div>
+              <p class="text-sm text-slate-300" id="modal-acessos-excluir-msg"></p>
+              <div id="modal-acessos-excluir-erro" class="hidden lg-error"><i class="fa-solid fa-circle-exclamation"></i><span></span></div>
+              <div class="flex gap-3 pt-2">
+                <button onclick="fecharModal('modal-acessos-excluir')" class="flex-1 acnut-btn-secondary">Cancelar</button>
+                <button onclick="confirmarExcluirAcesso()" class="flex-1 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-xl transition flex items-center justify-center gap-2">
+                  <i class="fa-solid fa-trash"></i> Excluir
+                </button>
+              </div>
             </div>
           </div>
         </section>
@@ -4270,7 +4671,7 @@ const STATUS_COR = {
 async function exigirAdmin() {
   const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
   if (!user.perfil || !['admin', 'super_admin'].includes(user.perfil)) {
-    alert('Acesso restrito a administradores.');
+    mostrarToast('Acesso restrito a administradores.', 'erro');
     return false;
   }
   return true;
@@ -4402,7 +4803,7 @@ async function confirmarMudancaPlano() {
     if (!res.ok) throw new Error((await res.json()).mensagem || 'Erro ao alterar plano');
 
     fecharModal('modal-billing');
-    alert('Plano alterado com sucesso! A cobrança será ajustada no próximo ciclo.');
+    mostrarToast('Plano alterado com sucesso! A cobrança será ajustada no próximo ciclo.', 'sucesso');
     carregarBilling();
   } catch (e) {
     erroDiv.querySelector('span').innerText = e.message;

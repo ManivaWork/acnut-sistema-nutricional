@@ -102,7 +102,7 @@ window.fetch = async (url, opts = {}) => {
     const res = await _fetch(url, opts);
     if (ehApi && res.status === 401 && !sessaoEncerrando) {
         sessaoEncerrando = true;
-        alert("Sua sessão expirou. Entre novamente.");
+        mostrarToast("Sua sessão expirou. Entre novamente.", "erro");
         fazerLogout();
         document.getElementById("area-paciente").style.display = "none";
         if (typeof modoLogin === "function") modoLogin("equipe");
@@ -121,7 +121,7 @@ function resetAutoLogoutTimer() {
     if (autoLogoutTimer) clearTimeout(autoLogoutTimer);
     autoLogoutTimer = setTimeout(() => {
         if (getToken()) {
-            alert("Sessão encerrada por inatividade (30 min).");
+            mostrarToast("Sessão encerrada por inatividade (30 min).", "aviso");
             fazerLogout();
             document.getElementById("area-paciente").style.display = "none";
             if (typeof modoLogin === "function") modoLogin("equipe");
@@ -188,20 +188,23 @@ function preencherSeVazio(inputId, valor, label = "automático") {
     if (!input) return false;
     if (input.value === "" || input.value === "0") {
         input.value = valor;
-        // Adiciona badge visual
-        const container = input.closest('div');
-        if (container) {
+        // Adiciona badge visual no wrapper flex
+        const wrapper = input.closest('.input-wrapper');
+        if (wrapper) {
             // Remove badge anterior se existir
-            const badgeAntigo = container.querySelector('.badge-auto');
+            const badgeAntigo = wrapper.querySelector('.badge-auto');
             if (badgeAntigo) badgeAntigo.remove();
             const badge = document.createElement('span');
-            badge.className = 'badge-auto absolute right-2 top-1/2 -translate-y-1/2 text-[10px] px-1.5 py-0.5 bg-emerald-600/20 text-emerald-400 rounded border border-emerald-500/30 font-medium';
+            badge.className = 'badge-auto';
             badge.textContent = label;
             badge.style.pointerEvents = 'none';
-            if (getComputedStyle(container).position === 'static') {
-                container.style.position = 'relative';
+            // Inserir antes da unidade (último filho flex)
+            const unit = wrapper.querySelector('.input-unit');
+            if (unit) {
+                wrapper.insertBefore(badge, unit);
+            } else {
+                wrapper.appendChild(badge);
             }
-            container.appendChild(badge);
         }
         // Flash visual
         input.style.borderColor = "#22b8a0";
@@ -282,17 +285,34 @@ function navegar(secao) {
         if (secao === 'pacientes' || secao === 'dashboard') {
         carregarPacientes();
         }
-        if (secao === 'prontuario') restaurarProntuarioAtivo();
+        if (secao === 'prontuario') {
+        restaurarProntuarioAtivo();
+        inicializarBuscaProntuario();
+        }
         if (secao === 'empresas') carregarEmpresas();
         if (secao === 'lgpd') renderSecaoLgpd();
+        if (secao === 'acessos') carregarAcessos();
         document.querySelectorAll(".acnut-rail-item[data-nav]").forEach(btn => {
         btn.classList.toggle("ativo", btn.dataset.nav === secao);
         });
-        // Mostrar/ocultar item Empresas conforme perfil
+        // Mostrar/ocultar itens conforme perfil
         const navEmpresas = document.getElementById('nav-empresas');
+        const navLgpd = document.getElementById('nav-lgpd');
+        const navAcessos = document.getElementById('nav-acessos');
         const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
         if (navEmpresas) {
             navEmpresas.style.display = (user.perfil === 'super_admin') ? 'flex' : 'none';
+        }
+        if (navAcessos) {
+            navAcessos.style.display = (user.perfil === 'super_admin') ? 'flex' : 'none';
+        }
+        // Ocultar LGPD para perfil profissional
+        if (navLgpd) {
+            navLgpd.style.display = (user.perfil === 'profissional') ? 'none' : 'flex';
+        }
+        // Verificar banner de plano para profissionais
+        if (secao !== 'login' && secao !== 'onboarding' && secao !== 'convite' && secao !== 'definir-senha') {
+            verificarBannerPlano();
         }
         }
 async function carregarPacientes() {
@@ -430,6 +450,13 @@ function restaurarProntuarioAtivo() {
         }
 async function cadastrarPaciente(event) {
         event.preventDefault();
+
+        // Verificar limite de pacientes para profissionais sem_plano
+        if (pacienteEmEdicaoId === null) {
+            const podeCadastrar = await verificarLimitePacientes();
+            if (!podeCadastrar) return;
+        }
+
         const dadosPaciente = {
         nome: document.getElementById('p-nome').value,
         email: document.getElementById('p-email').value,
@@ -448,17 +475,17 @@ async function cadastrarPaciente(event) {
         body: JSON.stringify(dadosPaciente)
         });
         if (response.ok) {
-        alert(editando ? "Paciente atualizado com sucesso!" : "Paciente cadastrado com sucesso!");
+        mostrarToast(editando ? "Paciente atualizado com sucesso!" : "Paciente cadastrado com sucesso!", 'sucesso');
         cancelarEdicao();      // limpa o form e volta o botão ao normal
         carregarPacientes();
         } else {
         const erroTexto = await lerErro(response);
         console.error("Detalhe do erro do servidor:", erroTexto);
-        alert("Erro ao guardar os dados do paciente: " + erroTexto);
+        mostrarToast("Erro ao guardar os dados do paciente: " + erroTexto, 'erro');
         }
         } catch (error) {
         console.error("Erro na requisição:", error);
-        alert("Erro de conexão com o servidor C#.");
+        mostrarToast("Erro de conexão com o servidor C#.", 'erro');
         }
         }        
 async function gerarAvaliacao(e) {
@@ -493,11 +520,11 @@ async function gerarAvaliacao(e) {
         } else {
         const erroTexto = await res.text();
         console.error("Detalhe do erro do servidor:", erroTexto);
-        alert("Erro ao processar avaliação: " + erroTexto);
+        mostrarToast("Erro ao processar avaliação: " + erroTexto, "erro");
         }
         } catch (error) {
         console.error("Erro na requisição:", error);
-        alert("Erro de conexão com o servidor.");
+        mostrarToast("Erro de conexão com o servidor.", "erro");
         }
         }
 
@@ -560,7 +587,7 @@ async function salvarCheckin(e) {
         body: JSON.stringify(body)
         });
         if (res.ok) {
-        alert("Check-in semanal registrado!");
+        mostrarToast("Check-in semanal registrado!", "sucesso");
         form.reset();
         if (body.observacoes.trim()) {
         await fetch(`${API_URL}/observacoes`, {
@@ -573,11 +600,11 @@ async function salvarCheckin(e) {
         // Se o paciente tiver metas ativas, pergunta como foram
         await abrirModalAcompanhamento(body.pacienteId, null, true);
         } else {
-        alert("Erro ao registrar check-in: " + await lerErro(res));
+        mostrarToast("Erro ao registrar check-in: " + await lerErro(res), "erro");
         }
         } catch (err) {
         console.error(err);
-        alert("Erro de conexão com o servidor.");
+        mostrarToast("Erro de conexão com o servidor.", "erro");
         }
         }
 function calcularMassaMagraAutomatica() {
@@ -642,7 +669,7 @@ function calcularMassaMagraAutomatica() {
 async function salvarAnamneseProntuario() {
         const pacienteId = parseInt(document.getElementById("prontuario-paciente-id").value) || window.pacienteIdAtivo;
         if (!pacienteId) {
-        alert("Abra o prontuário de um paciente primeiro.");
+        mostrarToast("Abra o prontuário de um paciente primeiro.", "aviso");
         return;
         }
         const body = {
@@ -660,13 +687,13 @@ async function salvarAnamneseProntuario() {
         body: JSON.stringify(body)
         });
         if (res.ok) {
-        alert("Anamnese salva com sucesso!");
+        mostrarToast("Anamnese salva com sucesso!", "sucesso");
         } else {
-        alert("Erro ao salvar anamnese: " + await res.text());
+        mostrarToast("Erro ao salvar anamnese: " + await res.text(), "erro");
         }
         } catch (err) {
         console.error("Erro ao salvar anamnese:", err);
-        alert("Erro de conexão com o servidor.");
+        mostrarToast("Erro de conexão com o servidor.", "erro");
         }
         }
 // Renderiza anamnese completa no prontuário (somente leitura)
@@ -674,7 +701,8 @@ async function renderizarAnamneseProntuario(an) {
     const container = document.getElementById("prontuario-anamnese-content");
     if (!container) return;
 
-    // Parsear dados_extendidos
+    try {
+        // Parsear dados_extendidos
     let dadosExtendidos = {};
     if (an.dados_extendidos) {
         try {
@@ -730,6 +758,63 @@ async function renderizarAnamneseProntuario(an) {
     const rotinaAlimentar = dadosExtendidos.rotina_alimentar || {};
     const finalizando = dadosExtendidos.finalizando || {};
 
+    // ===== PREENCHER COM DADOS DO PACIENTE (se campos vazios) =====
+    try {
+        // Obter dados do paciente do cabeçalho do prontuário
+        const nomeEl = document.getElementById("p-cab-nome");
+        const emailEl = document.getElementById("p-cab-email");
+        const cpfText = document.querySelector("#conteudo-perfil")?.textContent || "";
+
+        // Extrair idade da data de nascimento no perfil
+        let idadePaciente = null;
+        const dataNascMatch = cpfText.match(/Data de Nascimento:\s*([^\n]+)/);
+        if (dataNascMatch) {
+            const dataNasc = new Date(dataNascMatch[1].split('/').reverse().join('-'));
+            const hoje = new Date();
+            idadePaciente = hoje.getFullYear() - dataNasc.getFullYear();
+            const m = hoje.getMonth() - dataNasc.getMonth();
+            if (m < 0 || (m === 0 && hoje.getDate() < dataNasc.getDate())) idadePaciente--;
+        }
+
+        // Extrair sexo do perfil
+        let sexoPaciente = null;
+        const sexoMatch = cpfText.match(/Sexo:\s*([^\n]+)/);
+        if (sexoMatch) sexoPaciente = sexoMatch[1].trim();
+
+        // Preencher apenas campos vazios
+        if (!dadosPessoais.nome && nomeEl) {
+            const nomeCompleto = nomeEl.textContent.replace(/^#\d+\s*/, '').trim();
+            dadosPessoais.nome = nomeCompleto;
+        }
+        if (!dadosPessoais.email && emailEl) {
+            dadosPessoais.email = emailEl.textContent.trim();
+        }
+        if (!dadosPessoais.idade && idadePaciente) {
+            dadosPessoais.idade = String(idadePaciente);
+        }
+        if (!dadosPessoais.sexo && sexoPaciente) {
+            dadosPessoais.sexo = sexoPaciente;
+        }
+        // Peso e altura podem vir de avaliação mais recente - tentar buscar
+        if (!dadosPessoais.peso_atual || !dadosPessoais.altura) {
+            try {
+                const resAval = await fetch(`${API_URL}/avaliacoes/${window.pacienteIdAtivo}`);
+                if (resAval.ok) {
+                    const avals = await resAval.json();
+                    if (avals.length > 0) {
+                        const ultima = avals[0];
+                        if (!dadosPessoais.peso_atual && ultima.peso_kg) dadosPessoais.peso_atual = String(ultima.peso_kg);
+                        if (!dadosPessoais.altura && ultima.altura_cm) dadosPessoais.altura = String(ultima.altura_cm);
+                    }
+                }
+            } catch (e) {
+                console.warn("Não foi possível buscar avaliação para preencher peso/altura:", e);
+            }
+        }
+    } catch (e) {
+        console.warn("Erro ao preencher dados do paciente na anamnese:", e);
+    }
+
     // Mapear nível de atividade da anamnese para o fator FAO/OMS
     const mapearNivelAtividade = (rotina) => {
         if (!rotina.pratica_atividade_fisica || rotina.pratica_atividade_fisica === 'nao') {
@@ -742,7 +827,7 @@ async function renderizarAnamneseProntuario(an) {
         return 'muito_intenso';
     };
 
-    // Calcular TMB/GET se temos os dados necessários
+    // Calcular TMB/GET se temos os dados necessários (após preenchimento)
     let tmbGetResult = null;
     if (dadosPessoais.peso_atual && dadosPessoais.altura && dadosPessoais.idade && dadosPessoais.sexo) {
         const nivelAtividade = mapearNivelAtividade(rotinaEstilo);
@@ -944,6 +1029,89 @@ async function renderizarAnamneseProntuario(an) {
         </div>
         ` : ''}
     `;
+
+    // Inicializar colapsível após renderizar
+    initAnamneseCollapse();
+    } catch (e) {
+        console.error("Erro ao renderizar anamnese:", e);
+        container.innerHTML = `
+            <div class="bg-red-900/30 border border-red-500/30 rounded-xl p-4 text-center">
+                <i class="fa-solid fa-triangle-exclamation text-red-400 text-2xl mb-2"></i>
+                <p class="text-red-300">Erro ao carregar anamnese. Tente recarregar a página.</p>
+                <button onclick="carregarProntuarioCompleto(window.pacienteIdAtivo)" class="mt-3 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm">
+                    Tentar novamente
+                </button>
+            </div>
+        `;
+    }
+}
+
+// ===== ANAMNESE: Colapsível =====
+function toggleAnamneseCollapse() {
+    const body = document.getElementById('anamnese-body');
+    const toggleIcon = document.getElementById('anamnese-toggle-icon');
+    const toggleText = document.getElementById('anamnese-toggle-text');
+    const btn = document.getElementById('anamnese-toggle');
+    if (!body || !toggleIcon || !toggleText || !btn) return;
+
+    const isExpanded = btn.getAttribute('aria-expanded') === 'true';
+    const newExpanded = !isExpanded;
+
+    // Atualiza ARIA
+    btn.setAttribute('aria-expanded', newExpanded);
+    toggleText.textContent = newExpanded ? 'Ocultar' : 'Mostrar';
+    toggleIcon.style.transform = newExpanded ? 'rotate(0deg)' : 'rotate(-180deg)';
+
+    // Animação com max-height e opacity
+    if (newExpanded) {
+        body.style.maxHeight = body.scrollHeight + 'px';
+        body.style.opacity = '1';
+        // Remove max-height após animação para permitir redimensionamento
+        setTimeout(() => {
+            if (btn.getAttribute('aria-expanded') === 'true') {
+                body.style.maxHeight = '5000px';
+            }
+        }, 200);
+    } else {
+        body.style.maxHeight = body.scrollHeight + 'px';
+        // Force reflow
+        body.offsetHeight;
+        body.style.maxHeight = '0';
+        body.style.opacity = '0';
+    }
+
+    // Salva estado no localStorage
+    try {
+        localStorage.setItem('anamnese_collapsed', (!newExpanded).toString());
+    } catch (e) {}
+}
+
+function initAnamneseCollapse() {
+    const btn = document.getElementById('anamnese-toggle');
+    const body = document.getElementById('anamnese-body');
+    const toggleIcon = document.getElementById('anamnese-toggle-icon');
+    const toggleText = document.getElementById('anamnese-toggle-text');
+    if (!btn || !body || !toggleIcon || !toggleText) return;
+
+    // Lê estado salvo
+    let collapsed = false;
+    try {
+        collapsed = localStorage.getItem('anamnese_collapsed') === 'true';
+    } catch (e) {}
+
+    if (collapsed) {
+        btn.setAttribute('aria-expanded', 'false');
+        toggleText.textContent = 'Mostrar';
+        toggleIcon.style.transform = 'rotate(-180deg)';
+        body.style.maxHeight = '0';
+        body.style.opacity = '0';
+    } else {
+        btn.setAttribute('aria-expanded', 'true');
+        toggleText.textContent = 'Ocultar';
+        toggleIcon.style.transform = 'rotate(0deg)';
+        body.style.maxHeight = '5000px';
+        body.style.opacity = '1';
+    }
 }
 
 function trocarAbaProntuario(nomeAba) {
@@ -966,10 +1134,200 @@ function trocarAbaProntuario(nomeAba) {
         if (nomeAba === "evolucao" && graficoEvolucaoDetalhe) graficoEvolucaoDetalhe.resize();
                 if (nomeAba === "historico" && window.pacienteIdAtivo) carregarHistorico(window.pacienteIdAtivo);
         }
+// ===== BUSCA DE PACIENTES NO PRONTUÁRIO =====
+let buscaDebounceTimer = null;
+let buscaAbortController = null;
+let buscaSelectedIndex = -1;
+let buscaResultados = [];
+
+function escaparHtml(texto) {
+    const div = document.createElement('div');
+    div.textContent = texto;
+    return div.innerHTML;
+}
+
+function formatarDataParaExibicao(dataStr) {
+    if (!dataStr) return '';
+    const d = new Date(dataStr);
+    return d.toLocaleDateString('pt-BR');
+}
+
+async function buscarPacientesPorNome(query) {
+    const inputBusca = document.getElementById('prontuario-paciente-busca');
+    const dropdown = document.getElementById('prontuario-busca-resultados');
+    const inputId = document.getElementById('prontuario-paciente-id');
+
+    // Cancelar requisição anterior
+    if (buscaAbortController) {
+        buscaAbortController.abort();
+    }
+    buscaAbortController = new AbortController();
+
+    if (!query || query.length < 2) {
+        dropdown.classList.add('hidden');
+        dropdown.innerHTML = '';
+        buscaResultados = [];
+        buscaSelectedIndex = -1;
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_URL}/pacientes/buscar?q=${encodeURIComponent(query)}`, {
+            signal: buscaAbortController.signal
+        });
+        if (!res.ok) throw new Error('Erro na busca');
+
+        const pacientes = await res.json();
+        buscaResultados = pacientes;
+        buscaSelectedIndex = -1;
+
+        if (pacientes.length === 0) {
+            dropdown.innerHTML = '<div class="px-4 py-3 text-sm text-slate-400 text-center">Nenhum paciente encontrado</div>';
+            dropdown.classList.remove('hidden');
+        } else if (pacientes.length === 1) {
+            // 1 resultado: preencher ID automaticamente e mostrar confirmado
+            const p = pacientes[0];
+            inputId.value = p.id;
+            dropdown.innerHTML = `
+                <div class="px-4 py-2 text-sm text-emerald-400 border-b border-slate-700/50">
+                    Paciente selecionado: <strong>${escaparHtml(p.nome)}</strong> (ID: ${p.id}) - ${formatarDataParaExibicao(p.data_nascimento)}
+                </div>
+            `;
+            dropdown.classList.remove('hidden');
+            // Limpar campo de busca após selecionar (opcional - manter para permitir nova busca)
+        } else {
+            // 2+ resultados: dropdown clicável
+            dropdown.innerHTML = pacientes.map((p, idx) => `
+                <div class="p-3 hover:bg-slate-800 cursor-pointer border-b border-slate-700/50 last:border-0
+                    ${idx === 0 ? 'bg-slate-800/50' : ''}"
+                    role="option"
+                    tabindex="-1"
+                    data-idx="${idx}"
+                    onclick="selecionarPacienteBusca(${idx})">
+                    <div class="font-medium text-white">${escaparHtml(p.nome)}</div>
+                    <div class="text-[11px] text-slate-400">ID: ${p.id} · Nasc: ${formatarDataParaExibicao(p.data_nascimento)}</div>
+                </div>
+            `).join('');
+            dropdown.classList.remove('hidden');
+        }
+    } catch (e) {
+        if (e.name !== 'AbortError') {
+            console.error('Erro ao buscar pacientes:', e);
+            dropdown.innerHTML = '<div class="px-4 py-3 text-sm text-rose-400 text-center">Erro ao buscar</div>';
+            dropdown.classList.remove('hidden');
+        }
+    }
+}
+
+function selecionarPacienteBusca(idx) {
+    const inputId = document.getElementById('prontuario-paciente-id');
+    const dropdown = document.getElementById('prontuario-busca-resultados');
+    const inputBusca = document.getElementById('prontuario-paciente-busca');
+
+    if (idx >= 0 && idx < buscaResultados.length) {
+        const p = buscaResultados[idx];
+        inputId.value = p.id;
+        inputBusca.value = ''; // Limpar campo de busca
+        dropdown.classList.add('hidden');
+        dropdown.innerHTML = '';
+        buscaResultados = [];
+        buscaSelectedIndex = -1;
+    }
+}
+
+// Debounce no input de busca
+function setupBuscaPaciente() {
+    const inputBusca = document.getElementById('prontuario-paciente-busca');
+    const inputId = document.getElementById('prontuario-paciente-id');
+    const dropdown = document.getElementById('prontuario-busca-resultados');
+
+    if (!inputBusca) return;
+
+    inputBusca.addEventListener('input', (e) => {
+        const query = e.target.value.trim();
+
+        clearTimeout(buscaDebounceTimer);
+        buscaDebounceTimer = setTimeout(() => {
+            buscarPacientesPorNome(query);
+        }, 300);
+    });
+
+    // Se digitou no ID, limpar campo de busca
+    inputId.addEventListener('input', () => {
+        if (inputId.value !== '') {
+            inputBusca.value = '';
+            dropdown.classList.add('hidden');
+            dropdown.innerHTML = '';
+            buscaResultados = [];
+            buscaSelectedIndex = -1;
+        }
+    });
+
+    // Fechar dropdown ao clicar fora
+    document.addEventListener('click', (e) => {
+        if (!inputBusca.contains(e.target) && !dropdown.contains(e.target)) {
+            dropdown.classList.add('hidden');
+        }
+    });
+
+    // Navegação por teclado no dropdown
+    inputBusca.addEventListener('keydown', (e) => {
+        if (dropdown.classList.contains('hidden') || buscaResultados.length === 0) return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            buscaSelectedIndex = Math.min(buscaSelectedIndex + 1, buscaResultados.length - 1);
+            atualizarSelecaoDropdown();
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            buscaSelectedIndex = Math.max(buscaSelectedIndex - 1, 0);
+            atualizarSelecaoDropdown();
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (buscaSelectedIndex >= 0) {
+                selecionarPacienteBusca(buscaSelectedIndex);
+            }
+        } else if (e.key === 'Escape') {
+            dropdown.classList.add('hidden');
+            buscaSelectedIndex = -1;
+        }
+    });
+}
+
+function atualizarSelecaoDropdown() {
+    const dropdown = document.getElementById('prontuario-busca-resultados');
+    const options = dropdown.querySelectorAll('[data-idx]');
+    options.forEach((opt, idx) => {
+        if (idx === buscaSelectedIndex) {
+            opt.classList.add('bg-slate-800/50');
+            opt.scrollIntoView({ block: 'nearest' });
+        } else {
+            opt.classList.remove('bg-slate-800/50');
+        }
+    });
+}
+
+// Inicializar busca quando a seção de prontuário for mostrada
+function inicializarBuscaProntuario() {
+    setupBuscaPaciente();
+    // Limpar estado anterior
+    const inputBusca = document.getElementById('prontuario-paciente-busca');
+    const dropdown = document.getElementById('prontuario-busca-resultados');
+    if (inputBusca) inputBusca.value = '';
+    if (dropdown) {
+        dropdown.classList.add('hidden');
+        dropdown.innerHTML = '';
+    }
+    buscaResultados = [];
+    buscaSelectedIndex = -1;
+}
+
+// ===== PRONTUÁRIO =====
+
 async function carregarProntuarioCompleto() {
         const pacienteId = parseInt(document.getElementById("prontuario-paciente-id").value);
         if (!pacienteId) {
-        alert("Por favor, introduza o ID do paciente.");
+        mostrarToast("Por favor, introduza o ID do paciente.", "aviso");
         return;
         }
         try {
@@ -978,7 +1336,7 @@ async function carregarProntuarioCompleto() {
         const paciente = pacientes.find(p => p.id === pacienteId);
         if (!paciente) {
         try { localStorage.removeItem("acnut_paciente_ativo"); } catch (e) {}
-        alert("Paciente não encontrado!");
+        mostrarToast("Paciente não encontrado!", "erro");
         return;
         }
         window.pacienteIdAtivo = pacienteId;
@@ -1046,7 +1404,7 @@ async function lerErro(res) {
         }
 function exigirPaciente() {
         if (!window.pacienteIdAtivo) {
-        alert("Abra o prontuário de um paciente primeiro.");
+        mostrarToast("Abra o prontuário de um paciente primeiro.", "aviso");
         return false;
         }
         return true;
@@ -1269,7 +1627,7 @@ async function salvarRefeicao(e) {
         r => normalizar(r.nome) === normalizar(body.nomeRefeicao) && r.id !== formRefeicao.id
         );
         if (existente) {
-        alert(`Já existe "${existente.nome}" neste plano.\n\nPara criar outra opção dessa refeição, use o botão "Nova opção" dentro dela.`);
+        mostrarToast(`Já existe "${existente.nome}" neste plano. Para criar outra opção, use o botão "Nova opção" dentro dela.`, "aviso");
         return;
         }
         try {
@@ -1284,33 +1642,33 @@ async function salvarRefeicao(e) {
         fecharModal("modal-refeicao");
         await carregarPlanoAlimentarProntuario(window.pacienteIdAtivo);
         } else {
-        alert(await lerErro(res));
+        mostrarToast(await lerErro(res), "erro");
         }
         } catch (err) {
         console.error(err);
-        alert("Erro de conexão com o servidor.");
+        mostrarToast("Erro de conexão com o servidor.", "erro");
         }
         }
 async function excluirRefeicao(id) {
         if (!confirm("Excluir esta refeição e todos os alimentos dela?")) return;
         const res = await fetch(`${API_URL}/planos/refeicao/${id}`, { method: "DELETE" });
         if (res.ok) await carregarPlanoAlimentarProntuario(window.pacienteIdAtivo);
-        else alert(await lerErro(res));
+        else mostrarToast(await lerErro(res), "erro");
         }
 async function excluirOpcao(refeicaoId, opcao) {
         if (!confirm("Excluir esta opção inteira (alimentos e substituições)?")) return;
         const res = await fetch(`${API_URL}/planos/refeicao/${refeicaoId}/opcao/${opcao}`, { method: "DELETE" });
         if (res.ok) await carregarPlanoAlimentarProntuario(window.pacienteIdAtivo);
-        else alert(await lerErro(res));
+        else mostrarToast(await lerErro(res), "erro");
         }
 async function duplicarOpcao(refeicaoId, opcao) {
         try {
         const res = await fetch(`${API_URL}/planos/refeicao/${refeicaoId}/opcao/${opcao}/duplicar`, { method: "POST" });
         if (res.ok) await carregarPlanoAlimentarProntuario(window.pacienteIdAtivo);
-        else alert(await lerErro(res));
+        else mostrarToast(await lerErro(res), "erro");
         } catch (err) {
         console.error(err);
-        alert("Erro de conexão com o servidor.");
+        mostrarToast("Erro de conexão com o servidor.", "erro");
         }
         }
 function todosItens() {
@@ -1391,7 +1749,7 @@ function abrirModalSubstituicaoRapida() {
                         document.getElementById("msr-refeicao").appendChild(opt);
                 });
         } else {
-                alert("Nenhuma refeição cadastrada. Crie uma na aba 'Plano alimentar' primeiro.");
+                mostrarToast("Nenhuma refeição cadastrada. Crie uma na aba 'Plano alimentar' primeiro.", "aviso");
                 return;
         }
 
@@ -1513,15 +1871,15 @@ async function salvarSubstituicaoRapida(e) {
         const gord = Number(document.getElementById("msr-gord").value) || null;
 
         if (!itemIdOriginal || !refeicaoId || !opcao) {
-                alert("Selecione a refeição, opção e o alimento original.");
+                mostrarToast("Selecione a refeição, opção e o alimento original.", "aviso");
                 return;
         }
         if (!alimentoSubstituto) {
-                alert("Informe o alimento substituto (busque no TACO ou digite manualmente).");
+                mostrarToast("Informe o alimento substituto (busque no TACO ou digite manualmente).", "aviso");
                 return;
         }
         if (!qtd || qtd <= 0) {
-                alert("Informe a quantidade em gramas/ml.");
+                mostrarToast("Informe a quantidade em gramas/ml.", "aviso");
                 return;
         }
 
@@ -1557,11 +1915,11 @@ async function salvarSubstituicaoRapida(e) {
                         // Atualizar a aba de substituições
                         renderizarSubstituicoes();
                 } else {
-                        alert(await lerErro(res));
+                        mostrarToast(await lerErro(res), "erro");
                 }
         } catch (err) {
                 console.error(err);
-                alert("Erro de conexão com o servidor.");
+                mostrarToast("Erro de conexão com o servidor.", "erro");
         } finally {
                 btn.disabled = false;
                 btn.innerHTML = txtOriginal;
@@ -1687,7 +2045,7 @@ async function selecionarAlimento(id) {
         document.getElementById("mi-gord").value = a.gorduras_100g ?? a.gorduras ?? "";
         } catch (err) {
         console.error("Erro ao carregar detalhes do alimento:", err);
-        alert("Não foi possível carregar os detalhes do alimento.");
+        mostrarToast("Não foi possível carregar os detalhes do alimento.", "erro");
         }
 }
 
@@ -1874,7 +2232,7 @@ async function selecionarAlimento(id) {
         }
         } catch (err) {
         console.error("Erro ao carregar detalhes do alimento:", err);
-        alert("Não foi possível carregar os detalhes do alimento.");
+        mostrarToast("Não foi possível carregar os detalhes do alimento.", "erro");
         }
 }
 async function salvarItem(e) {
@@ -1952,18 +2310,18 @@ async function salvarItem(e) {
         fecharModal("modal-item");
         await carregarPlanoAlimentarProntuario(window.pacienteIdAtivo);
         } else {
-        alert(await lerErro(res));
+        mostrarToast(await lerErro(res), "erro");
         }
         } catch (err) {
         console.error(err);
-        alert("Erro de conexão com o servidor.");
+        mostrarToast("Erro de conexão com o servidor.", "erro");
         }
         }
 async function excluirItem(id) {
         if (!confirm("Excluir este alimento? As substituições ligadas a ele também serão excluídas.")) return;
         const res = await fetch(`${API_URL}/planos/item/${id}`, { method: "DELETE" });
         if (res.ok) await carregarPlanoAlimentarProntuario(window.pacienteIdAtivo);
-        else alert(await lerErro(res));
+        else mostrarToast(await lerErro(res), "erro");
         }
 function htmlPlanoLeitura(plano) {
         const refeicoes = plano.refeicoes || [];
@@ -1999,13 +2357,13 @@ async function salvarVersaoPlano() {
         });
         if (res.ok) {
         const data = await res.json();
-        alert(data.mensagem);
+        mostrarToast(data.mensagem, "erro");
         } else {
-        alert(await lerErro(res));
+        mostrarToast(await lerErro(res), "erro");
         }
         } catch (err) {
         console.error(err);
-        alert("Erro de conexão com o servidor.");
+        mostrarToast("Erro de conexão com o servidor.", "erro");
         }
         }
 async function abrirHistoricoVersoes() {
@@ -2038,7 +2396,7 @@ async function abrirHistoricoVersoes() {
         }
 async function verVersaoPlano(id) {
         const res = await fetch(`${API_URL}/planos/versao/${id}`);
-        if (!res.ok) { alert(await lerErro(res)); return; }
+        if (!res.ok) { mostrarToast(await lerErro(res), "erro"); return; }
         const v = await res.json();
         document.getElementById("versoes-lista").classList.add("hidden");
         const det = document.getElementById("versoes-detalhe");
@@ -2099,7 +2457,7 @@ async function gerarPDFPlanoAlimentar() {
         const resPlano = await fetch(`${API_URL}/planos/${pacienteId}`);
         const plano = await resPlano.json();
         if (!plano.refeicoes || !plano.refeicoes.length) {
-        alert("Não há refeições registradas para exportar.");
+        mostrarToast("Não há refeições registradas para exportar.", "aviso");
         return;
         }
         let textoOrientacoes = "Nenhuma orientação registrada.";
@@ -2155,7 +2513,7 @@ async function gerarPDFPlanoAlimentar() {
         </html>`;
         const janela = window.open("", "_blank");
         if (!janela) {
-        alert("O navegador bloqueou a nova janela. Permita pop-ups para este site e tente de novo.");
+        mostrarToast("O navegador bloqueou a nova janela. Permita pop-ups para este site e tente de novo.", "erro");
         return;
         }
         janela.document.open();
@@ -2166,7 +2524,7 @@ async function gerarPDFPlanoAlimentar() {
         setTimeout(() => janela.print(), 400);
         } catch (err) {
         console.error("Erro ao gerar PDF:", err);
-        alert("Ocorreu um erro ao gerar o PDF. Veja o console (F12).");
+        mostrarToast("Ocorreu um erro ao gerar o PDF. Veja o console (F12).", "erro");
         }
         }
 // ===================================================== // METAS DO PACIENTE// =====================================================
@@ -2333,11 +2691,11 @@ async function salvarMeta(e) {
         fecharModal("modal-meta");
         await carregarMetas(window.pacienteIdAtivo);
         } else {
-        alert(await lerErro(res));
+        mostrarToast(await lerErro(res), "erro");
         }
         } catch (err) {
         console.error(err);
-        alert("Erro de conexão com o servidor.");
+        mostrarToast("Erro de conexão com o servidor.", "erro");
         }
         }
 async function alterarStatusMeta(id, status) {
@@ -2348,23 +2706,23 @@ async function alterarStatusMeta(id, status) {
         titulo: m.titulo, tipo: m.tipo, prazo: m.prazo || "", descricao: m.descricao, status
         });
         if (res.ok) await carregarMetas(window.pacienteIdAtivo);
-        else alert(await lerErro(res));
+        else mostrarToast(await lerErro(res), "erro");
         }
 async function excluirMeta(id) {
         if (!confirm("Excluir esta meta e todo o histórico de acompanhamento dela?")) return;
         const res = await fetch(`${API_URL}/metas/${id}`, { method: "DELETE" });
         if (res.ok) await carregarMetas(window.pacienteIdAtivo);
-        else alert(await lerErro(res));
+        else mostrarToast(await lerErro(res), "erro");
         }
 async function excluirAcompanhamento(id) {
         if (!confirm("Excluir este registro de acompanhamento?")) return;
         const res = await fetch(`${API_URL}/metas/acompanhamento/${id}`, { method: "DELETE" });
         if (res.ok) await carregarMetas(window.pacienteIdAtivo);
-        else alert(await lerErro(res));
+        else mostrarToast(await lerErro(res), "erro");
         }
 async function abrirModalAcompanhamento(pacienteId, metaId = null, aposCheckin = false) {
         if (!pacienteId) {
-        alert("Abra o prontuário de um paciente primeiro.");
+        mostrarToast("Abra o prontuário de um paciente primeiro.", "aviso");
         return;
         }
 let metas = [];
@@ -2376,7 +2734,7 @@ let metas = [];
         }
         metas = metas.filter(m => m.status === "ativa" && (!metaId || m.id === metaId));
         if (!metas.length) {
-        if (!aposCheckin) alert("Este paciente não tem metas ativas. Crie uma em Nova meta.");
+        if (!aposCheckin) mostrarToast("Este paciente não tem metas ativas. Crie uma em Nova meta.", "aviso");
         return;
         }
         acompanhamentoCtx = { pacienteId, metas };
@@ -2422,7 +2780,7 @@ async function salvarAcompanhamento(e) {
         }))
         .filter(r => r.resultado);
         if (!registros.length) {
-        alert("Marque o resultado de pelo menos uma meta.");
+        mostrarToast("Marque o resultado de pelo menos uma meta.", "aviso");
         return;
         }
         try {
@@ -2434,14 +2792,14 @@ async function salvarAcompanhamento(e) {
         })));
         const falha = respostas.find(r => !r.ok);
         if (falha) {
-        alert(await lerErro(falha));
+        mostrarToast(await lerErro(falha), "erro");
         return;
         }
         fecharModal("modal-acompanhamento");
         if (pacienteId === window.pacienteIdAtivo) await carregarMetas(pacienteId);
         } catch (err) {
         console.error(err);
-        alert("Erro de conexão com o servidor.");
+        mostrarToast("Erro de conexão com o servidor.", "erro");
         }
         }
 
@@ -2453,9 +2811,9 @@ function validarArquivos(input, somenteImagem) {
         ? ["image/jpeg", "image/png", "image/webp"]
         : ["image/jpeg", "image/png", "image/webp", "application/pdf"];
         for (const f of input.files) {
-        if (f.size > LIMITE_ARQUIVO) { alert(`"${f.name}" passa de 10 MB.`); return false; }
+        if (f.size > LIMITE_ARQUIVO) { mostrarToast(`"${f.name}" passa de 10 MB.`, "erro"); return false; }
         if (!permitidos.includes(f.type)) {
-        alert(`"${f.name}": tipo não permitido.`);
+        mostrarToast(`"${f.name}": tipo não permitido.`, "erro");
         return false;
         }
         }
@@ -2496,7 +2854,7 @@ async function renderAnexosExistentes(containerId, arquivos, tipo) {
 async function removerAnexo(id, tipo) {
         if (!confirm("Excluir este arquivo definitivamente?")) return;
         const res = await fetch(`${API_URL}/arquivos/${id}`, { method: "DELETE" });
-        if (!res.ok) { alert(await lerErro(res)); return; }
+        if (!res.ok) { mostrarToast(await lerErro(res), "erro"); return; }
         if (tipo === "evolucao") {
         formEvolucao.fotos = formEvolucao.fotos.filter(a => a.id !== id);
         await renderAnexosExistentes("mev-existentes", formEvolucao.fotos, "evolucao");
@@ -2741,25 +3099,25 @@ async function salvarEvolucao(e) {
         fecharModal("modal-evolucao");
         await carregarEvolucao(window.pacienteIdAtivo);
         } else {
-        alert(await lerErro(res));
+        mostrarToast(await lerErro(res), "erro");
         }
         } catch (err) {
         console.error(err);
-        alert("Erro de conexão com o servidor.");
+        mostrarToast("Erro de conexão com o servidor.", "erro");
         }
         }
 async function excluirEvolucao(id) {
         if (!confirm("Excluir este registro de evolução e as fotos dele?")) return;
         const res = await fetch(`${API_URL}/evolucao/${id}`, { method: "DELETE" });
         if (res.ok) await carregarEvolucao(window.pacienteIdAtivo);
-        else alert(await lerErro(res));
+        else mostrarToast(await lerErro(res), "erro");
         }
 // ---------- Comparar fotos ----------
 async function abrirComparacaoFotos() {
         if (!exigirPaciente()) return;
         const comFotos = evolucaoAtual.filter(r => r.fotos && r.fotos.length);
         if (comFotos.length < 2) {
-        alert("Para comparar, são necessários pelo menos 2 registros com fotos.");
+        mostrarToast("Para comparar, são necessários pelo menos 2 registros com fotos.", "aviso");
         return;
         }
         const opcoes = comFotos.map(r =>
@@ -2883,18 +3241,18 @@ async function salvarExame(e) {
         fecharModal("modal-exame");
         await carregarExames(window.pacienteIdAtivo);
         } else {
-        alert(await lerErro(res));
+        mostrarToast(await lerErro(res), "erro");
         }
         } catch (err) {
         console.error(err);
-        alert("Erro de conexão com o servidor.");
+        mostrarToast("Erro de conexão com o servidor.", "erro");
         }
         }
 async function excluirExame(id) {
     if (!confirm("Excluir este exame e os arquivos anexados?")) return;
     const res = await fetch(`${API_URL}/exames/${id}`, { method: "DELETE" });
     if (res.ok) await carregarExames(window.pacienteIdAtivo);
-    else alert(await lerErro(res));
+    else mostrarToast(await lerErro(res), "erro");
 }
 
 // ===================================== EXAMES - ÁREA DO PACIENTE =====================================
@@ -2905,12 +3263,12 @@ function validarArquivoExamePaciente(input) {
     const file = input.files[0];
     if (!file) return true;
     if (file.size > LIMITE_EXAME_PACIENTE) {
-        alert(`"${file.name}" passa de 10 MB.`);
+        mostrarToast(`"${file.name}" passa de 10 MB.`, "erro");
         input.value = "";
         return false;
     }
     if (!TIPOS_EXAME_PERMITIDOS.includes(file.type)) {
-        alert(`"${file.name}": tipo não permitido. Use PDF, JPG ou PNG.`);
+        mostrarToast(`"${file.name}": tipo não permitido. Use PDF, JPG ou PNG.`, "erro");
         input.value = "";
         return false;
     }
@@ -2987,17 +3345,17 @@ async function enviarExamePaciente() {
     const obsInput = document.getElementById("pac-exame-obs");
 
     if (!arquivoInput.files.length) {
-        alert("Selecione um arquivo.");
+        mostrarToast("Selecione um arquivo.", "aviso");
         return;
     }
     if (!validarArquivoExamePaciente(arquivoInput)) return;
     if (!tituloInput.value.trim()) {
-        alert("Informe o título do exame.");
+        mostrarToast("Informe o título do exame.", "aviso");
         tituloInput.focus();
         return;
     }
     if (!dataInput.value) {
-        alert("Informe a data do exame.");
+        mostrarToast("Informe a data do exame.", "aviso");
         dataInput.focus();
         return;
     }
@@ -3024,7 +3382,7 @@ async function enviarExamePaciente() {
             const err = await res.json().catch(() => ({}));
             throw new Error(err.mensagem || `HTTP ${res.status}`);
         }
-        alert("Exame enviado com sucesso!");
+        mostrarToast("Exame enviado com sucesso!", "sucesso");
         arquivoInput.value = "";
         tituloInput.value = "";
         dataInput.value = "";
@@ -3032,7 +3390,7 @@ async function enviarExamePaciente() {
         await carregarExamesPaciente();
     } catch (err) {
         console.error("Erro ao enviar exame:", err);
-        alert(err.message || "Erro ao enviar exame.");
+        mostrarToast(err.message || "Erro ao enviar exame.", "erro");
     } finally {
         btn.innerHTML = originalText;
         btn.disabled = false;
@@ -3051,11 +3409,11 @@ async function excluirExamePaciente(id) {
             const err = await res.json().catch(() => ({}));
             throw new Error(err.mensagem || `HTTP ${res.status}`);
         }
-        alert("Exame excluído.");
+        mostrarToast("Exame excluído.", "sucesso");
         await carregarExamesPaciente();
     } catch (err) {
         console.error("Erro ao excluir exame:", err);
-        alert(err.message || "Erro ao excluir exame.");
+        mostrarToast(err.message || "Erro ao excluir exame.", "erro");
     }
 }
 
@@ -3143,18 +3501,18 @@ async function salvarObs(e) {
         fecharModal("modal-obs");
         await carregarObservacoes(window.pacienteIdAtivo);
         } else {
-        alert(await lerErro(res));
+        mostrarToast(await lerErro(res), "erro");
         }
         } catch (err) {
         console.error(err);
-        alert("Erro de conexão com o servidor.");
+        mostrarToast("Erro de conexão com o servidor.", "erro");
         }
         }
 async function excluirObs(id) {
         if (!confirm("Excluir esta observação?")) return;
         const res = await fetch(`${API_URL}/observacoes/${id}`, { method: "DELETE" });
         if (res.ok) await carregarObservacoes(window.pacienteIdAtivo);
-        else alert(await lerErro(res));
+        else mostrarToast(await lerErro(res), "erro");
         }
         // =====================================================
 // HISTÓRICO UNIFICADO
@@ -3333,13 +3691,13 @@ async function salvarOrientacoes(pacienteId) {
         body: JSON.stringify({ pacienteId: parseInt(pacienteId), texto: texto })
         });
         if (res.ok) {
-        alert("Orientações salvas com sucesso!");
+        mostrarToast("Orientações salvas com sucesso!", "sucesso");
         } else {
-        alert("Erro ao salvar as orientações.");
+        mostrarToast("Erro ao salvar as orientações.", "erro");
         }
         } catch (err) {
         console.error("Erro de conexão:", err);
-        alert("Erro de conexão com o servidor.");
+        mostrarToast("Erro de conexão com o servidor.", "erro");
         }
         }
 async function anonimizarPaciente(id) {
@@ -3348,7 +3706,7 @@ async function anonimizarPaciente(id) {
         return;
         }
         if (!prompt("Para confirmar, digite EXATAMENTE: ANONIMIZAR") === "ANONIMIZAR") {
-        alert("Confirmação incorreta. Operação cancelada.");
+        mostrarToast("Confirmação incorreta. Operação cancelada.", "erro");
         return;
         }
 
@@ -3358,14 +3716,14 @@ async function anonimizarPaciente(id) {
         });
         const data = await response.json();
         if (response.ok) {
-            alert(data.mensagem);
+            mostrarToast(data.mensagem, "erro");
             carregarPacientes();
         } else {
-            alert("Erro: " + (data.mensagem || "Não foi possível anonimizar."));
+            mostrarToast("Erro: " + (data.mensagem || "Não foi possível anonimizar."), "erro");
         }
         } catch (err) {
         console.error("Erro de conexão:", err);
-        alert("Erro de conexão com o servidor ao tentar anonimizar.");
+        mostrarToast("Erro de conexão com o servidor ao tentar anonimizar.", "erro");
         }
         }
 async function excluirPaciente(id) {
@@ -3378,20 +3736,20 @@ async function excluirPaciente(id) {
         method: 'DELETE'
         });
         if (response.ok) {
-        alert("Paciente excluído com sucesso!");
+        mostrarToast("Paciente excluído com sucesso!", "sucesso");
         carregarPacientes();
         } else {
-        alert("Erro ao tentar excluir o paciente.");
+        mostrarToast("Erro ao tentar excluir o paciente.", "erro");
         }
         } catch (err) {
         console.error("Erro de conexão:", err);
-        alert("Erro de conexão com o servidor ao tentar excluir.");
+        mostrarToast("Erro de conexão com o servidor ao tentar excluir.", "erro");
         }
         }
 function editarPaciente(id) {
         const p = listaPacientes.find(x => x.id === id);
         if (!p) {
-        alert("Paciente não encontrado na lista. Recarregue a página.");
+        mostrarToast("Paciente não encontrado na lista. Recarregue a página.", "erro");
         return;
         }
         pacienteEmEdicaoId = p.id;
@@ -3475,16 +3833,16 @@ async function restaurarVersaoPlano(id) {
         const res = await fetch(`${API_URL}/planos/versao/${id}/restaurar`, { method: "POST" });
         if (res.ok) {
             const data = await res.json();
-            alert(data.mensagem);
+            mostrarToast(data.mensagem, "erro");
             fecharModal("modal-versoes");
             await carregarPlanoAlimentarProntuario(window.pacienteIdAtivo);
             await carregarOrientacoes(window.pacienteIdAtivo);
         } else {
-            alert(await lerErro(res));
+            mostrarToast(await lerErro(res), "erro");
         }
     } catch (err) {
         console.error(err);
-        alert("Erro de conexão com o servidor.");
+        mostrarToast("Erro de conexão com o servidor.", "erro");
     }
 }
 
@@ -3579,7 +3937,7 @@ async function fazerLogin(e) {
             return;
         }
         sessionStorage.setItem(TOKEN_KEY, data.token);
-        sessionStorage.setItem("bybar_user", JSON.stringify({ nome: data.nome, tipo: "equipe" }));
+        sessionStorage.setItem("bybar_user", JSON.stringify({ nome: data.nome, tipo: "equipe", perfil: data.perfil }));
         erroDiv.style.display = "none";
         entrarNoSistema(data.nome);
     } catch {
@@ -3595,6 +3953,485 @@ function entrarNoSistema(nome) {
     const s = document.getElementById("dash-saudacao");
     if (s) s.innerText = nome ? `Olá, ${nome}` : "Olá";
     navegar("dashboard");
+}
+
+// ===== SOLICITAR ACESSO (Público) =====
+function abrirModalSolicitarAcesso() {
+    const modal = document.getElementById('modal-solicitar-acesso');
+    if (modal) {
+        modal.classList.remove('hidden');
+        // Reset form
+        document.getElementById('form-solicitar-acesso').reset();
+        document.getElementById('sa-erro').style.display = 'none';
+        document.getElementById('sa-sucesso').style.display = 'none';
+        document.getElementById('btn-enviar-sa').disabled = false;
+        document.getElementById('btn-enviar-sa').innerHTML = '<i class="fa-solid fa-paper-plane"></i> Enviar Solicitação';
+    }
+}
+
+async function enviarSolicitacaoAcesso(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-enviar-sa');
+    const erroDiv = document.getElementById('sa-erro');
+    const sucessoDiv = document.getElementById('sa-sucesso');
+    const msgErro = erroDiv.querySelector('span');
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Enviando...';
+    erroDiv.style.display = 'none';
+    sucessoDiv.style.display = 'none';
+
+    try {
+        const res = await fetch(`${API_URL}/acesso/solicitar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                nome: document.getElementById('sa-nome').value.trim(),
+                email: document.getElementById('sa-email').value.trim(),
+                telefone: document.getElementById('sa-telefone').value.trim(),
+                registroProfissional: document.getElementById('sa-registro').value.trim(),
+                clinicaNome: document.getElementById('sa-clinica').value.trim(),
+                mensagem: document.getElementById('sa-mensagem').value.trim()
+            })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            msgErro.innerText = data.mensagem || 'Erro ao enviar solicitação.';
+            erroDiv.style.display = 'flex';
+            return;
+        }
+        // Sucesso - anti-enumeração: sempre mostra mensagem genérica
+        sucessoDiv.innerHTML = `<i class="fa-solid fa-circle-check"></i> ${data.mensagem || 'Se os dados estiverem corretos, sua solicitação será analisada em até 2 dias úteis.'}`;
+        sucessoDiv.style.display = 'block';
+        document.getElementById('form-solicitar-acesso').reset();
+        setTimeout(() => fecharModal('modal-solicitar-acesso'), 3000);
+    } catch {
+        msgErro.innerText = 'Não foi possível conectar ao servidor.';
+        erroDiv.style.display = 'flex';
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Enviar Solicitação';
+    }
+}
+
+// ===== ACESSOS (super_admin) =====
+let acessosAtualAba = 'pendentes';
+
+async function carregarAcessos() {
+    try {
+        const res = await fetch(`${API_URL}/acessos?page=1&pageSize=50`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        renderAcessosTabs(data.data || []);
+    } catch (err) {
+        console.error('Erro ao carregar acessos:', err);
+        mostrarToast('Erro ao carregar solicitações de acesso', 'erro');
+    }
+}
+
+function renderAcessosTabs(lista) {
+    // Separar por status
+    const pendentes = lista.filter(s => s.status === 'pendente');
+    const aprovados = lista.filter(s => s.status === 'aprovado');
+    const recusados = lista.filter(s => s.status === 'recusado');
+
+    renderTabelaAcessos(pendentes, 'acessos-tbody-pendentes', 'pendente');
+    renderTabelaAcessos(aprovados, 'acessos-tbody-aprovados', 'aprovado');
+    renderTabelaAcessos(recusados, 'acessos-tbody-recusados', 'recusado');
+}
+
+function renderTabelaAcessos(lista, tbodyId, status) {
+    const tbody = document.getElementById(tbodyId);
+    if (!tbody) return;
+
+    if (!lista.length) {
+        tbody.innerHTML = `<tr><td colspan="${status === 'recusado' ? 5 : 7}" class="py-6 text-center text-slate-400">Nenhuma solicitação ${status}</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = lista.map(s => {
+        const dataFormatada = s.criado_em ? new Date(s.criado_em).toLocaleDateString('pt-BR') : '-';
+        const dataAtualizada = s.atualizado_em ? new Date(s.atualizado_em).toLocaleDateString('pt-BR') : '-';
+
+        if (status === 'pendente') {
+            return `
+                <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+                    <td class="py-3 px-4 text-white">${escaparHtml(s.nome)}</td>
+                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.email)}</td>
+                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.telefone) || '-'}</td>
+                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.registro_profissional) || '-'}</td>
+                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.clinica_nome) || '-'}</td>
+                    <td class="py-3 px-4 text-slate-300">${dataFormatada}</td>
+                    <td class="py-3 px-4 flex items-center gap-2">
+                        <button onclick="abrirModalAprovarAcesso(${s.id})" class="bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600 hover:text-white px-3 py-1 rounded text-xs font-semibold transition">Aprovar</button>
+                        <button onclick="abrirModalRecusarAcesso(${s.id})" class="bg-rose-600/20 text-rose-400 hover:bg-rose-600 hover:text-white px-3 py-1 rounded text-xs font-semibold transition">Recusar</button>
+                        <button onclick="abrirModalExcluirAcesso(${s.id}, 'pendente')" class="bg-slate-600/20 text-slate-400 hover:bg-slate-600 hover:text-white px-3 py-1 rounded text-xs font-semibold transition">Excluir</button>
+                    </td>
+                </tr>`;
+        } else if (status === 'aprovado') {
+            return `
+                <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+                    <td class="py-3 px-4 text-white">${escaparHtml(s.nome)}</td>
+                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.email)}</td>
+                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.clinica_nome) || '-'}</td>
+                    <td class="py-3 px-4 text-slate-300">${s.empresa_id || '-'}</td>
+                    <td class="py-3 px-4 text-slate-300">${s.usuario_id || '-'}</td>
+                    <td class="py-3 px-4 text-slate-300">${dataAtualizada}</td>
+                    <td class="py-3 px-4 flex items-center gap-2">
+                        <button onclick="abrirModalExcluirAcesso(${s.id}, 'aprovado')" class="bg-rose-600/20 text-rose-400 hover:bg-rose-600 hover:text-white px-3 py-1 rounded text-xs font-semibold transition">Desativar</button>
+                    </td>
+                </tr>`;
+        } else {
+            return `
+                <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+                    <td class="py-3 px-4 text-white">${escaparHtml(s.nome)}</td>
+                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.email)}</td>
+                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.clinica_nome) || '-'}</td>
+                    <td class="py-3 px-4 text-slate-300">${dataAtualizada}</td>
+                    <td class="py-3 px-4 flex items-center gap-2">
+                        <button onclick="abrirModalExcluirAcesso(${s.id}, 'recusado')" class="bg-slate-600/20 text-slate-400 hover:bg-slate-600 hover:text-white px-3 py-1 rounded text-xs font-semibold transition">Excluir</button>
+                    </td>
+                </tr>`;
+        }
+    }).join('');
+}
+
+function trocarAbaAcessos(aba) {
+    acessosAtualAba = aba;
+    // Atualizar botões de aba
+    document.querySelectorAll('[id^="tab-acessos-"]').forEach(btn => {
+        btn.classList.remove('bg-purple-600', 'text-white');
+        btn.classList.add('bg-slate-700/50', 'text-slate-300');
+    });
+    const btnAtivo = document.getElementById(`tab-acessos-${aba}`);
+    if (btnAtivo) {
+        btnAtivo.classList.remove('bg-slate-700/50', 'text-slate-300');
+        btnAtivo.classList.add('bg-purple-600', 'text-white');
+    }
+    // Mostrar/ocultar conteúdos
+    document.querySelectorAll('[id^="acessos-tab-"]').forEach(div => {
+        div.classList.add('hidden');
+    });
+    const tabAtiva = document.getElementById(`acessos-tab-${aba}`);
+    if (tabAtiva) tabAtiva.classList.remove('hidden');
+}
+
+// Modal Aprovar
+let acessosAprovarId = null;
+function abrirModalAprovarAcesso(id) {
+    acessosAprovarId = id;
+    document.getElementById('acessos-aprovar-nome').value = '';
+    document.getElementById('modal-acessos-aprovar-erro').style.display = 'none';
+    document.getElementById('modal-acessos-aprovar').classList.remove('hidden');
+}
+
+async function confirmarAprovarAcesso() {
+    if (!acessosAprovarId) return;
+    const btn = document.getElementById('btn-confirmar-aprovar-acesso');
+    const erroDiv = document.getElementById('modal-acessos-aprovar-erro');
+    const msgErro = erroDiv.querySelector('span');
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Aprovando...';
+    erroDiv.style.display = 'none';
+
+    try {
+        const res = await fetch(`${API_URL}/acessos/${acessosAprovarId}/aprovar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                nomeProfissional: document.getElementById('acessos-aprovar-nome').value.trim() || null
+            })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            msgErro.innerText = data.mensagem || 'Erro ao aprovar.';
+            erroDiv.style.display = 'flex';
+            return;
+        }
+        mostrarToast(data.mensagem || 'Solicitação aprovada com sucesso!', 'sucesso');
+        fecharModal('modal-acessos-aprovar');
+        carregarAcessos();
+    } catch {
+        msgErro.innerText = 'Não foi possível conectar ao servidor.';
+        erroDiv.style.display = 'flex';
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-check"></i> Aprovar';
+    }
+}
+
+// Modal Recusar
+let acessosRecusarId = null;
+function abrirModalRecusarAcesso(id) {
+    acessosRecusarId = id;
+    document.getElementById('modal-acessos-recusar-msg').innerText = 'Tem certeza que deseja recusar esta solicitação?';
+    document.getElementById('modal-acessos-recusar-erro').style.display = 'none';
+    document.getElementById('modal-acessos-recusar').classList.remove('hidden');
+}
+
+async function confirmarRecusarAcesso() {
+    if (!acessosRecusarId) return;
+    const btn = document.querySelector('#modal-acessos-recusar button[onclick="confirmarRecusarAcesso()"]');
+    const erroDiv = document.getElementById('modal-acessos-recusar-erro');
+    const msgErro = erroDiv.querySelector('span');
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Recusando...';
+    erroDiv.style.display = 'none';
+
+    try {
+        const res = await fetch(`${API_URL}/acessos/${acessosRecusarId}/recusar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            msgErro.innerText = data.mensagem || 'Erro ao recusar.';
+            erroDiv.style.display = 'flex';
+            return;
+        }
+        mostrarToast(data.mensagem || 'Solicitação recusada.', 'sucesso');
+        fecharModal('modal-acessos-recusar');
+        carregarAcessos();
+    } catch {
+        msgErro.innerText = 'Não foi possível conectar ao servidor.';
+        erroDiv.style.display = 'flex';
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-xmark"></i> Recusar';
+    }
+}
+
+// Modal Excluir
+let acessosExcluirId = null;
+let acessosExcluirStatus = null;
+function abrirModalExcluirAcesso(id, status) {
+    acessosExcluirId = id;
+    acessosExcluirStatus = status;
+    const msgDiv = document.getElementById('modal-acessos-excluir-msg');
+    if (status === 'aprovado') {
+        msgDiv.innerHTML = 'Esta solicitação foi aprovada. Excluir fará <strong>soft delete</strong>: o usuário será desativado (ativo=false) e a empresa será mantida. Tem certeza?';
+    } else {
+        msgDiv.innerHTML = 'Esta solicitação será <strong>excluída permanentemente</strong> (hard delete). Tem certeza?';
+    }
+    document.getElementById('modal-acessos-excluir-erro').style.display = 'none';
+    document.getElementById('modal-acessos-excluir').classList.remove('hidden');
+}
+
+async function confirmarExcluirAcesso() {
+    if (!acessosExcluirId) return;
+    const btn = document.querySelector('#modal-acessos-excluir button[onclick="confirmarExcluirAcesso()"]');
+    const erroDiv = document.getElementById('modal-acessos-excluir-erro');
+    const msgErro = erroDiv.querySelector('span');
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Excluindo...';
+    erroDiv.style.display = 'none';
+
+    try {
+        const res = await fetch(`${API_URL}/acessos/${acessosExcluirId}`, {
+            method: 'DELETE'
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            msgErro.innerText = data.mensagem || 'Erro ao excluir.';
+            erroDiv.style.display = 'flex';
+            return;
+        }
+        mostrarToast(data.mensagem || 'Solicitação excluída.', 'sucesso');
+        fecharModal('modal-acessos-excluir');
+        carregarAcessos();
+    } catch {
+        msgErro.innerText = 'Não foi possível conectar ao servidor.';
+        erroDiv.style.display = 'flex';
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-trash"></i> Excluir';
+    }
+}
+
+// ===== DEFINIR SENHA (Token 48h) =====
+async function inicializarDefinirSenha() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+
+    const estadoCarregando = document.getElementById('ds-estado-carregando');
+    const estadoValido = document.getElementById('ds-estado-valido');
+    const estadoInvalido = document.getElementById('ds-estado-invalido');
+    const estadoSucesso = document.getElementById('ds-estado-sucesso');
+
+    if (!token) {
+        estadoCarregando.style.display = 'none';
+        estadoInvalido.style.display = 'block';
+        document.getElementById('ds-msg-erro').innerText = 'Token não informado na URL.';
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_URL}/definir-senha/${token}`);
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok || !data.valido) {
+            estadoCarregando.style.display = 'none';
+            estadoInvalido.style.display = 'block';
+            document.getElementById('ds-msg-erro').innerText = data.mensagem || 'Token inválido ou expirado.';
+            return;
+        }
+
+        // Token válido
+        estadoCarregando.style.display = 'none';
+        estadoValido.style.display = 'block';
+        document.getElementById('ds-nome-usuario').innerText = data.nome || data.email || 'Usuário';
+        document.getElementById('ds-boasvindas').innerHTML = `Olá, <strong>${escaparHtml(data.nome || data.email)}</strong>. Defina sua senha de acesso.`;
+    } catch {
+        estadoCarregando.style.display = 'none';
+        estadoInvalido.style.display = 'block';
+        document.getElementById('ds-msg-erro').innerText = 'Não foi possível validar o token.';
+    }
+}
+
+async function definirSenha(e) {
+    e.preventDefault();
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+
+    const btn = document.getElementById('btn-definir-senha');
+    const erroDiv = document.getElementById('ds-erro');
+    const msgErro = erroDiv.querySelector('span');
+
+    const senha = document.getElementById('ds-senha').value;
+    const senhaConf = document.getElementById('ds-senha-conf').value;
+
+    if (senha !== senhaConf) {
+        msgErro.innerText = 'As senhas não conferem.';
+        erroDiv.style.display = 'flex';
+        return;
+    }
+    if (senha.length < 8) {
+        msgErro.innerText = 'A senha deve ter no mínimo 8 caracteres.';
+        erroDiv.style.display = 'flex';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Definindo...';
+    erroDiv.style.display = 'none';
+
+    try {
+        const res = await fetch(`${API_URL}/definir-senha/${token}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ senha, confirmarSenha: senhaConf })
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+            msgErro.innerText = data.mensagem || 'Erro ao definir senha.';
+            erroDiv.style.display = 'flex';
+            return;
+        }
+
+        // Sucesso
+        document.getElementById('ds-estado-valido').style.display = 'none';
+        document.getElementById('ds-estado-sucesso').style.display = 'block';
+        mostrarToast('Senha definida com sucesso!', 'sucesso');
+    } catch {
+        msgErro.innerText = 'Não foi possível conectar ao servidor.';
+        erroDiv.style.display = 'flex';
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>Definir Senha</span><i class="fa-solid fa-arrow-right"></i>';
+    }
+}
+
+// ===== BANNER DE PLANO / LIMITES =====
+async function verificarBannerPlano() {
+    try {
+        const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
+        if (user.perfil !== 'profissional') return;
+
+        const res = await fetch(`${API_URL}/assinatura/status`);
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // Se for sem_plano, mostrar banner
+        if (data.status === 'sem_plano') {
+            mostrarBannerPlano(data);
+        }
+
+        // Atualizar contador de pacientes se estiver na tela de pacientes
+        if (typeof listaPacientes !== 'undefined' && listaPacientes.length !== undefined) {
+            atualizarContadorPacientes(data.limite_pacientes || 3, listaPacientes.length);
+        }
+    } catch {
+        console.warn('Não foi possível verificar status do plano');
+    }
+}
+
+function mostrarBannerPlano(data) {
+    // Verificar se já existe
+    if (document.getElementById('banner-plano')) return;
+
+    const banner = document.createElement('div');
+    banner.id = 'banner-plano';
+    banner.className = 'fixed top-0 left-0 right-0 z-40 bg-amber-900/90 border-b border-amber-700 backdrop-blur-sm';
+    banner.innerHTML = `
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-triangle-exclamation text-amber-400 text-xl"></i>
+                <div>
+                    <p class="font-semibold text-amber-100">Plano não ativo</p>
+                    <p class="text-sm text-amber-300">Você está no plano <strong>Sem Plano</strong> (limite: ${data.limite_pacientes || 3} pacientes). Assine um plano para desbloquear todos os recursos.</p>
+                </div>
+            </div>
+            <div class="flex gap-2 shrink-0">
+                <button onclick="navegar('billing')" class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded-xl transition">
+                    Ver Planos
+                </button>
+                <button onclick="document.getElementById('banner-plano').remove()" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-amber-200 font-semibold rounded-xl transition">
+                    Dispensar
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(banner);
+
+    // Ajustar padding do main para não ficar atrás do banner
+    const main = document.querySelector('main');
+    if (main) main.style.paddingTop = '80px';
+}
+
+function atualizarContadorPacientes(limite, atual) {
+    const container = document.getElementById('contador-pacientes-banner');
+    if (!container) return;
+
+    const atingiuLimite = atual >= limite;
+    container.innerHTML = `
+        <div class="flex items-center gap-3 px-4 py-2 ${atingiuLimite ? 'bg-rose-900/50 border-rose-700' : 'bg-emerald-900/30 border-emerald-700'} rounded-xl border">
+            <i class="fa-solid ${atingiuLimite ? 'fa-circle-exclamation text-rose-400' : 'fa-users text-emerald-400'}"></i>
+            <span class="font-medium ${atingiuLimite ? 'text-rose-300' : 'text-emerald-300'}">
+                ${atingiuLimite ? 'Limite atingido' : 'Pacientes'}: ${atual}/${limite}
+            </span>
+            ${atingiuLimite ? '<span class="text-xs text-rose-400">Assine um plano para adicionar mais</span>' : ''}
+        </div>
+    `;
+}
+
+// Verificar limite ao tentar cadastrar paciente
+async function verificarLimitePacientes() {
+    try {
+        const res = await fetch(`${API_URL}/assinatura/status`);
+        if (!res.ok) return true;
+        const data = await res.json();
+        if (data.status === 'sem_plano' && listaPacientes.length >= (data.limite_pacientes || 3)) {
+            mostrarToast(`Limite de pacientes atingido (${listaPacientes.length}/${data.limite_pacientes || 3}). Assine um plano para adicionar mais.`, 'erro');
+            return false;
+        }
+        return true;
+    } catch {
+        return true; // Em caso de erro, permite (backend valida)
+    }
 }
 
 // ---------- Área do paciente (somente leitura) ----------
@@ -5431,7 +6268,7 @@ async function anamneseSaveDraft() {
 async function anamneseSubmit() {
     await anamneseSaveDraft();
     // Could add toast notification here
-    alert("Anamnese salva com sucesso!");
+    mostrarToast("Anamnese salva com sucesso!", "sucesso");
 }
 
 // Load from server
@@ -5478,7 +6315,7 @@ async function carregarEmpresas() {
     // Verificar se é super_admin
     const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
     if (user.perfil !== 'super_admin') {
-        alert('Acesso restrito a super administradores.');
+        mostrarToast("Acesso restrito a super administradores.", "erro");
         navegar('dashboard');
         return;
     }
@@ -5487,7 +6324,7 @@ async function carregarEmpresas() {
         const res = await fetch(`${API_URL}/empresas`);
         if (!res.ok) {
             if (res.status === 403) {
-                alert('Acesso negado. Apenas super administradores podem ver esta tela.');
+                mostrarToast("Acesso negado. Apenas super administradores podem ver esta tela.", "erro");
                 navegar('dashboard');
                 return;
             }
@@ -5521,10 +6358,10 @@ function renderEmpresas(empresas) {
 
 // ===== LGPD - Solicitações da Empresa (Equipe) =====
 async function renderSecaoLgpd() {
-    // Verificar permissão (admin, nutricionista, superadmin)
+    // Verificar permissão (apenas admin e super_admin - profissional NÃO tem acesso)
     const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
-    if (!['admin', 'nutricionista', 'super_admin'].includes(user.perfil)) {
-        alert('Acesso restrito.');
+    if (!['admin', 'super_admin'].includes(user.perfil)) {
+        mostrarToast("Acesso restrito: perfil profissional não tem acesso ao módulo LGPD.", "erro");
         navegar('dashboard');
         return;
     }
@@ -5686,13 +6523,13 @@ async function cadastrarEmpresa(event) {
 
     const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
     if (user.perfil !== 'super_admin') {
-        alert('Acesso restrito a super administradores.');
+        mostrarToast("Acesso restrito a super administradores.", "erro");
         return;
     }
 
     const nome = document.getElementById('emp-nome').value.trim();
     if (!nome) {
-        alert('Informe o nome da empresa.');
+        mostrarToast("Informe o nome da empresa.", "aviso");
         return;
     }
 
@@ -5714,7 +6551,7 @@ async function cadastrarEmpresa(event) {
         }
 
         const data = await res.json();
-        alert(`Empresa "${data.nome}" criada com sucesso!`);
+        mostrarToast(`Empresa "${data.nome}" criada com sucesso!`, "sucesso");
         document.getElementById('form-empresa').reset();
         carregarEmpresas();
 
@@ -5722,7 +6559,7 @@ async function cadastrarEmpresa(event) {
         atualizarDashboard();
     } catch (err) {
         console.error("Erro ao cadastrar empresa:", err);
-        alert(err.message);
+        mostrarToast(err.message, "erro");
     } finally {
         btn.disabled = false;
         btn.innerHTML = originalText;
@@ -6171,6 +7008,32 @@ function verificarConviteURL() {
     return false;
 }
 
+function verificarDefinirSenhaURL() {
+    // Verifica se a URL contém ?token=TOKEN (para definir senha após aprovação de acesso)
+    const queryMatch = window.location.search.match(/[?&]token=([a-f0-9]{32,})/i);
+
+    const token = queryMatch?.[1];
+
+    if (token) {
+        // Esconder login e onboarding, mostrar definir-senha
+        const loginContainer = document.getElementById("login-container");
+        const onboardingContainer = document.getElementById("onboarding-container");
+        const definirSenhaContainer = document.getElementById("definir-senha-container");
+
+        if (loginContainer) loginContainer.style.display = "none";
+        if (onboardingContainer) onboardingContainer.style.display = "none";
+        if (definirSenhaContainer) definirSenhaContainer.style.display = "flex";
+
+        // Inicializar a tela de definir senha
+        if (typeof inicializarDefinirSenha === "function") {
+            inicializarDefinirSenha();
+        }
+
+        return true; // Indica que está na tela de definir senha
+    }
+    return false;
+}
+
 // ===== INICIALIZAÇÃO =====
 document.addEventListener("DOMContentLoaded", async () => {
     restaurarSidebar();
@@ -6185,7 +7048,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         return; // Para aqui, mostra tela de convite equipe
     }
 
-    // 3. Verificar se há sessão válida
+    // 3. Verificar se há token de definir senha na URL (?token=xxx)
+    if (typeof verificarDefinirSenhaURL === "function" && verificarDefinirSenhaURL()) {
+        return; // Para aqui, mostra tela de definir senha
+    }
+
+    // 4. Verificar se há sessão válida
     if (sessaoValida()) {
         let u = {};
         try { u = JSON.parse(sessionStorage.getItem("bybar_user") || "{}"); } catch {}
