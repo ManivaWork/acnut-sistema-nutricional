@@ -237,7 +237,17 @@ app.Use(async (ctx, next) =>
     var perfil = u.FindFirst("perfil")?.Value;
     if (perfil != "super_admin")
     {
-        if (path.StartsWith("/api/acessos")
+        bool isSuperAdminAcesso =
+            // GET /api/acessos (listar solicitações)
+            (HttpMethods.IsGet(m) && path == "/api/acessos")
+            // POST /api/acessos/{id}/aprovar
+            || (HttpMethods.IsPost(m) && System.Text.RegularExpressions.Regex.IsMatch(path, @"^/api/acessos/\d+/aprovar$"))
+            // POST /api/acessos/{id}/recusar
+            || (HttpMethods.IsPost(m) && System.Text.RegularExpressions.Regex.IsMatch(path, @"^/api/acessos/\d+/recusar$"))
+            // DELETE /api/acessos/{id}
+            || (HttpMethods.IsDelete(m) && System.Text.RegularExpressions.Regex.IsMatch(path, @"^/api/acessos/\d+$"));
+
+        if (isSuperAdminAcesso
             || path.StartsWith("/api/empresas")
             || path.StartsWith("/api/lgpd")
             || path.StartsWith("/api/nutricionista/convites-paciente")
@@ -5103,8 +5113,19 @@ static class Escopo
 
         switch (seg[1])
         {
-               case "checkins": case "anamnese": case "orientacoes": case "avaliacoes": case "acessos": case "historico":
+            case "checkins": case "anamnese": case "orientacoes": case "avaliacoes": case "historico":
                 Add("paciente", get ? id : await Corpo(ctx, "pacienteId")); break;
+
+            case "acessos":
+                // GET /api/acessos (sem ID) - super_admin: lista solicitacoes_acesso, NÃO é paciente
+                // POST /api/acessos/{id}/aprovar|recusar - super_admin: id é solicitação, não paciente
+                // DELETE /api/acessos/{id} - super_admin: id é solicitação, não paciente
+                // GET /api/acessos/{pacienteId} - nutricionista/team: isola por paciente (acessos_paciente)
+                if (get && seg.Length == 3 && int.TryParse(seg[2], out var pid))
+                {
+                    Add("paciente", pid); // GET /api/acessos/{pacienteId} - isolamento por empresa
+                }
+                break;
 
             case "evolucao": case "exames": case "observacoes":
                 var k = seg[1] == "evolucao" ? "evolucao" : seg[1] == "exames" ? "exame" : "obs";
