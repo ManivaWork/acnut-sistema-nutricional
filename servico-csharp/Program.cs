@@ -3263,7 +3263,7 @@ app.MapGet("/api/acessos", async (ClaimsPrincipal user, string? status = null, i
 .RequireAuthorization();
 
 // POST /api/acessos/{id}/aprovar - Super admin aprova solicitação
-app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput input, ClaimsPrincipal user, IEmailService emailService) =>
+app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput input, ClaimsPrincipal user, IEmailService emailService, ILogger<Program> logger) =>
 {
     if (user.FindFirst("perfil")?.Value != "super_admin")
         return Results.Forbid();
@@ -3460,11 +3460,20 @@ app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput
 </body>
 </html>";
 
-        await emailService.EnviarEmailAsync(email, assunto, htmlBody);
+        var emailEnviado = await emailService.EnviarEmailAsync(email, assunto, htmlBody);
+
+        // Log apenas metadados, NUNCA o link, token ou senha
+        if (!emailEnviado)
+        {
+            logger.LogWarning("Falha ao enviar e-mail de definição de senha para solicitação aprovada id={SolicitacaoId}, usuario={UsuarioId}, empresa={EmpresaId}",
+                solicitacaoId, usuarioId, empresaId);
+        }
 
         return Results.Ok(new
         {
-            mensagem = "Solicitação aprovada! Empresa, usuário e assinatura 'sem_plano' criados. E-mail com link para definir senha enviado.",
+            mensagem = "Solicitação aprovada! Empresa, usuário e assinatura 'sem_plano' criados.",
+            emailEnviado,
+            avisoEmail = emailEnviado ? null : "⚠️ Aprovação concluída, mas houve falha no envio do e-mail de definição de senha. Use o botão 'Reenviar e-mail' na tela Acessos.",
             empresaId,
             usuarioId
         });
@@ -3473,6 +3482,170 @@ app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput
     {
         await tx.RollbackAsync();
         return Results.BadRequest(new { mensagem = "Erro ao aprovar: " + ex.Message });
+    }
+})
+.RequireAuthorization();
+
+// POST /api/acessos/{id}/reenviar-email - Super admin reenvia e-mail de definição de senha para solicitação aprovada
+app.MapPost("/api/acessos/{id:long}/reenviar-email", async (long id, ClaimsPrincipal user, IEmailService emailService, ILogger<Program> logger) =>
+{
+    if (user.FindFirst("perfil")?.Value != "super_admin")
+        return Results.Forbid();
+
+    var adminId = Auth.UsuarioId(user);
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+    using var tx = await conn.BeginTransactionAsync();
+
+    try
+    {
+        // Buscar solicitação aprovada com usuario_id
+        long solicitacaoId = 0;
+        string nome = "", email = "";
+        int usuarioId = 0;
+        string empresaNome = "";
+        using (var cmd = new NpgsqlCommand(@"
+            SELECT sa.id, sa.nome, sa.email, sa.usuario_id, e.nome as empresa_nome
+            FROM solicitacoes_acesso sa
+            LEFT JOIN empresas e ON e.id = sa.empresa_id
+            WHERE sa.id = @id AND sa.status = 'aprovado';", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("@id", id);
+            using var rd = await cmd.ExecuteReaderAsync();
+            if (!await rd.ReadAsync())
+                return Results.NotFound(new { mensagem = "Solicitação não encontrada ou não está aprovada." });
+
+            solicitacaoId = rd.GetInt64(0);
+            nome = rd.GetString(1);
+            email = rd.GetString(2);
+            usuarioId = rd.IsDBNull(3) ? 0 : rd.GetInt32(3);
+            empresaNome = rd.IsDBNull(4) ? "" : rd.GetString(4);
+        }
+
+        if (usuarioId == 0)
+            return Results.BadRequest(new { mensagem = "Solicitação aprovada não possui usuário associado." });
+
+        // Invalidar tokens pendentes anteriores do mesmo usuário
+        using (var cmd = new NpgsqlCommand(@"
+            UPDATE tokens_redefinicao_senha
+            SET usado_em = CURRENT_TIMESTAMP
+            WHERE usuario_id = @u AND expira_em > CURRENT_TIMESTAMP AND usado_em IS NULL;", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("@u", usuarioId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // Gerar novo token de definição de senha (expira em 48h, SHA-256 no banco, uso único)
+        var tokenBytes = new byte[32];
+        using (var rng = System.Security.Cryptography.RandomNumberGenerator.Create())
+        {
+            rng.GetBytes(tokenBytes);
+        }
+        var tokenRaw = System.Convert.ToBase64String(tokenBytes)
+            .Replace('+', '-').Replace('/', '_').TrimEnd('=');
+        var tokenHash = System.Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(tokenRaw))
+        ).ToLowerInvariant();
+        var expiraEm = DateTime.UtcNow.AddHours(48);
+
+        using (var cmd = new NpgsqlCommand(@"
+            INSERT INTO tokens_redefinicao_senha (usuario_id, token_hash, expira_em, usado_em, criado_em)
+            VALUES (@u, @th, @exp, NULL, CURRENT_TIMESTAMP);", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("@u", usuarioId);
+            cmd.Parameters.AddWithValue("@th", tokenHash);
+            cmd.Parameters.AddWithValue("@exp", expiraEm);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // Auditoria
+        await RegistrarAuditoriaDetalhada(conn, tx, 0, adminId, "reenviar_email_definicao_senha", $"/api/acessos/{id}/reenviar-email", solicitacaoId,
+            $"Reenvio de e-mail de definição de senha para {nome} ({email}) - solicitação {solicitacaoId}");
+
+        await tx.CommitAsync();
+
+        // Enviar e-mail com novo link (token raw, não hash)
+        var frontendUrl = GetFrontendUrl();
+        var linkDefinirSenha = $"{frontendUrl.TrimEnd('/')}/definir-senha/{tokenRaw}";
+        var assunto = $"Defina sua senha no ACNUTRI - {empresaNome} (Reenviado)";
+        var htmlBody = $@"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8'>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: #059669; color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }}
+        .content {{ background: #f8fafc; padding: 30px; border-radius: 0 0 8px 8px; }}
+        .btn {{ display: inline-block; background: #059669; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; margin-top: 20px; }}
+        .btn:hover {{ background: #047857; }}
+        .info {{ background: white; padding: 20px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #059669; }}
+        .footer {{ text-align: center; color: #64748b; font-size: 14px; margin-top: 30px; }}
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <div class='header'>
+            <h1>🍎 ACNUTRI</h1>
+            <p>Sistema de Nutrição Inteligente</p>
+        </div>
+        <div class='content'>
+            <h2>Defina sua senha para acessar o ACNUTRI ✅</h2>
+            <p>Olá <strong>{nome}</strong>,</p>
+            <p>Este e-mail foi reenviado pelo administrador para que você possa definir sua senha e acessar o <strong>ACNUTRI</strong>.</p>
+
+            <div class='info'>
+                <p><strong>Empresa/Clínica:</strong> {empresaNome}</p>
+                <p><strong>Perfil:</strong> Profissional de Nutrição</p>
+                <p><strong>Validade do link:</strong> 48 horas</p>
+            </div>
+
+            <p>Clique no botão abaixo para definir sua senha e acessar o sistema:</p>
+
+            <p style='text-align: center;'>
+                <a href='{linkDefinirSenha}' class='btn'>Definir Minha Senha e Acessar</a>
+            </p>
+
+            <p style='font-size: 14px; color: #64748b;'>
+                Ou copie este link no navegador:<br>
+                <a href='{linkDefinirSenha}'>{linkDefinirSenha}</a>
+            </p>
+
+            <p style='font-size: 14px; color: #ef4444;'>
+                ⚠️ Este link expira em 48 horas e pode ser usado apenas uma vez.
+            </p>
+        </div>
+        <div class='footer'>
+            <p>Este e-mail foi enviado automaticamente pelo ACNUTRI.<br>
+            Se você não solicitou este acesso, pode ignorar este e-mail.</p>
+        </div>
+    </div>
+</body>
+</html>";
+
+        var emailEnviado = await emailService.EnviarEmailAsync(email, assunto, htmlBody);
+
+        // Log apenas metadados, NUNCA o link, token ou senha
+        if (!emailEnviado)
+        {
+            logger.LogWarning("Falha ao reenviar e-mail de definição de senha para solicitação id={SolicitacaoId}, usuario={UsuarioId}",
+                solicitacaoId, usuarioId);
+        }
+
+        return Results.Ok(new
+        {
+            emailEnviado,
+            mensagem = emailEnviado
+                ? "E-mail de definição de senha reenviado com sucesso!"
+                : "Houve falha no envio do e-mail. Verifique a configuração SMTP e tente novamente."
+        });
+    }
+    catch (Exception ex)
+    {
+        await tx.RollbackAsync();
+        return Results.BadRequest(new { mensagem = "Erro ao reenviar e-mail: " + ex.Message });
     }
 })
 .RequireAuthorization();

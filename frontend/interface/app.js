@@ -17,7 +17,7 @@ const PYTHON_API_URL = window.ENV_PYTHON_API_URL
 const getToken = () => sessionStorage.getItem(TOKEN_KEY);
 const getFrontendUrl = () => window.ENV_FRONTEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:5500' : window.location.origin;
 
-function mostrarToast(mensagem, tipo = 'info') {
+function mostrarToast(mensagem, tipo = 'info', duracao = 4000) {
     const container = document.getElementById('toast-container') || (() => {
         const div = document.createElement('div');
         div.id = 'toast-container';
@@ -49,7 +49,7 @@ function mostrarToast(mensagem, tipo = 'info') {
     setTimeout(() => {
         toast.classList.add('opacity-0', 'translate-x-4', 'transition-all', 'duration-300');
         setTimeout(() => toast.remove(), 300);
-    }, 4000);
+    }, duracao);
 }
 
 function alternarVisibilidadeSenha(inputId) {
@@ -4105,6 +4105,9 @@ function renderTabelaAcessos(lista, tbodyId, status) {
                     <td class="py-3 px-4 text-slate-300">${s.usuario_id || '-'}</td>
                     <td class="py-3 px-4 text-slate-300">${dataAtualizada}</td>
                     <td class="py-3 px-4 flex items-center gap-2">
+                        <button onclick="reenviarEmailDefinicaoSenha(${s.id})" class="bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white px-3 py-1 rounded text-xs font-semibold transition" title="Reenviar e-mail de definição de senha">
+                            <i class="fa-solid fa-paper-plane mr-1"></i> Reenviar e-mail
+                        </button>
                         <button onclick="abrirModalExcluirAcesso(${s.id}, 'aprovado')" class="bg-rose-600/20 text-rose-400 hover:bg-rose-600 hover:text-white px-3 py-1 rounded text-xs font-semibold transition">Desativar</button>
                     </td>
                 </tr>`;
@@ -4176,7 +4179,12 @@ async function confirmarAprovarAcesso() {
             erroDiv.style.display = 'flex';
             return;
         }
+        // Sucesso na aprovação
         mostrarToast(data.mensagem || 'Solicitação aprovada com sucesso!', 'sucesso');
+        // Se houve falha no e-mail, mostrar aviso visível
+        if (data.avisoEmail) {
+            mostrarToast(data.avisoEmail, 'aviso', 10000); // 10s para aviso de e-mail
+        }
         fecharModal('modal-acessos-aprovar');
         carregarAcessos();
     } catch {
@@ -4185,6 +4193,32 @@ async function confirmarAprovarAcesso() {
     } finally {
         btn.disabled = false;
         btn.innerHTML = '<i class="fa-solid fa-check"></i> Aprovar';
+    }
+}
+
+// Reenviar e-mail de definição de senha para solicitação aprovada
+async function reenviarEmailDefinicaoSenha(id) {
+    const btn = event.target.closest('button');
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Enviando...';
+
+    try {
+        const res = await fetch(`${API_URL}/acessos/${id}/reenviar-email`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            mostrarToast(data.mensagem || 'Erro ao reenviar e-mail.', 'erro');
+            return;
+        }
+        mostrarToast(data.mensagem || 'E-mail reenviado com sucesso!', data.emailEnviado ? 'sucesso' : 'aviso', 8000);
+    } catch {
+        mostrarToast('Não foi possível conectar ao servidor.', 'erro');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
     }
 }
 
