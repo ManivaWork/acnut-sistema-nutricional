@@ -56,7 +56,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHttpClient();
 builder.Services.Configure<EmailConfig>(builder.Configuration.GetSection("Email"));
-builder.Services.AddSingleton<IEmailService, EmailService>();
+builder.Services.AddHttpClient<IEmailService, EmailService>(c => c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddHttpContextAccessor();
 
 // Registrar NpgsqlDataSource para injeção de dependência (usado no BillingModule)

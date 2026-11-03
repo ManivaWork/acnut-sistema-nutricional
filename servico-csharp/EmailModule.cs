@@ -3,14 +3,17 @@
 
 using System.Net.Mail;
 using System.Net;
+using System.Net.Http;
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 
 namespace ACNutri.Email;
 
 public record EmailConfig
 {
-    public string Provider { get; init; } = "smtp";
+    public string Provider { get; init; } = "smtp"; // "smtp" ou "resend"
     public SmtpConfig Smtp { get; init; } = new();
+    public ResendConfig Resend { get; init; } = new();
     public string FrontendBaseUrl { get; init; } = "http://localhost:5500";
 }
 
@@ -25,6 +28,14 @@ public record SmtpConfig
     public string FromName { get; init; } = "ACNUTRI";
 }
 
+public record ResendConfig
+{
+    public string ApiKey { get; init; } = "";        // Defina via variável de ambiente Email__Resend__ApiKey
+    public string FromEmail { get; init; } = "";     // Defina via variável de ambiente Email__Resend__FromEmail
+    public string FromName { get; init; } = "ACNUTRI";
+    public string BaseUrl { get; init; } = "https://api.resend.com";
+}
+
 public interface IEmailService
 {
     Task<bool> EnviarConviteAsync(string emailDestino, string empresaNome, string tokenConvite, string perfil, string nivelNutricao);
@@ -36,11 +47,14 @@ public class EmailService : IEmailService
 {
     private readonly EmailConfig _config;
     private readonly ILogger<EmailService> _logger;
+    private readonly HttpClient _httpClient;
 
-    public EmailService(IOptions<EmailConfig> config, ILogger<EmailService> logger)
+    public EmailService(IOptions<EmailConfig> config, ILogger<EmailService> logger, HttpClient httpClient)
     {
         _config = config.Value;
         _logger = logger;
+        _httpClient = httpClient;
+        _httpClient.Timeout = TimeSpan.FromSeconds(10); // Timeout global de 10s
     }
 
     public async Task<bool> EnviarConviteAsync(string emailDestino, string empresaNome, string tokenConvite, string perfil, string nivelNutricao)
@@ -111,7 +125,15 @@ public class EmailService : IEmailService
     {
         try
         {
-            if (_config.Provider != "smtp" || string.IsNullOrWhiteSpace(_config.Smtp.Host))
+            var provider = _config.Provider?.ToLowerInvariant();
+
+            if (provider == "resend")
+            {
+                return await EnviarViaResendAsync(to, subject, htmlBody);
+            }
+
+            // Provider SMTP (padrão)
+            if (string.IsNullOrWhiteSpace(_config.Smtp.Host))
             {
                 var isDevelopment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
                 if (isDevelopment)
@@ -126,11 +148,25 @@ public class EmailService : IEmailService
                 return false; // Falha real em produção
             }
 
+            return await EnviarViaSmtpAsync(to, subject, htmlBody);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Erro ao enviar e-mail para: {To}", to);
+            return false;
+        }
+    }
+
+    private async Task<bool> EnviarViaSmtpAsync(string to, string subject, string htmlBody)
+    {
+        try
+        {
             using var client = new SmtpClient(_config.Smtp.Host, _config.Smtp.Port)
             {
                 Credentials = new NetworkCredential(_config.Smtp.UserName, _config.Smtp.Password),
                 EnableSsl = _config.Smtp.EnableSsl,
-                DeliveryMethod = SmtpDeliveryMethod.Network
+                DeliveryMethod = SmtpDeliveryMethod.Network,
+                Timeout = 10000 // 10 segundos
             };
 
             using var message = new MailMessage
@@ -143,12 +179,67 @@ public class EmailService : IEmailService
             message.To.Add(to);
 
             await client.SendMailAsync(message);
-            _logger.LogInformation("E-mail enviado com sucesso para: {To}", to);
+            _logger.LogInformation("E-mail enviado com sucesso via SMTP para: {To}", to);
             return true;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Erro ao enviar e-mail para: {To}", to);
+            _logger.LogError(ex, "Erro ao enviar e-mail via SMTP para: {To}", to);
+            return false;
+        }
+    }
+
+    private async Task<bool> EnviarViaResendAsync(string to, string subject, string htmlBody)
+    {
+        if (string.IsNullOrWhiteSpace(_config.Resend.ApiKey))
+        {
+            _logger.LogWarning("Resend ApiKey não configurada. Envio cancelado para: {To}", to);
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(_config.Resend.FromEmail))
+        {
+            _logger.LogWarning("Resend FromEmail não configurado. Envio cancelado para: {To}", to);
+            return false;
+        }
+
+        try
+        {
+            var request = new
+            {
+                from = $"{_config.Resend.FromName} <{_config.Resend.FromEmail}>",
+                to = new[] { to },
+                subject = subject,
+                html = htmlBody
+            };
+
+            var json = JsonSerializer.Serialize(request);
+            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+            _httpClient.DefaultRequestHeaders.Clear();
+            _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_config.Resend.ApiKey}");
+
+            var url = $"{_config.Resend.BaseUrl.TrimEnd('/')}/emails";
+            var response = await _httpClient.PostAsync(url, content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation("E-mail enviado com sucesso via Resend para: {To}", to);
+                return true;
+            }
+
+            var errorBody = await response.Content.ReadAsStringAsync();
+            _logger.LogWarning("Falha ao enviar via Resend para {To}: {StatusCode} - {Error}", to, response.StatusCode, errorBody);
+            return false;
+        }
+        catch (TaskCanceledException) when (!HttpContext.Current?.RequestAborted.IsCancellationRequested ?? true)
+        {
+            _logger.LogWarning("Timeout ao enviar e-mail via Resend para: {To} (10s)", to);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Erro ao enviar e-mail via Resend para: {To}", to);
             return false;
         }
     }
