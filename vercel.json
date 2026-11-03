@@ -9,5 +9,19 @@
       "destination": "/interface/index.html",
       "permanent": false
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/definir-senha/:token",
+      "destination": "/interface/index.html"
+    },
+    {
+      "source": "/convite/:token",
+      "destination": "/interface/index.html"
+    },
+    {
+      "source": "/convite-paciente/:token",
+      "destination": "/interface/index.html"
+    }
   ]
 }

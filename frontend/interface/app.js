@@ -6920,9 +6920,9 @@ async function confirmarAcaoConvite() {
 
 async function verificarConvitePacienteURL() {
     // Verifica se a URL contém /convite-paciente/TOKEN
-    const pathMatch = window.location.pathname.match(/\/convite-paciente\/([a-f0-9]{32})/i);
-    const queryMatch = window.location.search.match(/[?&]convite=([a-f0-9]{32})/i);
-    const hashMatch = window.location.hash.match(/#convite-paciente\/([a-f0-9]{32})/i);
+    const pathMatch = window.location.pathname.match(/\/convite-paciente\/([A-Za-z0-9_-]{20,})/i);
+    const queryMatch = window.location.search.match(/[?&]convite=([A-Za-z0-9_-]{20,})/i);
+    const hashMatch = window.location.hash.match(/#convite-paciente\/([A-Za-z0-9_-]{20,})/i);
 
     const token = pathMatch?.[1] || queryMatch?.[1] || hashMatch?.[1];
 
@@ -7047,9 +7047,9 @@ async function aceitarConvitePaciente() {
 // Verificar se há token de convite na URL ao carregar a página
 function verificarConviteURL() {
     // Verifica se a URL contém /convite/TOKEN ou ?convite=TOKEN
-    const pathMatch = window.location.pathname.match(/\/convite\/([a-f0-9]{32})/i);
-    const queryMatch = window.location.search.match(/[?&]convite=([a-f0-9]{32})/i);
-    const hashMatch = window.location.hash.match(/#convite\/([a-f0-9]{32})/i);
+    const pathMatch = window.location.pathname.match(/\/convite\/([A-Za-z0-9_-]{20,})/i);
+    const queryMatch = window.location.search.match(/[?&]convite=([A-Za-z0-9_-]{20,})/i);
+    const hashMatch = window.location.hash.match(/#convite\/([A-Za-z0-9_-]{20,})/i);
 
     const token = pathMatch?.[1] || queryMatch?.[1] || hashMatch?.[1];
 
@@ -7083,10 +7083,12 @@ function verificarConviteURL() {
 }
 
 function verificarDefinirSenhaURL() {
+    // Verifica se a URL contém /definir-senha/TOKEN (rota pública via Vercel rewrite)
+    const pathMatch = window.location.pathname.match(/\/definir-senha\/([A-Za-z0-9_-]{20,})/i);
     // Verifica se a URL contém ?token=TOKEN (para definir senha após aprovação de acesso)
-    const queryMatch = window.location.search.match(/[?&]token=([a-f0-9]{32,})/i);
+    const queryMatch = window.location.search.match(/[?&]token=([A-Za-z0-9_-]{20,})/i);
 
-    const token = queryMatch?.[1];
+    const token = pathMatch?.[1] || queryMatch?.[1];
 
     if (token) {
         // Esconder login e onboarding, mostrar definir-senha
