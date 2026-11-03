@@ -232,7 +232,7 @@ public class EmailService : IEmailService
             _logger.LogWarning("Falha ao enviar via Resend para {To}: {StatusCode} - {Error}", to, response.StatusCode, errorBody);
             return false;
         }
-        catch (TaskCanceledException) when (!HttpContext.Current?.RequestAborted.IsCancellationRequested ?? true)
+        catch (TaskCanceledException)
         {
             _logger.LogWarning("Timeout ao enviar e-mail via Resend para: {To} (10s)", to);
             return false;

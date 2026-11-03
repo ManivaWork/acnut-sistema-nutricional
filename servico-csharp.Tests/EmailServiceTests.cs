@@ -1,4 +1,5 @@
 using System;
+using System.Net.Http;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Moq;
@@ -14,11 +15,16 @@ public class EmailServiceTests
     private readonly Mock<IOptions<EmailConfig>> _configMock;
     private readonly Mock<ILogger<EmailService>> _loggerMock;
     private readonly EmailService _emailService;
+    private readonly HttpClient _httpClient;
 
     public EmailServiceTests()
     {
         _configMock = new Mock<IOptions<EmailConfig>>();
         _loggerMock = new Mock<ILogger<EmailService>>();
+        _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+
+        // Set environment to Development for tests
+        Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Development");
 
         // Setup config com valores válidos para simulação
         var emailConfig = new EmailConfig
@@ -38,7 +44,7 @@ public class EmailServiceTests
         };
 
         _configMock.Setup(c => c.Value).Returns(emailConfig);
-        _emailService = new EmailService(_configMock.Object, _loggerMock.Object);
+        _emailService = new EmailService(_configMock.Object, _loggerMock.Object, _httpClient);
     }
 
     [Fact]
