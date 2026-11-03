@@ -244,6 +244,8 @@ app.Use(async (ctx, next) =>
             || (HttpMethods.IsPost(m) && System.Text.RegularExpressions.Regex.IsMatch(path, @"^/api/acessos/\d+/aprovar$"))
             // POST /api/acessos/{id}/recusar
             || (HttpMethods.IsPost(m) && System.Text.RegularExpressions.Regex.IsMatch(path, @"^/api/acessos/\d+/recusar$"))
+            // POST /api/acessos/{id}/reenviar-email
+            || (HttpMethods.IsPost(m) && System.Text.RegularExpressions.Regex.IsMatch(path, @"^/api/acessos/\d+/reenviar-email$"))
             // DELETE /api/acessos/{id}
             || (HttpMethods.IsDelete(m) && System.Text.RegularExpressions.Regex.IsMatch(path, @"^/api/acessos/\d+$"));
 
