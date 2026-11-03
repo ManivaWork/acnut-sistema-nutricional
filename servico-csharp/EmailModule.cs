@@ -113,10 +113,17 @@ public class EmailService : IEmailService
         {
             if (_config.Provider != "smtp" || string.IsNullOrWhiteSpace(_config.Smtp.Host))
             {
-                _logger.LogWarning("Email não configurado (Provider: {Provider}, Host: {Host}). Simulando envio para: {To}",
+                var isDevelopment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
+                if (isDevelopment)
+                {
+                    _logger.LogWarning("Email não configurado (Provider: {Provider}, Host: {Host}). Simulando envio em DESENVOLVIMENTO para: {To}",
+                        _config.Provider, _config.Smtp.Host, to);
+                    _logger.LogInformation("Assunto: {Subject}", subject);
+                    return true; // Simula sucesso apenas em desenvolvimento
+                }
+                _logger.LogWarning("Email não configurado em PRODUÇÃO (Provider: {Provider}, Host: {Host}). Envio cancelado para: {To}",
                     _config.Provider, _config.Smtp.Host, to);
-                _logger.LogInformation("Assunto: {Subject}", subject);
-                return true; // Simula sucesso em desenvolvimento
+                return false; // Falha real em produção
             }
 
             using var client = new SmtpClient(_config.Smtp.Host, _config.Smtp.Port)
