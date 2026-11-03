@@ -5294,6 +5294,7 @@ static class Escopo
             case "acessos":
                 // GET /api/acessos (sem ID) - super_admin: lista solicitacoes_acesso, NÃO é paciente
                 // POST /api/acessos/{id}/aprovar|recusar - super_admin: id é solicitação, não paciente
+                // POST /api/acessos/{id}/reenviar-email - super_admin: id é solicitação, não paciente
                 // DELETE /api/acessos/{id} - super_admin: id é solicitação, não paciente
                 // GET /api/acessos/{pacienteId} - nutricionista/team: isola por paciente (acessos_paciente)
                 if (get && seg.Length == 3 && int.TryParse(seg[2], out var pid))
