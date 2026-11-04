@@ -329,6 +329,32 @@ app.MapGet("/api/pacientes", async (ClaimsPrincipal user) =>
     return Results.Ok(pacientes);
 });
 
+// 1a. OBTER PACIENTE POR ID
+app.MapGet("/api/pacientes/{id:int}", async (int id, ClaimsPrincipal user) =>
+{
+    var empresaId = Auth.Empresa(user);
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+    using var cmd = new NpgsqlCommand("SELECT id, nome, email, telefone, data_nascimento, sexo, status, cpf FROM pacientes WHERE id = @id AND empresa_id = @emp", conn);
+    cmd.Parameters.AddWithValue("id", id);
+    cmd.Parameters.AddWithValue("emp", empresaId);
+    using var reader = await cmd.ExecuteReaderAsync();
+    if (!await reader.ReadAsync())
+        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+
+    return Results.Ok(new
+    {
+        id = Convert.ToInt32(reader.GetValue(0)),
+        nome = reader.GetString(1),
+        email = reader.GetString(2),
+        telefone = reader.IsDBNull(3) ? "" : reader.GetString(3),
+        data_nascimento = reader.GetDateTime(4).ToString("yyyy-MM-dd"),
+        sexo = reader.GetString(5),
+        status = reader.IsDBNull(6) ? "ativo" : reader.GetString(6),
+        cpf = reader.IsDBNull(7) ? "" : reader.GetString(7)
+    });
+}).RequireAuthorization();
+
     // 1b. BUSCAR PACIENTES POR NOME
     app.MapGet("/api/pacientes/buscar", async (string q, ClaimsPrincipal user) =>
     {
@@ -352,7 +378,7 @@ app.MapGet("/api/pacientes", async (ClaimsPrincipal user) =>
         using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            var dataNasc = reader.IsDBNull(2) ? null : reader.GetDateTime(2);
+            var dataNasc = reader.IsDBNull(2) ? (DateTime?)null : reader.GetDateTime(2);
             resultados.Add(new
             {
                 id = Convert.ToInt32(reader.GetValue(0)),

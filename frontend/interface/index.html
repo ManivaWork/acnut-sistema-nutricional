@@ -2852,32 +2852,7 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         <div class="w-full xl:w-auto">
         <div class="flex flex-col sm:flex-row
         gap-2">
-        <!-- Campo ID do paciente -->
-        <div class="relative flex-1 min-w-0">
-        <i class="fa-solid fa-user
-        absolute left-4 top-1/2
-        -translate-y-1/2
-        text-slate-500 text-sm"></i>
-        <input
-        type="number"
-        id="prontuario-paciente-id"
-        placeholder="ID do paciente"
-        class="w-full
-        bg-slate-900/90
-        border border-slate-700/80
-        rounded-xl
-        px-4 py-3 pl-11
-        text-sm
-        text-white
-        placeholder-slate-500
-        focus:outline-none
-        focus:border-emerald-500
-        focus:ring-2
-        focus:ring-emerald-500/20
-        transition-all"
-        >
-        </div>
-        <!-- Campo Buscar por nome -->
+        <!-- Campo unificado de busca (ID ou nome) -->
         <div class="relative flex-1 min-w-0">
         <i class="fa-solid fa-search
         absolute left-4 top-1/2
@@ -2886,7 +2861,7 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         <input
         type="text"
         id="prontuario-paciente-busca"
-        placeholder="Buscar por nome..."
+        placeholder="Buscar por nome ou ID..."
         class="w-full
         bg-slate-900/90
         border border-slate-700/80
@@ -2907,12 +2882,15 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         id="prontuario-busca-resultados"
         class="hidden absolute top-full left-0 right-0 mt-1
         bg-slate-900/95 border border-slate-700/80
-        rounded-xl shadow-xl z-50 overflow-hidden
+        rounded-xl shadow-xl z-[100] overflow-hidden
         max-h-60 overflow-y-auto"
         role="listbox"
         aria-label="Resultados da busca de pacientes"
+        style="position: fixed;"
         ></div>
         </div>
+        <!-- Input hidden para guardar o ID selecionado -->
+        <input type="hidden" id="prontuario-paciente-id" value="">
         <button
         onclick="carregarProntuarioCompleto()"
         class="flex items-center
@@ -2936,45 +2914,6 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         <i class="fa-solid fa-folder-open"></i>
         Abrir Prontuário
         </button>
-        </div>
-        </div>
-        </div>
-<!-- PACIENTE CARREGADO -->
-        <div
-        id="prontuario-cabecalho-paciente"
-        class="hidden mt-5
-        bg-slate-900/60
-        border border-slate-700/60
-        rounded-xl
-        px-4 py-3"
-        >
-        <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-xl
-        bg-emerald-500/10
-        border border-emerald-500/20
-        flex items-center justify-center">
-        <i class="fa-solid fa-user-check
-        text-emerald-400
-        text-sm"></i>
-        </div>
-        <div class="min-w-0">
-        <p class="text-[10px]
-        uppercase
-        tracking-widest
-        text-slate-500
-        font-semibold">
-        Paciente selecionado
-        </p>
-        <div class="text-sm text-slate-300 truncate">
-        <span
-        id="p-cab-nome"
-        class="text-emerald-400
-        font-bold
-        text-base"
-        ></span>
-        <span class="text-slate-600 mx-2">•</span>
-        <span id="p-cab-email"></span>
-        </div>
         </div>
         </div>
         </div>

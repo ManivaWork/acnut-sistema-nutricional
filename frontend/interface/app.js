@@ -1190,6 +1190,36 @@ async function buscarPacientesPorNome(query) {
         return;
     }
 
+    // Se for apenas números, buscar por ID
+    if (/^\d+$/.test(query)) {
+        try {
+            const res = await fetch(`${API_URL}/pacientes/${parseInt(query)}`, {
+                signal: buscaAbortController.signal
+            });
+            if (res.ok) {
+                const p = await res.json();
+                // Preencher campo de busca com o nome e guardar ID
+                inputBusca.value = p.nome;
+                inputId.value = p.id;
+                dropdown.classList.add('hidden');
+                dropdown.innerHTML = '';
+                buscaResultados = [];
+                buscaSelectedIndex = -1;
+            } else if (res.status === 404) {
+                dropdown.innerHTML = '<div class="px-4 py-3 text-sm text-slate-400 text-center">Nenhum paciente encontrado</div>';
+                dropdown.classList.remove('hidden');
+            }
+        } catch (e) {
+            if (e.name !== 'AbortError') {
+                console.error('Erro ao buscar paciente por ID:', e);
+                dropdown.innerHTML = '<div class="px-4 py-3 text-sm text-rose-400 text-center">Erro ao buscar</div>';
+                dropdown.classList.remove('hidden');
+            }
+        }
+        return;
+    }
+
+    // Busca por nome (texto)
     try {
         const res = await fetch(`${API_URL}/pacientes/buscar?q=${encodeURIComponent(query)}`, {
             signal: buscaAbortController.signal
@@ -1203,19 +1233,8 @@ async function buscarPacientesPorNome(query) {
         if (pacientes.length === 0) {
             dropdown.innerHTML = '<div class="px-4 py-3 text-sm text-slate-400 text-center">Nenhum paciente encontrado</div>';
             dropdown.classList.remove('hidden');
-        } else if (pacientes.length === 1) {
-            // 1 resultado: preencher ID automaticamente e mostrar confirmado
-            const p = pacientes[0];
-            inputId.value = p.id;
-            dropdown.innerHTML = `
-                <div class="px-4 py-2 text-sm text-emerald-400 border-b border-slate-700/50">
-                    Paciente selecionado: <strong>${escaparHtml(p.nome)}</strong> (ID: ${p.id}) - ${formatarDataParaExibicao(p.data_nascimento)}
-                </div>
-            `;
-            dropdown.classList.remove('hidden');
-            // Limpar campo de busca após selecionar (opcional - manter para permitir nova busca)
         } else {
-            // 2+ resultados: dropdown clicável
+            // Dropdown com opções no formato "Nome (ID: n)"
             dropdown.innerHTML = pacientes.map((p, idx) => `
                 <div class="p-3 hover:bg-slate-800 cursor-pointer border-b border-slate-700/50 last:border-0
                     ${idx === 0 ? 'bg-slate-800/50' : ''}"
@@ -1223,8 +1242,8 @@ async function buscarPacientesPorNome(query) {
                     tabindex="-1"
                     data-idx="${idx}"
                     onclick="selecionarPacienteBusca(${idx})">
-                    <div class="font-medium text-white">${escaparHtml(p.nome)}</div>
-                    <div class="text-[11px] text-slate-400">ID: ${p.id} · Nasc: ${formatarDataParaExibicao(p.data_nascimento)}</div>
+                    <div class="font-medium text-white">${escaparHtml(p.nome)} <span class="text-slate-400 font-normal">(ID: ${p.id})</span></div>
+                    <div class="text-[11px] text-slate-400">Nasc: ${formatarDataParaExibicao(p.data_nascimento)}</div>
                 </div>
             `).join('');
             dropdown.classList.remove('hidden');
@@ -1246,7 +1265,7 @@ function selecionarPacienteBusca(idx) {
     if (idx >= 0 && idx < buscaResultados.length) {
         const p = buscaResultados[idx];
         inputId.value = p.id;
-        inputBusca.value = ''; // Limpar campo de busca
+        inputBusca.value = p.nome; // Preencher com o nome
         dropdown.classList.add('hidden');
         dropdown.innerHTML = '';
         buscaResultados = [];
@@ -1268,18 +1287,7 @@ function setupBuscaPaciente() {
         clearTimeout(buscaDebounceTimer);
         buscaDebounceTimer = setTimeout(() => {
             buscarPacientesPorNome(query);
-        }, 300);
-    });
-
-    // Se digitou no ID, limpar campo de busca
-    inputId.addEventListener('input', () => {
-        if (inputId.value !== '') {
-            inputBusca.value = '';
-            dropdown.classList.add('hidden');
-            dropdown.innerHTML = '';
-            buscaResultados = [];
-            buscaSelectedIndex = -1;
-        }
+        }, 250); // Debounce de 250ms
     });
 
     // Fechar dropdown ao clicar fora
