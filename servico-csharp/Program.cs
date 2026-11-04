@@ -3470,7 +3470,7 @@ app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput
             <p>Clique no botão abaixo para definir sua senha e acessar o sistema:</p>
 
             <p style='text-align: center;'>
-                <a href='{linkDefinirSenha}' class='btn'>Definir Minha Senha e Acessar</a>
+                <a href='{linkDefinirSenha}' class='btn' style='color:#ffffff !important; text-decoration:none;'>Definir Minha Senha e Acessar</a>
             </p>
 
             <p style='font-size: 14px; color: #64748b;'>
@@ -3635,7 +3635,7 @@ app.MapPost("/api/acessos/{id:long}/reenviar-email", async (long id, ClaimsPrinc
             <p>Clique no botão abaixo para definir sua senha e acessar o sistema:</p>
 
             <p style='text-align: center;'>
-                <a href='{linkDefinirSenha}' class='btn'>Definir Minha Senha e Acessar</a>
+                <a href='{linkDefinirSenha}' class='btn' style='color:#ffffff !important; text-decoration:none;'>Definir Minha Senha e Acessar</a>
             </p>
 
             <p style='font-size: 14px; color: #64748b;'>

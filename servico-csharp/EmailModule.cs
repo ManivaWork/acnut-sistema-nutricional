@@ -107,7 +107,7 @@ public class EmailService : IEmailService
             <p>Clique no botão abaixo para aceitar o convite e criar sua conta:</p>
 
             <p style='text-align: center;'>
-                <a href='{urlConvite}' class='btn'>Aceitar Convite e Criar Conta</a>
+                <a href='{urlConvite}' class='btn' style='color:#ffffff !important; text-decoration:none;'>Aceitar Convite e Criar Conta</a>
             </p>
 
             <p style='font-size: 14px; color: #64748b;'>
@@ -377,7 +377,7 @@ public class EmailService : IEmailService
             <p>Clique no botão abaixo para aceitar o convite e acessar sua área de paciente:</p>
 
             <p style='text-align: center;'>
-                <a href='{urlConvite}' class='btn'>Aceitar Convite</a>
+                <a href='{urlConvite}' class='btn' style='color:#ffffff !important; text-decoration:none;'>Aceitar Convite</a>
             </p>
 
             <p style='font-size: 14px; color: #64748b;'>
