@@ -339,7 +339,7 @@ app.MapGet("/api/pacientes", async (ClaimsPrincipal user) =>
         var resultados = new List<object>();
         using var conn = new NpgsqlConnection(connString);
         await conn.OpenAsync();
-        // unaccent + ILIKE para busca sem acento
+        // unaccent + ILIKE para busca sem acento (requer extensão unaccent no Postgres)
         using var cmd = new NpgsqlCommand(@"
             SELECT id, nome, data_nascimento
             FROM pacientes
@@ -352,15 +352,17 @@ app.MapGet("/api/pacientes", async (ClaimsPrincipal user) =>
         using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
+            var dataNasc = reader.IsDBNull(2) ? null : reader.GetDateTime(2);
             resultados.Add(new
             {
                 id = Convert.ToInt32(reader.GetValue(0)),
                 nome = reader.GetString(1),
-                data_nascimento = reader.GetDateTime(2).ToString("yyyy-MM-dd")
+                data_nascimento = dataNasc?.ToString("yyyy-MM-dd")
             });
         }
         return Results.Ok(resultados);
-    });
+    })
+    .RequireAuthorization(); // garante que só usuários autenticados acessem
 
 // 2. CADASTRAR PACIENTE
 app.MapPost("/api/pacientes", async (HttpRequest request, ClaimsPrincipal user, NpgsqlDataSource db) =>
