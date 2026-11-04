@@ -2311,7 +2311,7 @@ app.MapPost("/api/planos/versao/{id}/restaurar", async (int id, ClaimsPrincipal 
 // =====================================================================
 // AUTENTICAÇÃO E USUÁRIOS
 // =====================================================================
-app.MapPost("/api/auth/login", async (LoginInput input) =>
+app.MapPost("/api/auth/login", async (LoginInput input, ILogger<Program> logger) =>
 {
     var email = (input.Email ?? "").Trim().ToLowerInvariant();
     if (email == "" || string.IsNullOrEmpty(input.Senha))
@@ -2320,42 +2320,95 @@ app.MapPost("/api/auth/login", async (LoginInput input) =>
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
-    int id = 0, empresaId = 0; string nome = "", hash = "", perfil = ""; bool ativo = false, bloqueado = false;
-    bool achou;
+    // Buscar TODOS os usuários ativos com esse e-mail (exceto 'cliente'), ordenados por id DESC (mais novo primeiro)
+    var candidatos = new List<(int id, int empresaId, string nome, string hash, string perfil, bool bloqueado)>();
     using (var cmd = new NpgsqlCommand(@"
-        SELECT id, empresa_id, nome, senha_hash, perfil, ativo,
+        SELECT id, empresa_id, nome, senha_hash, perfil,
                (bloqueado_ate IS NOT NULL AND bloqueado_ate > CURRENT_TIMESTAMP)
-        FROM usuarios WHERE lower(email) = @e AND perfil <> 'cliente';", conn))
+        FROM usuarios
+        WHERE lower(email) = @e AND perfil <> 'cliente' AND ativo = true
+        ORDER BY id DESC;", conn))
     {
         cmd.Parameters.AddWithValue("e", email);
         using var rd = await cmd.ExecuteReaderAsync();
-        achou = await rd.ReadAsync();
-        if (achou)
+        while (await rd.ReadAsync())
         {
-            id = rd.GetInt32(0); empresaId = rd.GetInt32(1); nome = rd.GetString(2);
-            hash = rd.GetString(3); perfil = rd.GetString(4); ativo = rd.GetBoolean(5); bloqueado = rd.GetBoolean(6);
+            candidatos.Add((
+                rd.GetInt32(0),
+                rd.GetInt32(1),
+                rd.GetString(2),
+                rd.GetString(3),
+                rd.GetString(4),
+                rd.GetBoolean(5)
+            ));
         }
     }
 
-    if (!achou || !ativo)
-        return Results.Json(new { mensagem = "E-mail ou senha incorretos." }, statusCode: 401);
-
-    if (bloqueado)
-        return Results.Json(new { mensagem = "Muitas tentativas. Tente novamente em alguns minutos." }, statusCode: 429);
-
-    if (!BCrypt.Net.BCrypt.Verify(input.Senha, hash))
+    if (candidatos.Count == 0)
     {
-        using var f = new NpgsqlCommand(@"
-            UPDATE usuarios SET
-                tentativas_falhas = CASE WHEN tentativas_falhas + 1 >= 5 THEN 0 ELSE tentativas_falhas + 1 END,
-                bloqueado_ate = CASE WHEN tentativas_falhas + 1 >= 5
-                                     THEN CURRENT_TIMESTAMP + interval '15 minutes' ELSE bloqueado_ate END
-            WHERE id = @id;", conn);
-        f.Parameters.AddWithValue("id", id);
-        await f.ExecuteNonQueryAsync();
+        logger.LogWarning("Login falhou: nenhum usuário ativo com e-mail={Email}", email);
         return Results.Json(new { mensagem = "E-mail ou senha incorretos." }, statusCode: 401);
     }
 
+    // Percorrer candidatos: se bloqueado -> 429; se senha confere -> usa esse usuário
+    int id = 0, empresaId = 0; string nome = "", perfil = "";
+    bool loginOk = false;
+
+    foreach (var c in candidatos)
+    {
+        if (c.bloqueado)
+        {
+            logger.LogWarning("Login bloqueado: usuário id={UserId} e-mail={Email} bloqueado até", c.id, email);
+            return Results.Json(new { mensagem = "Muitas tentativas. Tente novamente em alguns minutos." }, statusCode: 429);
+        }
+
+        if (BCrypt.Net.BCrypt.Verify(input.Senha, c.hash))
+        {
+            id = c.id;
+            empresaId = c.empresaId;
+            nome = c.nome;
+            perfil = c.perfil;
+            loginOk = true;
+            break;
+        }
+    }
+
+    if (!loginOk)
+    {
+        // Incrementar tentativas_falhas de TODOS os candidatos quando houver múltiplos usuários ativos com o mesmo e-mail
+        // Isso mantém o bloqueio por tentativas funcionando mesmo com e-mail compartilhado entre empresas
+        if (candidatos.Count > 1)
+        {
+            foreach (var c in candidatos)
+            {
+                using var f = new NpgsqlCommand(@"
+                    UPDATE usuarios SET
+                        tentativas_falhas = CASE WHEN tentativas_falhas + 1 >= 5 THEN 0 ELSE tentativas_falhas + 1 END,
+                        bloqueado_ate = CASE WHEN tentativas_falhas + 1 >= 5
+                                             THEN CURRENT_TIMESTAMP + interval '15 minutes' ELSE bloqueado_ate END
+                    WHERE id = @id;", conn);
+                f.Parameters.AddWithValue("id", c.id);
+                await f.ExecuteNonQueryAsync();
+            }
+        }
+        else if (candidatos.Count == 1)
+        {
+            // Caso de um único candidato: manter comportamento original
+            using var f = new NpgsqlCommand(@"
+                UPDATE usuarios SET
+                    tentativas_falhas = CASE WHEN tentativas_falhas + 1 >= 5 THEN 0 ELSE tentativas_falhas + 1 END,
+                    bloqueado_ate = CASE WHEN tentativas_falhas + 1 >= 5
+                                         THEN CURRENT_TIMESTAMP + interval '15 minutes' ELSE bloqueado_ate END
+                WHERE id = @id;", conn);
+            f.Parameters.AddWithValue("id", candidatos[0].id);
+            await f.ExecuteNonQueryAsync();
+        }
+
+        logger.LogWarning("Login falhou: senha incorreta para e-mail={Email} (candidatos={Count})", email, candidatos.Count);
+        return Results.Json(new { mensagem = "E-mail ou senha incorretos." }, statusCode: 401);
+    }
+
+    // Resetar tentativas do usuário que logou
     using (var ok = new NpgsqlCommand(
         "UPDATE usuarios SET tentativas_falhas = 0, bloqueado_ate = NULL WHERE id = @id;", conn))
     {
