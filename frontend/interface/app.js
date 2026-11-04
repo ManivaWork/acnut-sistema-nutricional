@@ -1182,15 +1182,7 @@ async function buscarPacientesPorNome(query) {
     }
     buscaAbortController = new AbortController();
 
-    if (!query || query.length < 2) {
-        dropdown.classList.add('hidden');
-        dropdown.innerHTML = '';
-        buscaResultados = [];
-        buscaSelectedIndex = -1;
-        return;
-    }
-
-    // Se for apenas números, buscar por ID
+    // Se for apenas números, buscar por ID (permite 1+ dígito)
     if (/^\d+$/.test(query)) {
         try {
             const res = await fetch(`${API_URL}/pacientes/${parseInt(query)}`, {
@@ -1206,16 +1198,27 @@ async function buscarPacientesPorNome(query) {
                 buscaResultados = [];
                 buscaSelectedIndex = -1;
             } else if (res.status === 404) {
-                dropdown.innerHTML = '<div class="px-4 py-3 text-sm text-slate-400 text-center">Nenhum paciente encontrado</div>';
+                dropdown.innerHTML = '<div class="px-4 py-3 text-sm text-slate-400 text-center">Paciente não encontrado</div>';
                 dropdown.classList.remove('hidden');
+                posicionarDropdown();
             }
         } catch (e) {
             if (e.name !== 'AbortError') {
                 console.error('Erro ao buscar paciente por ID:', e);
                 dropdown.innerHTML = '<div class="px-4 py-3 text-sm text-rose-400 text-center">Erro ao buscar</div>';
                 dropdown.classList.remove('hidden');
+                posicionarDropdown();
             }
         }
+        return;
+    }
+
+    // Busca por nome (texto): mínimo 2 caracteres
+    if (!query || query.length < 2) {
+        dropdown.classList.add('hidden');
+        dropdown.innerHTML = '';
+        buscaResultados = [];
+        buscaSelectedIndex = -1;
         return;
     }
 
@@ -1233,6 +1236,7 @@ async function buscarPacientesPorNome(query) {
         if (pacientes.length === 0) {
             dropdown.innerHTML = '<div class="px-4 py-3 text-sm text-slate-400 text-center">Nenhum paciente encontrado</div>';
             dropdown.classList.remove('hidden');
+            posicionarDropdown();
         } else {
             // Dropdown com opções no formato "Nome (ID: n)"
             dropdown.innerHTML = pacientes.map((p, idx) => `
@@ -1247,12 +1251,14 @@ async function buscarPacientesPorNome(query) {
                 </div>
             `).join('');
             dropdown.classList.remove('hidden');
+            posicionarDropdown();
         }
     } catch (e) {
         if (e.name !== 'AbortError') {
             console.error('Erro ao buscar pacientes:', e);
             dropdown.innerHTML = '<div class="px-4 py-3 text-sm text-rose-400 text-center">Erro ao buscar</div>';
             dropdown.classList.remove('hidden');
+            posicionarDropdown();
         }
     }
 }
@@ -1273,6 +1279,25 @@ function selecionarPacienteBusca(idx) {
     }
 }
 
+function posicionarDropdown() {
+    const inputBusca = document.getElementById('prontuario-paciente-busca');
+    const dropdown = document.getElementById('prontuario-busca-resultados');
+
+    if (!inputBusca || !dropdown || dropdown.classList.contains('hidden')) return;
+
+    // Mover dropdown para body se ainda não estiver lá
+    if (dropdown.parentNode !== document.body) {
+        document.body.appendChild(dropdown);
+    }
+
+    const rect = inputBusca.getBoundingClientRect();
+    dropdown.style.position = 'fixed';
+    dropdown.style.top = `${rect.bottom + 4}px`;
+    dropdown.style.left = `${rect.left}px`;
+    dropdown.style.width = `${rect.width}px`;
+    dropdown.style.zIndex = '9999';
+}
+
 // Debounce no input de busca
 function setupBuscaPaciente() {
     const inputBusca = document.getElementById('prontuario-paciente-busca');
@@ -1289,6 +1314,10 @@ function setupBuscaPaciente() {
             buscarPacientesPorNome(query);
         }, 250); // Debounce de 250ms
     });
+
+    // Reposicionar dropdown no scroll e resize
+    window.addEventListener('scroll', posicionarDropdown, true);
+    window.addEventListener('resize', posicionarDropdown);
 
     // Fechar dropdown ao clicar fora
     document.addEventListener('click', (e) => {
@@ -1352,26 +1381,50 @@ function inicializarBuscaProntuario() {
 // ===== PRONTUÁRIO =====
 
 async function carregarProntuarioCompleto() {
-        const pacienteId = parseInt(document.getElementById("prontuario-paciente-id").value);
-        if (!pacienteId) {
-        mostrarToast("Por favor, introduza o ID do paciente.", "aviso");
-        return;
+    const inputId = document.getElementById("prontuario-paciente-id");
+    const inputBusca = document.getElementById("prontuario-paciente-busca");
+    let pacienteId = parseInt(inputId.value);
+
+    // Se hidden vazio, verificar se a caixa de busca tem só número
+    if (!pacienteId) {
+        const query = inputBusca.value.trim();
+        if (/^\d+$/.test(query)) {
+            // Só dígitos: usar como ID
+            pacienteId = parseInt(query);
+        } else if (query) {
+            // Tem texto mas não selecionou da lista
+            mostrarToast("Selecione um paciente da lista", "aviso");
+            return;
+        } else {
+            mostrarToast("Selecione um paciente da lista", "aviso");
+            return;
         }
-        try {
-        const resPacientes = await fetch(`${API_URL}/pacientes`);
-        const pacientes = await resPacientes.json();
-        const paciente = pacientes.find(p => p.id === pacienteId);
-        if (!paciente) {
-        try { localStorage.removeItem("acnut_paciente_ativo"); } catch (e) {}
-        mostrarToast("Paciente não encontrado!", "erro");
-        return;
+    }
+
+    try {
+        const resPacientes = await fetch(`${API_URL}/pacientes/${pacienteId}`);
+        if (!resPacientes.ok) {
+            if (resPacientes.status === 404) {
+                try { localStorage.removeItem("acnut_paciente_ativo"); } catch (e) {}
+                mostrarToast("Paciente não encontrado!", "erro");
+                return;
+            }
+            throw new Error('Erro ao buscar paciente');
         }
+        const paciente = await resPacientes.json();
+
         window.pacienteIdAtivo = pacienteId;
         try { localStorage.setItem("acnut_paciente_ativo", String(pacienteId)); } catch (e) {}
-        // Cabeçalho
-        document.getElementById("prontuario-cabecalho-paciente").classList.remove("hidden");
-        document.getElementById("p-cab-nome").innerText = `${paciente.nome} (#${paciente.id})`;
-        document.getElementById("p-cab-email").innerText = paciente.email;
+
+        // Cabeçalho (se existir no HTML)
+        const cabecalho = document.getElementById("prontuario-cabecalho-paciente");
+        if (cabecalho) {
+            cabecalho.classList.remove("hidden");
+            const pNome = document.getElementById("p-cab-nome");
+            const pEmail = document.getElementById("p-cab-email");
+            if (pNome) pNome.innerText = `${paciente.nome} (#${paciente.id})`;
+            if (pEmail) pEmail.innerText = paciente.email;
+        }
         // Perfil
         const campo = (rotulo, valor) =>
         `<div class="bg-slate-900 p-3 rounded border border-slate-700"><strong>${rotulo}:</strong> ${escaparHtml(valor)}</div>`;
@@ -1402,10 +1455,11 @@ async function carregarProntuarioCompleto() {
         carregarExames(pacienteId),
         carregarObservacoes(pacienteId)
         ]);
-        } catch (err) {
+    } catch (err) {
         console.error("Erro ao carregar prontuário:", err);
-        }
-        }
+        mostrarToast("Erro ao carregar prontuário", "erro");
+    }
+}
 // ========================== PLANO ALIMENTAR (refeições, opções, substituições, versões) ===============================
 let planoAtual = { planoId: null, refeicoes: [] };
 let formItem = {};

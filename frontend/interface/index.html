@@ -2877,16 +2877,15 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         transition-all"
         autocomplete="off"
         >
-        <!-- Dropdown resultados -->
+        <!-- Dropdown resultados (posicionado via JS no document.body) -->
         <div
         id="prontuario-busca-resultados"
-        class="hidden absolute top-full left-0 right-0 mt-1
+        class="hidden
         bg-slate-900/95 border border-slate-700/80
-        rounded-xl shadow-xl z-[100] overflow-hidden
+        rounded-xl shadow-xl overflow-hidden
         max-h-60 overflow-y-auto"
         role="listbox"
         aria-label="Resultados da busca de pacientes"
-        style="position: fixed;"
         ></div>
         </div>
         <!-- Input hidden para guardar o ID selecionado -->
