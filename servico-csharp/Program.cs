@@ -391,59 +391,74 @@ app.MapGet("/api/pacientes/{id:int}", async (int id, ClaimsPrincipal user) =>
     .RequireAuthorization(); // garante que só usuários autenticados acessem
 
 // 2. CADASTRAR PACIENTE
-app.MapPost("/api/pacientes", async (HttpRequest request, ClaimsPrincipal user, NpgsqlDataSource db) =>
+app.MapPost("/api/pacientes", async (HttpRequest request, ClaimsPrincipal user, NpgsqlDataSource db, ILogger<Program> logger) =>
 {
-    var data = await JsonSerializer.DeserializeAsync<JsonElement>(request.Body);
-
-    string nome = data.GetProperty("nome").GetString()!;
-    string email = data.GetProperty("email").GetString()!;
-    string telefone = data.TryGetProperty("telefone", out var tel) ? tel.GetString() ?? "" : "";
-    string dataNascimento = data.GetProperty("data_nascimento").GetString()!;
-    string sexo = data.GetProperty("sexo").GetString()!;
-    string status = data.TryGetProperty("status", out var st) ? st.GetString() ?? "ativo" : "ativo";
-    var cpf = Cpf.Limpar(data.TryGetProperty("cpf", out var cp) ? cp.GetString() : "");
-    if (cpf != "" && !Cpf.Valido(cpf)) return Results.BadRequest(new { mensagem = "CPF inválido." });
-
-    int empresaId = Auth.Empresa(user);
-
-    // Verificar limite de pacientes conforme plano
-    var (podeCriar, maxPacientes, atual) = await PlanoEnforcement.VerificarLimitePacientesAsync(db, empresaId);
-    if (!podeCriar)
-    {
-        return Results.Json(new
-        {
-            mensagem = $"Limite de pacientes atingido ({atual}/{maxPacientes}). Assine um plano para adicionar mais.",
-            codigo = "plano_necessario",
-            limite = maxPacientes,
-            atual
-        }, statusCode: 403);
-    }
-
-    await using var conn = await db.OpenConnectionAsync();
-    await using var cmd = new NpgsqlCommand(@"
-        INSERT INTO pacientes (nome, email, telefone, data_nascimento, sexo, status, empresa_id, cpf)
-        VALUES (@nome, @email, @telefone, @data_nascimento, @sexo, @status, @emp, @cpf) RETURNING id;", conn);
-
-    cmd.Parameters.AddWithValue("nome", nome);
-    cmd.Parameters.AddWithValue("email", email);
-    cmd.Parameters.AddWithValue("telefone", telefone);
-    cmd.Parameters.AddWithValue("data_nascimento", DateTime.Parse(dataNascimento));
-    cmd.Parameters.AddWithValue("sexo", sexo);
-    cmd.Parameters.AddWithValue("status", status);
-    cmd.Parameters.AddWithValue("emp", Auth.Empresa(user));
-    cmd.Parameters.Add(new NpgsqlParameter("cpf", NpgsqlTypes.NpgsqlDbType.Varchar) { Value = cpf == "" ? DBNull.Value : cpf });
-
     try
     {
+        var data = await JsonSerializer.DeserializeAsync<JsonElement>(request.Body);
+
+        string nome = data.GetProperty("nome").GetString()!;
+        string email = data.GetProperty("email").GetString()!;
+        string telefone = data.TryGetProperty("telefone", out var tel) ? tel.GetString() ?? "" : "";
+        string dataNascimento = data.GetProperty("data_nascimento").GetString()!;
+        string sexo = data.GetProperty("sexo").GetString()!;
+        string status = data.TryGetProperty("status", out var st) ? st.GetString() ?? "ativo" : "ativo";
+        var cpf = Cpf.Limpar(data.TryGetProperty("cpf", out var cp) ? cp.GetString() : "");
+        if (cpf != "" && !Cpf.Valido(cpf)) return Results.BadRequest(new { mensagem = "CPF inválido." });
+
+        int empresaId = Auth.Empresa(user);
+
+        // Verificar limite de pacientes conforme plano
+        var (podeCriar, maxPacientes, atual) = await PlanoEnforcement.VerificarLimitePacientesAsync(db, empresaId);
+        if (!podeCriar)
+        {
+            return Results.Json(new
+            {
+                mensagem = $"Limite de pacientes atingido ({atual}/{maxPacientes}). Assine um plano para adicionar mais.",
+                codigo = "plano_necessario",
+                limite = maxPacientes,
+                atual
+            }, statusCode: 403);
+        }
+
+        DateTime dtNascimento;
+        try
+        {
+            dtNascimento = DateTime.Parse(dataNascimento);
+        }
+        catch
+        {
+            return Results.BadRequest(new { mensagem = "Data de nascimento inválida. Use formato ISO (YYYY-MM-DD)." });
+        }
+
+        await using var conn = await db.OpenConnectionAsync();
+        await using var cmd = new NpgsqlCommand(@"
+            INSERT INTO pacientes (nome, email, telefone, data_nascimento, sexo, status, empresa_id, cpf)
+            VALUES (@nome, @email, @telefone, @data_nascimento, @sexo, @status, @emp, @cpf) RETURNING id;", conn);
+
+        cmd.Parameters.AddWithValue("nome", nome);
+        cmd.Parameters.AddWithValue("email", email);
+        cmd.Parameters.AddWithValue("telefone", telefone);
+        cmd.Parameters.AddWithValue("data_nascimento", dtNascimento);
+        cmd.Parameters.AddWithValue("sexo", sexo);
+        cmd.Parameters.AddWithValue("status", status);
+        cmd.Parameters.AddWithValue("emp", Auth.Empresa(user));
+        cmd.Parameters.Add(new NpgsqlParameter("cpf", NpgsqlTypes.NpgsqlDbType.Varchar) { Value = cpf == "" ? DBNull.Value : cpf });
+
         var newId = await cmd.ExecuteScalarAsync();
         return Results.Created($"/api/pacientes/{newId}", new { id = newId, mensagem = "Paciente cadastrado com sucesso!" });
     }
     catch (PostgresException ex) when (ex.SqlState == "23505")
     {
-        return Results.Conflict(new { mensagem = "Já existe um paciente com esse e-mail ou CPF." });
+        logger.LogWarning(ex, "Conflito de unicidade ao cadastrar paciente: empresa={EmpresaId}", Auth.Empresa(user));
+        return Results.Conflict(new { mensagem = "Já existe um paciente com esse e-mail ou CPF nesta empresa.", codigo = "duplicado" });
     }
-    });
-// 3. ATUALIZAR PACIENTE
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Erro inesperado ao cadastrar paciente: empresa={EmpresaId}", Auth.Empresa(user));
+        return Results.Problem("Erro interno ao cadastrar paciente.");
+    }
+});// 3. ATUALIZAR PACIENTE
 app.MapPut("/api/pacientes/{id}", async (int id, HttpRequest request, ClaimsPrincipal user) =>
 {
     var data = await JsonSerializer.DeserializeAsync<JsonElement>(request.Body);
