@@ -11,10 +11,19 @@ namespace ACNutri.Email;
 
 public record EmailConfig
 {
-    public string Provider { get; init; } = "smtp"; // "smtp" ou "resend"
+    public string Provider { get; init; } = "smtp"; // "smtp", "resend" ou "brevo"
     public SmtpConfig Smtp { get; init; } = new();
     public ResendConfig Resend { get; init; } = new();
+    public BrevoConfig Brevo { get; init; } = new();
     public string FrontendBaseUrl { get; init; } = "http://localhost:5500";
+}
+
+public record BrevoConfig
+{
+    public string ApiKey { get; init; } = "";        // Defina via variável de ambiente Email__Brevo__ApiKey
+    public string FromEmail { get; init; } = "";     // Defina via variável de ambiente Email__Brevo__FromEmail
+    public string FromName { get; init; } = "ACNUTRI";
+    public string BaseUrl { get; init; } = "https://api.brevo.com/v3";
 }
 
 public record SmtpConfig
@@ -132,6 +141,11 @@ public class EmailService : IEmailService
                 return await EnviarViaResendAsync(to, subject, htmlBody);
             }
 
+            if (provider == "brevo")
+            {
+                return await EnviarViaBrevoAsync(to, subject, htmlBody);
+            }
+
             // Provider SMTP (padrão)
             if (string.IsNullOrWhiteSpace(_config.Smtp.Host))
             {
@@ -240,6 +254,66 @@ public class EmailService : IEmailService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Erro ao enviar e-mail via Resend para: {To}", to);
+            return false;
+        }
+    }
+
+    private async Task<bool> EnviarViaBrevoAsync(string to, string subject, string htmlBody)
+    {
+        if (string.IsNullOrWhiteSpace(_config.Brevo.ApiKey))
+        {
+            _logger.LogWarning("Brevo ApiKey não configurada. Envio cancelado para: {To}", to);
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(_config.Brevo.FromEmail))
+        {
+            _logger.LogWarning("Brevo FromEmail não configurado. Envio cancelado para: {To}", to);
+            return false;
+        }
+
+        try
+        {
+            var request = new
+            {
+                sender = new
+                {
+                    name = _config.Brevo.FromName,
+                    email = _config.Brevo.FromEmail
+                },
+                to = new[] { new { email = to } },
+                replyTo = new { email = _config.Brevo.FromEmail },
+                subject = subject,
+                htmlContent = htmlBody
+            };
+
+            var json = JsonSerializer.Serialize(request);
+            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+            _httpClient.DefaultRequestHeaders.Clear();
+            _httpClient.DefaultRequestHeaders.Add("api-key", _config.Brevo.ApiKey);
+
+            var url = $"{_config.Brevo.BaseUrl.TrimEnd('/')}/smtp/email";
+            var response = await _httpClient.PostAsync(url, content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation("E-mail enviado com sucesso via Brevo para: {To}", to);
+                return true;
+            }
+
+            var errorBody = await response.Content.ReadAsStringAsync();
+            _logger.LogWarning("Falha ao enviar via Brevo para {To}: {StatusCode} - {Error}", to, response.StatusCode, errorBody);
+            return false;
+        }
+        catch (TaskCanceledException)
+        {
+            _logger.LogWarning("Timeout ao enviar e-mail via Brevo para: {To} (10s)", to);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Erro ao enviar e-mail via Brevo para: {To}", to);
             return false;
         }
     }
