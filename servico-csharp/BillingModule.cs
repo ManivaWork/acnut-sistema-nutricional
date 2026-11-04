@@ -109,6 +109,61 @@ public static class BillingEndpoints
     {
         var grupo = app.MapGroup("/api/billing").RequireAuthorization();
 
+        // ---- GET: status da assinatura (para banner de plano no frontend) ----
+        // Rota compatível com frontend: /api/assinatura/status
+        app.MapGet("/api/assinatura/status", async (ClaimsPrincipal user, NpgsqlDataSource db, ILogger<Program> logger) =>
+        {
+            try
+            {
+                int emp = Auth.Empresa(user);
+                await using var cmd = db.CreateCommand(@"
+                    SELECT a.plano, a.status, a.valor_centavos, a.ciclo
+                    FROM assinaturas a
+                    WHERE a.empresa_id = @emp
+                    ORDER BY CASE a.status WHEN 'ativa' THEN 1 WHEN 'trial' THEN 2 WHEN 'sem_plano' THEN 3 ELSE 4 END
+                    LIMIT 1;");
+                cmd.Parameters.AddWithValue("emp", emp);
+
+                await using var rd = await cmd.ExecuteReaderAsync();
+                if (!await rd.ReadAsync())
+                {
+                    // Sem assinatura cadastrada = sem_plano
+                    var limSemPlano = new PlanoLimites(3, 1, 50, 1);
+                    return Results.Ok(new
+                    {
+                        plano = "sem_plano",
+                        status = "sem_plano",
+                        valor_centavos = 0,
+                        ciclo = "monthly",
+                        limite_pacientes = limSemPlano.MaxPacientes,
+                        tem_assinatura = false
+                    });
+                }
+
+                var plano = rd.GetString(0);
+                var status = rd.GetString(1);
+                var valorCentavos = rd.GetInt32(2);
+                var ciclo = rd.GetString(3);
+
+                var limites = Planos.Catalogo.GetValueOrDefault(plano).Limites;
+
+                return Results.Ok(new
+                {
+                    plano,
+                    status,
+                    valor_centavos = valorCentavos,
+                    ciclo,
+                    limite_pacientes = limites.MaxPacientes,
+                    tem_assinatura = status == "ativa" || status == "trial"
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Erro ao buscar status da assinatura para empresa={EmpresaId}", Auth.Empresa(user));
+                return Results.Problem("Erro interno ao buscar status da assinatura.");
+            }
+        });
+
         // ---- GET: assinatura da empresa logada ----
 grupo.MapGet("/assinatura", async (ClaimsPrincipal user, NpgsqlDataSource db) =>
 {
