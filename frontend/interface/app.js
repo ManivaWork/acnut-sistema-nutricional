@@ -4376,8 +4376,7 @@ async function confirmarExcluirAcesso() {
 
 // ===== DEFINIR SENHA (Token 48h) =====
 async function inicializarDefinirSenha() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get('token');
+    const token = obterTokenDefinirSenha();
 
     const estadoCarregando = document.getElementById('ds-estado-carregando');
     const estadoValido = document.getElementById('ds-estado-valido');
@@ -4422,8 +4421,7 @@ async function inicializarDefinirSenha() {
 
 async function definirSenha(e) {
     e.preventDefault();
-    const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get('token');
+    const token = obterTokenDefinirSenha();
 
     const btn = document.getElementById('btn-definir-senha');
     const erroDiv = document.getElementById('ds-erro');
@@ -7144,13 +7142,16 @@ function verificarConviteURL() {
     return false;
 }
 
-function verificarDefinirSenhaURL() {
-    // Verifica se a URL contém /definir-senha/TOKEN (rota pública via Vercel rewrite)
+function obterTokenDefinirSenha() {
+    // Extrai token do caminho /definir-senha/<token> (rota pública via Vercel rewrite)
     const pathMatch = window.location.pathname.match(/\/definir-senha\/([A-Za-z0-9_-]{20,})/i);
-    // Verifica se a URL contém ?token=TOKEN (para definir senha após aprovação de acesso)
+    // Extrai token da query string ?token=<token> (para definir senha após aprovação de acesso)
     const queryMatch = window.location.search.match(/[?&]token=([A-Za-z0-9_-]{20,})/i);
+    return pathMatch?.[1] || queryMatch?.[1];
+}
 
-    const token = pathMatch?.[1] || queryMatch?.[1];
+function verificarDefinirSenhaURL() {
+    const token = obterTokenDefinirSenha();
 
     if (token) {
         // Esconder login e onboarding, mostrar definir-senha
