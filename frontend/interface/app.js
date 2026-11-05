@@ -52,6 +52,68 @@ function mostrarToast(mensagem, tipo = 'info', duracao = 4000) {
     }, duracao);
 }
 
+// Registry para callbacks de toast com ação
+const toastActionRegistry = new Map();
+let toastActionId = 0;
+
+// Toast com botão de ação (para erros 403 de plano, etc.)
+function mostrarToastComAcao(mensagem, tipo, btnTexto, btnCallback, duracao = 8000) {
+    const container = document.getElementById('toast-container') || (() => {
+        const div = document.createElement('div');
+        div.id = 'toast-container';
+        div.className = 'fixed bottom-6 right-6 z-50 flex flex-col gap-2';
+        document.body.appendChild(div);
+        return div;
+    })();
+
+    const cores = {
+        sucesso: 'bg-emerald-600 text-white',
+        erro: 'bg-rose-600 text-white',
+        aviso: 'bg-amber-600 text-white',
+        info: 'bg-blue-600 text-white'
+    };
+
+    const icones = {
+        sucesso: 'fa-circle-check',
+        erro: 'fa-circle-xmark',
+        aviso: 'fa-triangle-exclamation',
+        info: 'fa-circle-info'
+    };
+
+    const actionId = ++toastActionId;
+    toastActionRegistry.set(actionId, btnCallback);
+
+    const toast = document.createElement('div');
+    toast.className = `flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg ${cores[tipo] || cores.info} animate-slide-in`;
+    toast.innerHTML = `
+        <i class="fa-solid ${icones[tipo] || icones.info}"></i>
+        <span class="text-sm font-medium flex-1 min-w-0">${mensagem}</span>
+        <button class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/20 hover:bg-white/30 transition whitespace-nowrap" data-toast-action="${actionId}">
+            ${btnTexto}
+        </button>
+    `;
+
+    // Event listener para o botão de ação
+    const btn = toast.querySelector('[data-toast-action]');
+    btn.addEventListener('click', () => {
+        const id = parseInt(btn.dataset.toastAction, 10);
+        const cb = toastActionRegistry.get(id);
+        if (cb) cb();
+        toastActionRegistry.delete(id);
+        toast.remove();
+    });
+
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-x-4', 'transition-all', 'duration-300');
+        setTimeout(() => {
+            toast.remove();
+            toastActionRegistry.delete(actionId);
+        }, 300);
+    }, duracao);
+}
+
 function alternarVisibilidadeSenha(inputId) {
     const input = document.getElementById(inputId);
     const icon = document.getElementById(inputId + '-icon');
@@ -500,7 +562,18 @@ async function cadastrarPaciente(event) {
         } else {
         const erroTexto = await lerErro(response);
         console.error("Detalhe do erro do servidor:", erroTexto);
-        mostrarToast("Erro ao guardar os dados do paciente: " + erroTexto, 'erro');
+
+        // Tratamento especial para 403: plano não permite cadastrar pacientes
+        if (response.status === 403) {
+            mostrarToastComAcao(
+                "Seu plano atual não permite cadastrar pacientes. Assine um plano para continuar.",
+                'erro',
+                'Ver Planos',
+                () => navegar('billing')
+            );
+        } else {
+            mostrarToast("Erro ao guardar os dados do paciente: " + erroTexto, 'erro');
+        }
         }
         } catch (error) {
         console.error("Erro na requisição:", error);
@@ -1478,7 +1551,8 @@ function fecharModal(id) {
 async function lerErro(res) {
         try {
         const j = await res.clone().json();
-        return j.mensagem || j.title || JSON.stringify(j);
+        // Priorizar 'mensagem' (nosso padrão) e 'detail' (padrão ASP.NET ProblemDetails) sobre 'title' genérico
+        return j.mensagem || j.detail || j.title || JSON.stringify(j);
         } catch {
         return await res.text();
         }
@@ -4509,31 +4583,36 @@ function mostrarBannerPlano(data) {
 
     const banner = document.createElement('div');
     banner.id = 'banner-plano';
-    banner.className = 'fixed top-0 left-0 right-0 z-40 bg-amber-900/90 border-b border-amber-700 backdrop-blur-sm';
+    // Posicionado dentro da área principal (main), não fixo no viewport
+    banner.className = 'bg-amber-900/90 border-b border-amber-700 backdrop-blur-sm';
     banner.innerHTML = `
-        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <div class="flex items-center gap-3">
-                <i class="fa-solid fa-triangle-exclamation text-amber-400 text-xl"></i>
-                <div>
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div class="flex items-center gap-3 min-w-0">
+                <i class="fa-solid fa-triangle-exclamation text-amber-400 text-xl shrink-0"></i>
+                <div class="min-w-0">
                     <p class="font-semibold text-amber-100">Plano não ativo</p>
-                    <p class="text-sm text-amber-300">Você está no plano <strong>Sem Plano</strong> (limite: ${data.limite_pacientes || 3} pacientes). Assine um plano para desbloquear todos os recursos.</p>
+                    <p class="text-sm text-amber-300 truncate">Você está no plano <strong>Sem Plano</strong> (limite: ${data.limite_pacientes ?? 3} pacientes). Assine um plano para desbloquear todos os recursos.</p>
                 </div>
             </div>
             <div class="flex gap-2 shrink-0">
-                <button onclick="navegar('billing')" class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded-xl transition">
+                <button onclick="navegar('billing')" class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded-xl transition whitespace-nowrap">
                     Ver Planos
                 </button>
-                <button onclick="document.getElementById('banner-plano').remove()" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-amber-200 font-semibold rounded-xl transition">
+                <button onclick="document.getElementById('banner-plano').remove()" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-amber-200 font-semibold rounded-xl transition whitespace-nowrap">
                     Dispensar
                 </button>
             </div>
         </div>
     `;
-    document.body.appendChild(banner);
 
-    // Ajustar padding do main para não ficar atrás do banner
+    // Inserir no início do main (área de conteúdo à direita da sidebar)
     const main = document.querySelector('main');
-    if (main) main.style.paddingTop = '80px';
+    if (main) {
+        main.insertBefore(banner, main.firstChild);
+    } else {
+        // Fallback se main não existir
+        document.body.appendChild(banner);
+    }
 }
 
 function atualizarContadorPacientes(limite, atual) {
