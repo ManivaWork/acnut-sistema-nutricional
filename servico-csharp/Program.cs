@@ -3443,10 +3443,15 @@ app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput
 
         // Criar assinatura com status 'sem_plano' (sem customer Asaas ainda)
         using (var cmd = new NpgsqlCommand(@"
-            INSERT INTO assinaturas (empresa_id, plano, status, valor_centavos, ciclo)
-            VALUES (@emp, 'basico', 'sem_plano', 0, 'monthly');", conn, tx))
+            INSERT INTO assinaturas (empresa_id, plano, status, valor_centavos, ciclo, limites)
+            VALUES (@emp, 'basico', 'sem_plano', 0, 'monthly', @limites);", conn, tx))
         {
             cmd.Parameters.AddWithValue("@emp", empresaId);
+            var limitesSemPlano = new PlanoLimites(3, 1, 50, 1);
+            cmd.Parameters.Add(new NpgsqlParameter("limites", NpgsqlTypes.NpgsqlDbType.Jsonb)
+            {
+                Value = JsonSerializer.Serialize(limitesSemPlano)
+            });
             await cmd.ExecuteNonQueryAsync();
         }
 
