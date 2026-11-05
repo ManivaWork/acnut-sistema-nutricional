@@ -7,7 +7,8 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using System.Linq;
 using System.Collections.Generic;
-using Microsoft.AspNetCore.HttpOverrides; // para ForwardedHeadersOptions
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.Logging;
 using ACNutri.Billing;
 using ACNutri.Email;
 
@@ -57,6 +58,13 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddHttpClient();
 builder.Services.Configure<EmailConfig>(builder.Configuration.GetSection("Email"));
 builder.Services.AddHttpClient<IEmailService, EmailService>(c => c.Timeout = TimeSpan.FromSeconds(10));
+
+// HttpClient dedicado para o microserviço Python com timeout de 60s
+builder.Services.AddHttpClient("Python", c =>
+{
+    c.Timeout = TimeSpan.FromSeconds(60);
+});
+
 builder.Services.AddHttpContextAccessor();
 
 // Registrar NpgsqlDataSource para injeção de dependência (usado no BillingModule)
@@ -69,6 +77,16 @@ builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AsaasConfig>>().Value);
 
 var app = builder.Build();
+
+// Log da configuração do Python Service na inicialização
+var pythonBaseUrlLog = builder.Configuration["Python:BaseUrl"] ?? "http://127.0.0.1:5002 (padrão)";
+var loggerFactory = app.Services.GetRequiredService<ILoggerFactory>();
+var startupLogger = loggerFactory.CreateLogger("Startup");
+startupLogger.LogInformation("Python Service BaseUrl: {BaseUrl}", pythonBaseUrlLog);
+if (app.Environment.IsProduction() && (pythonBaseUrlLog.Contains("127.0.0.1") || pythonBaseUrlLog.Contains("localhost")))
+{
+    startupLogger.LogWarning("Python:BaseUrl aponta para localhost/127.0.0.1 em ambiente Production. Configure a URL do serviço Python em produção (ex.: https://seu-servico.onrender.com).");
+}
 
 // Forwarded headers DEVE ser o PRIMEIRO middleware (antes de qualquer leitura de IP)
 app.UseForwardedHeaders(new ForwardedHeadersOptions
@@ -686,9 +704,9 @@ app.MapPost("/api/pacientes/{id}/anonimizar", async (int id, ClaimsPrincipal use
 });
 
 //==================================== AVALIAÇÃO FÍSICA (integra com o microserviço Python)======================================
-app.MapPost("/api/avaliacoes", async (AvaliacaoInput input, IHttpClientFactory clientFactory) =>
+app.MapPost("/api/avaliacoes", async (AvaliacaoInput input, IHttpClientFactory clientFactory, ILogger<Program> logger) =>
 {
-    var httpClient = clientFactory.CreateClient();
+    var httpClient = clientFactory.CreateClient("Python");
     var payloadPython = new
     {
         idade = input.Idade,
@@ -700,10 +718,44 @@ app.MapPost("/api/avaliacoes", async (AvaliacaoInput input, IHttpClientFactory c
     };
 
     var content = new StringContent(JsonSerializer.Serialize(payloadPython), Encoding.UTF8, "application/json");
-    var responsePython = await httpClient.PostAsync($"{pythonBaseUrl}/calcular-plano", content);
+
+    HttpResponseMessage responsePython;
+    try
+    {
+        responsePython = await httpClient.PostAsync($"{pythonBaseUrl}/calcular-plano", content);
+    }
+    catch (HttpRequestException ex)
+    {
+        logger.LogError(ex, "Falha de rede/ligação ao chamar Python Service /calcular-plano");
+        return Results.Json(new { mensagem = "O serviço de cálculos nutricionais está temporariamente indisponível. Tente novamente em alguns instantes." }, statusCode: 503);
+    }
+    catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException || ex.CancellationToken.IsCancellationRequested)
+    {
+        logger.LogError(ex, "Timeout ao chamar Python Service /calcular-plano (60s)");
+        return Results.Json(new { mensagem = "O serviço de cálculos nutricionais está temporariamente indisponível. Tente novamente em alguns instantes." }, statusCode: 503);
+    }
 
     if (!responsePython.IsSuccessStatusCode)
-        return Results.Problem("Erro ao comunicar com o microserviço em Python de cálculos nutricionais.");
+    {
+        var errorBody = await responsePython.Content.ReadAsStringAsync();
+        var logBody = errorBody.Length > 500 ? errorBody[..500] + "..." : errorBody;
+
+        if ((int)responsePython.StatusCode >= 500 || responsePython.StatusCode == System.Net.HttpStatusCode.BadGateway || responsePython.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable || responsePython.StatusCode == System.Net.HttpStatusCode.GatewayTimeout || responsePython.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            logger.LogWarning("Python Service /calcular-plano retornou {StatusCode}: {Body}", responsePython.StatusCode, logBody);
+            return Results.Json(new { mensagem = "O serviço de cálculos nutricionais está temporariamente indisponível. Tente novamente em alguns instantes." }, statusCode: 503);
+        }
+        else if ((int)responsePython.StatusCode >= 400)
+        {
+            logger.LogWarning("Python Service /calcular-plano retornou erro 4xx {StatusCode}: {Body}", responsePython.StatusCode, logBody);
+            return Results.Json(new { mensagem = "Dados inválidos para cálculo nutricional. Verifique os campos informados." }, statusCode: 400);
+        }
+        else
+        {
+            logger.LogWarning("Python Service /calcular-plano retornou {StatusCode}: {Body}", responsePython.StatusCode, logBody);
+            return Results.Json(new { mensagem = "Erro inesperado no serviço de cálculos nutricionais." }, statusCode: 502);
+        }
+    }
 
     var jsonResp = await responsePython.Content.ReadAsStringAsync();
     using var doc = JsonDocument.Parse(jsonResp);
@@ -1278,7 +1330,7 @@ app.MapPost("/api/planos/item", async (ItemInput input) =>
 });
 
 // POST /api/planos/item/calcular - Calcula macros via Python (TACO) e insere item
-app.MapPost("/api/planos/item/calcular", async (ItemCalcularInput input, IHttpClientFactory clientFactory) =>
+app.MapPost("/api/planos/item/calcular", async (ItemCalcularInput input, IHttpClientFactory clientFactory, ILogger<Program> logger) =>
 {
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
@@ -1300,7 +1352,7 @@ app.MapPost("/api/planos/item/calcular", async (ItemCalcularInput input, IHttpCl
     }
 
     // Chama o microserviço Python para calcular
-    var httpClient = clientFactory.CreateClient();
+    var httpClient = clientFactory.CreateClient("Python");
     var payloadPython = new
     {
         alimento_id = input.AlimentoId,
@@ -1317,12 +1369,43 @@ app.MapPost("/api/planos/item/calcular", async (ItemCalcularInput input, IHttpCl
     };
 
     var content = new StringContent(JsonSerializer.Serialize(payloadPython), Encoding.UTF8, "application/json");
-    var responsePython = await httpClient.PostAsync($"{pythonBaseUrl}/calcular-item", content);
+
+    HttpResponseMessage responsePython;
+    try
+    {
+        responsePython = await httpClient.PostAsync($"{pythonBaseUrl}/calcular-item", content);
+    }
+    catch (HttpRequestException ex)
+    {
+        logger.LogError(ex, "Falha de rede/ligação ao chamar Python Service /calcular-item");
+        return Results.Json(new { mensagem = "O serviço de cálculos nutricionais está temporariamente indisponível. Tente novamente em alguns instantes." }, statusCode: 503);
+    }
+    catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException || ex.CancellationToken.IsCancellationRequested)
+    {
+        logger.LogError(ex, "Timeout ao chamar Python Service /calcular-item (60s)");
+        return Results.Json(new { mensagem = "O serviço de cálculos nutricionais está temporariamente indisponível. Tente novamente em alguns instantes." }, statusCode: 503);
+    }
 
     if (!responsePython.IsSuccessStatusCode)
     {
-        var errorContent = await responsePython.Content.ReadAsStringAsync();
-        return Results.Problem($"Erro ao calcular item: {errorContent}");
+        var errorBody = await responsePython.Content.ReadAsStringAsync();
+        var logBody = errorBody.Length > 500 ? errorBody[..500] + "..." : errorBody;
+
+        if ((int)responsePython.StatusCode >= 500 || responsePython.StatusCode == System.Net.HttpStatusCode.BadGateway || responsePython.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable || responsePython.StatusCode == System.Net.HttpStatusCode.GatewayTimeout || responsePython.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            logger.LogWarning("Python Service /calcular-item retornou {StatusCode}: {Body}", responsePython.StatusCode, logBody);
+            return Results.Json(new { mensagem = "O serviço de cálculos nutricionais está temporariamente indisponível. Tente novamente em alguns instantes." }, statusCode: 503);
+        }
+        else if ((int)responsePython.StatusCode >= 400)
+        {
+            logger.LogWarning("Python Service /calcular-item retornou erro 4xx {StatusCode}: {Body}", responsePython.StatusCode, logBody);
+            return Results.Json(new { mensagem = "Dados inválidos para cálculo nutricional. Verifique os campos informados." }, statusCode: 400);
+        }
+        else
+        {
+            logger.LogWarning("Python Service /calcular-item retornou {StatusCode}: {Body}", responsePython.StatusCode, logBody);
+            return Results.Json(new { mensagem = "Erro inesperado no serviço de cálculos nutricionais." }, statusCode: 502);
+        }
     }
 
     var jsonResp = await responsePython.Content.ReadAsStringAsync();
