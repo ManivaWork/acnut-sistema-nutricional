@@ -393,6 +393,10 @@ app.MapGet("/api/pacientes/{id:int}", async (int id, ClaimsPrincipal user) =>
 // 2. CADASTRAR PACIENTE
 app.MapPost("/api/pacientes", async (HttpRequest request, ClaimsPrincipal user, NpgsqlDataSource db, ILogger<Program> logger) =>
 {
+    // Gerar traceId (codigo_erro) para rastreamento de erros
+    var traceId = Guid.NewGuid().ToString("N")[..12].ToUpper();
+    var empresaIdLog = 0;
+
     try
     {
         var data = await JsonSerializer.DeserializeAsync<JsonElement>(request.Body);
@@ -407,6 +411,7 @@ app.MapPost("/api/pacientes", async (HttpRequest request, ClaimsPrincipal user, 
         if (cpf != "" && !Cpf.Valido(cpf)) return Results.BadRequest(new { mensagem = "CPF inválido." });
 
         int empresaId = Auth.Empresa(user);
+        empresaIdLog = empresaId;
 
         // Verificar limite de pacientes conforme plano
         var (podeCriar, maxPacientes, atual) = await PlanoEnforcement.VerificarLimitePacientesAsync(db, empresaId);
@@ -450,13 +455,13 @@ app.MapPost("/api/pacientes", async (HttpRequest request, ClaimsPrincipal user, 
     }
     catch (PostgresException ex) when (ex.SqlState == "23505")
     {
-        logger.LogWarning(ex, "Conflito de unicidade ao cadastrar paciente: empresa={EmpresaId}", Auth.Empresa(user));
-        return Results.Conflict(new { mensagem = "Já existe um paciente com esse e-mail ou CPF nesta empresa.", codigo = "duplicado" });
+        logger.LogWarning(ex, "Conflito de unicidade ao cadastrar paciente: traceId={TraceId} empresa={EmpresaId}", traceId, empresaIdLog);
+        return Results.Conflict(new { mensagem = "Já existe um paciente com esse e-mail ou CPF nesta empresa.", codigo = "duplicado", codigo_erro = traceId });
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "Erro inesperado ao cadastrar paciente: empresa={EmpresaId}", Auth.Empresa(user));
-        return Results.Problem("Erro interno ao cadastrar paciente.");
+        logger.LogError(ex, "Erro inesperado ao cadastrar paciente: traceId={TraceId} empresa={EmpresaId}", traceId, empresaIdLog);
+        return Results.Json(new { title = "Erro interno ao cadastrar paciente.", detail = "Ocorreu um erro inesperado. Contate o suporte informando o código: " + traceId, codigo_erro = traceId }, statusCode: 500);
     }
 });// 3. ATUALIZAR PACIENTE
 app.MapPut("/api/pacientes/{id}", async (int id, HttpRequest request, ClaimsPrincipal user) =>
