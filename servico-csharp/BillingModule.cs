@@ -117,7 +117,7 @@ public static class BillingEndpoints
             {
                 int emp = Auth.Empresa(user);
                 await using var cmd = db.CreateCommand(@"
-                    SELECT a.plano, a.status, a.valor_centavos, a.ciclo
+                    SELECT a.plano, a.status, a.valor_centavos, a.ciclo, a.limites
                     FROM assinaturas a
                     WHERE a.empresa_id = @emp
                     ORDER BY CASE a.status WHEN 'ativa' THEN 1 WHEN 'trial' THEN 2 WHEN 'sem_plano' THEN 3 ELSE 4 END
@@ -144,8 +144,12 @@ public static class BillingEndpoints
                 var status = rd.GetString(1);
                 var valorCentavos = rd.GetInt32(2);
                 var ciclo = rd.GetString(3);
+                var limitesJson = rd.IsDBNull(4) ? null : rd.GetString(4);
 
-                var limites = Planos.Catalogo.GetValueOrDefault(plano).Limites;
+                // Se tem coluna limites preenchida, usa ela; senão cai no catálogo do plano
+                var limites = string.IsNullOrEmpty(limitesJson)
+                    ? Planos.Catalogo.GetValueOrDefault(plano).Limites
+                    : JsonSerializer.Deserialize<PlanoLimites>(limitesJson) ?? Planos.Catalogo.GetValueOrDefault(plano).Limites;
 
                 return Results.Ok(new
                 {
