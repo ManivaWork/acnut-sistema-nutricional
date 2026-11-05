@@ -610,7 +610,7 @@ async function gerarAvaliacao(e) {
         <div class="bg-slate-900 p-3 rounded border border-slate-700"><span class="text-xs text-slate-400">Proteínas / Carb / Gord</span><p class="text-sm font-semibold text-emerald-400">${calc.macronutrientes.proteinas_g}g / ${calc.macronutrientes.carboidratos_g}g / ${calc.macronutrientes.gorduras_g}g</p></div>
         `;
         } else {
-        const erroTexto = await res.text();
+        const erroTexto = await lerErro(res);
         console.error("Detalhe do erro do servidor:", erroTexto);
         mostrarToast("Erro ao processar avaliação: " + erroTexto, "erro");
         }
