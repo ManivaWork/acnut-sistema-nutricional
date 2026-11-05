@@ -11,7 +11,18 @@ using Npgsql;
 namespace ACNutri.Billing;
 
 public record AsaasConfig(string BaseUrl, string ApiKey, string WebhookSecret);
-public record PlanoLimites(int MaxPacientes, int MaxProfissionais, int StorageMB, int MaxVersoesPlano);
+public record PlanoLimites(int MaxPacientes, int MaxProfissionais, int StorageMB, int MaxVersoesPlano)
+{
+    // Desserializa JSON do banco (snake_case) para PascalCase
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+    };
+
+    public static PlanoLimites FromJson(string json)
+        => JsonSerializer.Deserialize<PlanoLimites>(json, JsonOpts)
+           ?? new PlanoLimites(0, 0, 0, 0);
+}
 
 public static class Planos
 {
@@ -149,7 +160,7 @@ public static class BillingEndpoints
                 // Se tem coluna limites preenchida, usa ela; senão cai no catálogo do plano
                 var limites = string.IsNullOrEmpty(limitesJson)
                     ? Planos.Catalogo.GetValueOrDefault(plano).Limites
-                    : JsonSerializer.Deserialize<PlanoLimites>(limitesJson) ?? Planos.Catalogo.GetValueOrDefault(plano).Limites;
+                    : PlanoLimites.FromJson(limitesJson);
 
                 return Results.Ok(new
                 {
@@ -201,7 +212,7 @@ grupo.MapGet("/assinatura", async (ClaimsPrincipal user, NpgsqlDataSource db) =>
         fim_vigencia = rd.IsDBNull(7) ? (DateTime?)null : rd.GetDateTime(7),
         asaas_customer_id = rd.IsDBNull(8) ? null : rd.GetString(8),
         asaas_subscription_id = rd.IsDBNull(9) ? null : rd.GetString(9),
-        limites = JsonSerializer.Deserialize<PlanoLimites>(rd.GetString(10))
+        limites = PlanoLimites.FromJson(rd.GetString(10))
     });
 });
 
@@ -403,7 +414,7 @@ grupo.MapGet("/limites", async (ClaimsPrincipal user, NpgsqlDataSource db) =>
         tem_assinatura = true,
         plano = rd.GetString(1),
         status = rd.GetString(2),
-        limites = JsonSerializer.Deserialize<PlanoLimites>(rd.GetString(8))
+        limites = PlanoLimites.FromJson(rd.GetString(8))
     });
 });
 

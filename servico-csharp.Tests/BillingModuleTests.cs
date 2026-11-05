@@ -53,6 +53,63 @@ public class BillingModuleTests
         act.Should().Throw<KeyNotFoundException>();
     }
 
+    [Fact]
+    public void PlanoLimites_FromJson_DeveDesserializarSnakeCaseCorretamente()
+    {
+        // JSON como vem do banco (snake_case) - sem_plano limits
+        var jsonSnakeCase = "{\"max_pacientes\": 3, \"max_profissionais\": 1, \"storage_mb\": 50, \"max_versoes_plano\": 1}";
+
+        var limites = ACNutri.Billing.PlanoLimites.FromJson(jsonSnakeCase);
+
+        limites.Should().NotBeNull();
+        limites.MaxPacientes.Should().Be(3);
+        limites.MaxProfissionais.Should().Be(1);
+        limites.StorageMB.Should().Be(50);
+        limites.MaxVersoesPlano.Should().Be(1);
+    }
+
+    [Fact]
+    public void PlanoLimites_FromJson_DeveFuncionarComLimitesPlanoBasico()
+    {
+        // JSON com limites do plano básico (snake_case)
+        var jsonSnakeCase = "{\"max_pacientes\": 50, \"max_profissionais\": 2, \"storage_mb\": 500, \"max_versoes_plano\": 5}";
+
+        var limites = ACNutri.Billing.PlanoLimites.FromJson(jsonSnakeCase);
+
+        limites.MaxPacientes.Should().Be(50);
+        limites.MaxProfissionais.Should().Be(2);
+        limites.StorageMB.Should().Be(500);
+        limites.MaxVersoesPlano.Should().Be(5);
+    }
+
+    [Fact]
+    public void PlanoLimites_FromJson_DeveFuncionarComLimitesPlanoProfissional()
+    {
+        // JSON com limites do plano profissional (snake_case)
+        var jsonSnakeCase = "{\"max_pacientes\": 200, \"max_profissionais\": 10, \"storage_mb\": 2000, \"max_versoes_plano\": 20}";
+
+        var limites = ACNutri.Billing.PlanoLimites.FromJson(jsonSnakeCase);
+
+        limites.MaxPacientes.Should().Be(200);
+        limites.MaxProfissionais.Should().Be(10);
+        limites.StorageMB.Should().Be(2000);
+        limites.MaxVersoesPlano.Should().Be(20);
+    }
+
+    [Fact]
+    public void PlanoLimites_FromJson_DeveFuncionarComLimitesPlanoEnterprise()
+    {
+        // JSON com limites do plano enterprise (snake_case)
+        var jsonSnakeCase = "{\"max_pacientes\": 1000, \"max_profissionais\": 50, \"storage_mb\": 10000, \"max_versoes_plano\": 100}";
+
+        var limites = ACNutri.Billing.PlanoLimites.FromJson(jsonSnakeCase);
+
+        limites.MaxPacientes.Should().Be(1000);
+        limites.MaxProfissionais.Should().Be(50);
+        limites.StorageMB.Should().Be(10000);
+        limites.MaxVersoesPlano.Should().Be(100);
+    }
+
     private record PlanoInfo
     {
         public string Nome { get; init; } = "";

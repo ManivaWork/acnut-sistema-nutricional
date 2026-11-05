@@ -5289,7 +5289,7 @@ static class PlanoEnforcement
         // Tem assinatura ativa - desserializar limites
         var limites = string.IsNullOrEmpty(limitesJson)
             ? Planos.Catalogo.GetValueOrDefault(plano).Limites
-            : JsonSerializer.Deserialize<PlanoLimites>(limitesJson) ?? Planos.Catalogo["basico"].Limites;
+            : ACNutri.Billing.PlanoLimites.FromJson(limitesJson);
 
         // Verificar ação específica
         if (acaoRequerida == "pdf_export" && status != "ativa")
