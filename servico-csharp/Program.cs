@@ -1157,8 +1157,8 @@ app.MapPost("/api/anamnese", async (AnamneseInput input, ClaimsPrincipal user) =
             return Results.NotFound(new { mensagem = "Paciente não encontrado." });
     }
 
-    // Perfil: nutricionista/admin (equipe) podem gravar; paciente (próprio) também por enquanto
-    if (tipo == "equipe" && !(perfil == "nutricionista" || perfil == "admin"))
+    // Perfil: nutricionista/admin/profissional (equipe) podem gravar; paciente (próprio) também por enquanto
+    if (tipo == "equipe" && !(perfil == "nutricionista" || perfil == "admin" || perfil == "profissional"))
         return Results.Forbid();
 
     using var cmd = new NpgsqlCommand(@"
@@ -1181,7 +1181,8 @@ app.MapPost("/api/anamnese", async (AnamneseInput input, ClaimsPrincipal user) =
     cmd.Parameters.AddWithValue("intolerancias", input.Intolerancias ?? "");
     cmd.Parameters.AddWithValue("rotina", input.RotinaDiaria ?? "");
     cmd.Parameters.AddWithValue("familiar", input.HistoricoFamiliar ?? "");
-    cmd.Parameters.AddWithValue("dados_extendidos", input.DadosExtendidos != null ? System.Text.Json.JsonSerializer.Serialize(input.DadosExtendidos) : "{}");
+    var dadosExtendidosJson = input.DadosExtendidos != null ? System.Text.Json.JsonSerializer.Serialize(input.DadosExtendidos) : "{}";
+    cmd.Parameters.Add(new NpgsqlParameter("dados_extendidos", NpgsqlTypes.NpgsqlDbType.Jsonb) { Value = dadosExtendidosJson });
 
     var id = await cmd.ExecuteScalarAsync();
     return Results.Ok(new { id, mensagem = "Anamnese salva com sucesso!" });
@@ -1210,8 +1211,8 @@ app.MapGet("/api/anamnese/{pacienteId}", async (int pacienteId, ClaimsPrincipal 
             return Results.NotFound(new { mensagem = "Paciente não encontrado." });
     }
 
-    // Perfil: nutricionista/admin (equipe) podem ler; paciente (próprio) também
-    if (tipo == "equipe" && !(perfil == "nutricionista" || perfil == "admin"))
+    // Perfil: nutricionista/admin/profissional (equipe) podem ler; paciente (próprio) também
+    if (tipo == "equipe" && !(perfil == "nutricionista" || perfil == "admin" || perfil == "profissional"))
         return Results.Forbid();
 
     using var cmd = new NpgsqlCommand("SELECT historico_medico, alergias, intolerancias, rotina_diaria, historico_familiar, dados_extendidos FROM anamneses WHERE paciente_id = @id;", conn);
@@ -5457,6 +5458,27 @@ static class Seed
         using var conn = new NpgsqlConnection(connString);
         await conn.OpenAsync();
 
+        // SEMPRE garante schema base e migrações (idempotente)
+        foreach (var sql in new[]
+        {
+            "INSERT INTO perfis (chave, nome) VALUES ('super_admin','Super Administrador') ON CONFLICT DO NOTHING",
+            "INSERT INTO perfis (chave, nome) VALUES ('admin','Administrador') ON CONFLICT DO NOTHING",
+            "INSERT INTO perfis (chave, nome) VALUES ('profissional','Profissional') ON CONFLICT DO NOTHING",
+            "INSERT INTO perfis (chave, nome) VALUES ('atendente','Atendente') ON CONFLICT DO NOTHING",
+            "INSERT INTO modulos (chave, nome) VALUES ('nutricao','Nutrição') ON CONFLICT DO NOTHING",
+            "INSERT INTO empresas (nome) SELECT 'Empresa Principal' WHERE NOT EXISTS (SELECT 1 FROM empresas)",
+            "INSERT INTO empresa_modulos (empresa_id, modulo) SELECT MIN(id), 'nutricao' FROM empresas ON CONFLICT DO NOTHING",
+            // Migração: adicionar coluna dados_extendidos na tabela anamneses (se não existir)
+            @"ALTER TABLE anamneses ADD COLUMN IF NOT EXISTS dados_extendidos JSONB DEFAULT '{}'::jsonb;",
+            // Índice para JSONB
+            @"CREATE INDEX IF NOT EXISTS idx_anamneses_dados_extendidos ON anamneses USING GIN (dados_extendidos);"
+        })
+        {
+            using var c = new NpgsqlCommand(sql, conn);
+            await c.ExecuteNonQueryAsync();
+        }
+
+        // Só cria super-admin se não existir nenhum usuário
         using (var c = new NpgsqlCommand("SELECT COUNT(*) FROM usuarios", conn))
             if (Convert.ToInt32(await c.ExecuteScalarAsync()) > 0) return;
 
@@ -5467,22 +5489,6 @@ static class Seed
         {
             Console.WriteLine("!!! Nenhum usuário cadastrado. Defina Seed:SuperAdminEmail e Seed:SuperAdminSenha (mín. 8) nos user-secrets.");
             return;
-        }
-
-        // Garante tabelas base
-        foreach (var sql in new[]
-        {
-            "INSERT INTO perfis (chave, nome) VALUES ('super_admin','Super Administrador') ON CONFLICT DO NOTHING",
-            "INSERT INTO perfis (chave, nome) VALUES ('admin','Administrador') ON CONFLICT DO NOTHING",
-            "INSERT INTO perfis (chave, nome) VALUES ('profissional','Profissional') ON CONFLICT DO NOTHING",
-            "INSERT INTO perfis (chave, nome) VALUES ('atendente','Atendente') ON CONFLICT DO NOTHING",
-            "INSERT INTO modulos (chave, nome) VALUES ('nutricao','Nutrição') ON CONFLICT DO NOTHING",
-            "INSERT INTO empresas (nome) SELECT 'Empresa Principal' WHERE NOT EXISTS (SELECT 1 FROM empresas)",
-            "INSERT INTO empresa_modulos (empresa_id, modulo) SELECT MIN(id), 'nutricao' FROM empresas ON CONFLICT DO NOTHING"
-        })
-        {
-            using var c = new NpgsqlCommand(sql, conn);
-            await c.ExecuteNonQueryAsync();
         }
 
         // Cria super-admin (empresa_id = 1, mas perfil super_admin tem acesso total via middleware)
