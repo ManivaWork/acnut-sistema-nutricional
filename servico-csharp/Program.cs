@@ -232,16 +232,19 @@ app.Use(async (ctx, next) =>
     }
     var u = ctx.User;
         if (u.Identity?.IsAuthenticated != true) { await Negar(401, "Sessão expirada. Entre novamente."); return; }
-    // Token de paciente: GET em /api/paciente/* + POST/DELETE em /api/paciente/exames + POST/GET em /api/paciente/consentimentos
+    // Token de paciente: GET em /api/paciente/* + POST/DELETE em /api/paciente/exames + POST/GET em /api/paciente/consentimentos + POST/GET em /api/anamnese
     if (u.FindFirst("tipo")?.Value == "paciente")
     {
-        if (!path.StartsWith("/api/paciente/"))
+        bool isPacientePath = path.StartsWith("/api/paciente/") || path.StartsWith("/api/anamnese");
+        if (!isPacientePath)
         { await Negar(403, "Acesso não permitido."); return; }
         if (!HttpMethods.IsGet(m))
         {
             bool permitido = (path == "/api/paciente/exames" && HttpMethods.IsPost(m))
                           || (path.StartsWith("/api/paciente/exames/") && HttpMethods.IsDelete(m))
-                          || (path == "/api/paciente/consentimentos" && (HttpMethods.IsPost(m) || HttpMethods.IsGet(m)));
+                          || (path == "/api/paciente/consentimentos" && (HttpMethods.IsPost(m) || HttpMethods.IsGet(m)))
+                          || (path == "/api/anamnese" && HttpMethods.IsPost(m))
+                          || (path.StartsWith("/api/anamnese/") && HttpMethods.IsGet(m));
             if (!permitido) { await Negar(403, "Acesso não permitido."); return; }
         }
         await next(); return;
@@ -1131,13 +1134,36 @@ app.MapGet("/api/historico-valores/{pacienteId}", async (int pacienteId, ClaimsP
 });
 
 // ========================================================== ANAMNESE ===========================================================
-app.MapPost("/api/anamnese", async (AnamneseInput input) =>
+// POST /api/anamnese - Salva/atualiza anamnese (nutricionista/admin da empresa, ou paciente próprio)
+app.MapPost("/api/anamnese", async (AnamneseInput input, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
+    string? tipo = user.FindFirst("tipo")?.Value;
+    int? pid = user.FindFirst("pid")?.Value != null ? int.Parse(user.FindFirst("pid")!.Value) : null;
+    string? perfil = user.FindFirst("perfil")?.Value;
+
+    // Validar ownership: paciente só pode gravar a própria anamnese
+    if (tipo == "paciente" && pid.HasValue && pid.Value != input.PacienteId)
+        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+
+    // Validar se paciente pertence à empresa do token
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
+    using (var cmdVal = new NpgsqlCommand("SELECT 1 FROM pacientes WHERE id = @id AND empresa_id = @emp", conn))
+    {
+        cmdVal.Parameters.AddWithValue("id", input.PacienteId);
+        cmdVal.Parameters.AddWithValue("emp", emp);
+        if (await cmdVal.ExecuteScalarAsync() == null)
+            return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+    }
+
+    // Perfil: nutricionista/admin (equipe) podem gravar; paciente (próprio) também por enquanto
+    if (tipo == "equipe" && !(perfil == "nutricionista" || perfil == "admin"))
+        return Results.Forbid();
+
     using var cmd = new NpgsqlCommand(@"
         INSERT INTO anamneses (paciente_id, empresa_id, historico_medico, alergias, intolerancias, rotina_diaria, historico_familiar, dados_extendidos)
-        VALUES (@paciente_id, (SELECT empresa_id FROM pacientes WHERE id = @paciente_id), @historico, @alergias, @intolerancias, @rotina, @familiar, @dados_extendidos)
+        VALUES (@paciente_id, @emp, @historico, @alergias, @intolerancias, @rotina, @familiar, @dados_extendidos)
         ON CONFLICT (paciente_id) DO UPDATE SET
             historico_medico = EXCLUDED.historico_medico,
             alergias = EXCLUDED.alergias,
@@ -1149,6 +1175,7 @@ app.MapPost("/api/anamnese", async (AnamneseInput input) =>
         RETURNING id;", conn);
 
     cmd.Parameters.AddWithValue("paciente_id", input.PacienteId);
+    cmd.Parameters.AddWithValue("emp", emp);
     cmd.Parameters.AddWithValue("historico", input.HistoricoMedico ?? "");
     cmd.Parameters.AddWithValue("alergias", input.Alergias ?? "");
     cmd.Parameters.AddWithValue("intolerancias", input.Intolerancias ?? "");
@@ -1158,12 +1185,35 @@ app.MapPost("/api/anamnese", async (AnamneseInput input) =>
 
     var id = await cmd.ExecuteScalarAsync();
     return Results.Ok(new { id, mensagem = "Anamnese salva com sucesso!" });
-});
-// Se não houver anamnese, devolve campos vazios (200) em vez de 404
-app.MapGet("/api/anamnese/{pacienteId}", async (int pacienteId) =>
+}).RequireAuthorization();
+
+// GET /api/anamnese/{pacienteId} - Lê anamnese (nutricionista/admin da empresa, ou paciente próprio)
+app.MapGet("/api/anamnese/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
+    string? tipo = user.FindFirst("tipo")?.Value;
+    int? pid = user.FindFirst("pid")?.Value != null ? int.Parse(user.FindFirst("pid")!.Value) : null;
+    string? perfil = user.FindFirst("perfil")?.Value;
+
+    // Validar ownership: paciente só pode ler a própria anamnese
+    if (tipo == "paciente" && pid.HasValue && pid.Value != pacienteId)
+        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+
+    // Validar se paciente pertence à empresa do token
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
+    using (var cmdVal = new NpgsqlCommand("SELECT 1 FROM pacientes WHERE id = @id AND empresa_id = @emp", conn))
+    {
+        cmdVal.Parameters.AddWithValue("id", pacienteId);
+        cmdVal.Parameters.AddWithValue("emp", emp);
+        if (await cmdVal.ExecuteScalarAsync() == null)
+            return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+    }
+
+    // Perfil: nutricionista/admin (equipe) podem ler; paciente (próprio) também
+    if (tipo == "equipe" && !(perfil == "nutricionista" || perfil == "admin"))
+        return Results.Forbid();
+
     using var cmd = new NpgsqlCommand("SELECT historico_medico, alergias, intolerancias, rotina_diaria, historico_familiar, dados_extendidos FROM anamneses WHERE paciente_id = @id;", conn);
     cmd.Parameters.AddWithValue("id", pacienteId);
     using var reader = await cmd.ExecuteReaderAsync();
@@ -1191,7 +1241,7 @@ app.MapGet("/api/anamnese/{pacienteId}", async (int pacienteId) =>
         historico_familiar = "",
         dados_extendidos = "{}"
     });
-});
+}).RequireAuthorization();
 
 // =============================================== PLANO ALIMENTAR: REFEIÇÕES =====================================================
 app.MapPost("/api/planos/refeicao", async (RefeicaoInput input) =>
