@@ -1082,4 +1082,101 @@ public class IsolamentoMultiTenantTests : IClassFixture<WebApplicationFactory<Pr
             await LimparDadosTesteAsync(empresaId);
         }
     }
+
+    // ============================================
+    // 11. LIMITE DE PACIENTES - Super Admin Bypass
+    // ============================================
+    [Fact]
+    public async Task POST_Pacientes_SuperAdmin_SemprePermiteMesmoSemLimite()
+    {
+        var testName = nameof(POST_Pacientes_SuperAdmin_SemprePermiteMesmoSemLimite);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        try
+        {
+            // Super Admin - usa perfil super_admin
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "super_admin", modulos: new() { { "nutricao", "total" } });
+            var client = CriarCliente(token);
+
+            // Criar 10 pacientes (muito além do limite 5 do sem_plano)
+            for (int i = 1; i <= 10; i++)
+            {
+                var payload = new
+                {
+                    nome = $"Paciente {i}",
+                    email = $"paciente_{i}_{testName}@teste.com",
+                    telefone = "",
+                    data_nascimento = "1990-01-01",
+                    sexo = "M",
+                    status = "ativo"
+                };
+
+                var response = await client.PostAsJsonAsync("/api/pacientes", payload);
+
+                // Super Admin SEMPRE deve poder criar
+                response.StatusCode.Should().Be(HttpStatusCode.Created, $"Falha ao criar paciente {i}: {await response.Content.ReadAsStringAsync()}");
+            }
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    // ============================================
+    // 12. LIMITE DE PACIENTES - bypass_limites flag
+    // ============================================
+    [Fact]
+    public async Task POST_Pacientes_BypassLimitesTrue_SemprePermite()
+    {
+        var testName = nameof(POST_Pacientes_BypassLimitesTrue_SemprePermite);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        try
+        {
+            // Ativar bypass_limites para esta empresa via UPDATE direto no banco
+            // Usa plano 'basico' porque o check constraint não permite 'sem_plano'
+            var connString = GetConnectionString();
+            await using (var conn = new NpgsqlConnection(connString))
+            {
+                await conn.OpenAsync();
+                await using var cmd = new NpgsqlCommand(@"
+                    INSERT INTO assinaturas (empresa_id, plano, status, valor_centavos, ciclo, limites, bypass_limites)
+                    VALUES (@emp, 'basico', 'ativa', 2790, 'monthly', @limites, true)
+                    ON CONFLICT (empresa_id) DO UPDATE SET bypass_limites = true, atualizado_em = CURRENT_TIMESTAMP;", conn);
+                cmd.Parameters.AddWithValue("emp", empresaId);
+                var limitesBasico = new ACNutri.Billing.PlanoLimites(50, 2, 500, 5);
+                cmd.Parameters.Add(new NpgsqlParameter("limites", NpgsqlTypes.NpgsqlDbType.Jsonb)
+                {
+                    Value = limitesBasico.ToJson()
+                });
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            // Usuário comum (não Super Admin) - perfil admin
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "admin", modulos: new() { { "nutricao", "total" } });
+            var client = CriarCliente(token);
+
+            // Criar 100 pacientes (muito além do limite 50 do basico)
+            for (int i = 1; i <= 100; i++)
+            {
+                var payload = new
+                {
+                    nome = $"Paciente {i}",
+                    email = $"paciente_{i}_{testName}@teste.com",
+                    telefone = "",
+                    data_nascimento = "1990-01-01",
+                    sexo = "M",
+                    status = "ativo"
+                };
+
+                var response = await client.PostAsJsonAsync("/api/pacientes", payload);
+
+                // Com bypass_limites = true, SEMPRE deve poder criar
+                response.StatusCode.Should().Be(HttpStatusCode.Created, $"Falha ao criar paciente {i}: {await response.Content.ReadAsStringAsync()}");
+            }
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
 }

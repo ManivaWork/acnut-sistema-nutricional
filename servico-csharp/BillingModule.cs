@@ -528,7 +528,64 @@ grupo.MapGet("/limites", async (ClaimsPrincipal user, NpgsqlDataSource db) =>
             }
             return Results.Ok(lista);
         });
+
+        // ---- POST: toggle bypass_limites (apenas super_admin) ----
+        // Permite ligar/desligar acesso ilimitado para uma empresa específica
+        grupo.MapPost("/bypass-limites", async (BypassLimitesInput input, ClaimsPrincipal user, NpgsqlDataSource db) =>
+        {
+            var perfil = user.FindFirst("perfil")?.Value;
+            if (perfil != "super_admin")
+                return Results.Forbid();
+
+            // Verifica se a empresa existe
+            await using var check = db.CreateCommand("SELECT id FROM empresas WHERE id = @emp");
+            check.Parameters.AddWithValue("emp", input.EmpresaId);
+            if (await check.ExecuteScalarAsync() == null)
+                return Results.NotFound(new { mensagem = "Empresa não encontrada." });
+
+            // Atualiza ou cria assinatura com bypass_limites
+            await using var conn = db.CreateConnection();
+            await conn.OpenAsync();
+            await using var tx = await conn.BeginTransactionAsync();
+            try
+            {
+                await using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText = @"
+                    INSERT INTO assinaturas (empresa_id, plano, status, valor_centavos, ciclo, limites, bypass_limites)
+                    VALUES (@emp, 'sem_plano', 'sem_plano', 0, 'monthly', @limites, @bypass)
+                    ON CONFLICT (empresa_id) DO UPDATE SET
+                        bypass_limites = EXCLUDED.bypass_limites,
+                        atualizado_em = CURRENT_TIMESTAMP";
+                cmd.Parameters.AddWithValue("emp", input.EmpresaId);
+                var limitesSemPlano = Planos.ObterLimites("sem_plano");
+                cmd.Parameters.Add(new NpgsqlParameter("limites", NpgsqlTypes.NpgsqlDbType.Jsonb)
+                {
+                    Value = limitesSemPlano.ToJson()
+                });
+                cmd.Parameters.AddWithValue("bypass", input.BypassLimites);
+                await cmd.ExecuteNonQueryAsync();
+                await tx.CommitAsync();
+            }
+            catch
+            {
+                await tx.RollbackAsync();
+                throw;
+            }
+
+            return Results.Ok(new
+            {
+                mensagem = input.BypassLimites
+                    ? "Bypass de limites ATIVADO para a empresa."
+                    : "Bypass de limites DESATIVADO para a empresa.",
+                empresa_id = input.EmpresaId,
+                bypass_limites = input.BypassLimites
+            });
+        });
     }
+
+    // Input record para o endpoint de bypass
+    public record BypassLimitesInput(int EmpresaId, bool BypassLimites);
 
     private static async Task ProcessarEventoAsaas(NpgsqlDataSource db, string eventType, JsonElement evt)
     {

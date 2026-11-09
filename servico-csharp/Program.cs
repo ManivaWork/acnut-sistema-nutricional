@@ -434,8 +434,8 @@ app.MapPost("/api/pacientes", async (HttpRequest request, ClaimsPrincipal user, 
         int empresaId = Auth.Empresa(user);
         empresaIdLog = empresaId;
 
-        // Verificar limite de pacientes conforme plano
-        var (podeCriar, maxPacientes, atual) = await PlanoEnforcement.VerificarLimitePacientesAsync(db, empresaId);
+        // Verificar limite de pacientes conforme plano (com bypass para Super Admin)
+        var (podeCriar, maxPacientes, atual) = await PlanoEnforcement.VerificarLimitePacientesAsync(db, empresaId, user);
         if (!podeCriar)
         {
             return Results.Json(new
@@ -5471,6 +5471,7 @@ static class Auth
     public static int Empresa(ClaimsPrincipal u) => int.Parse(u.FindFirst("empresa")!.Value);
     public static int UsuarioId(ClaimsPrincipal u) => int.Parse(u.FindFirst("uid")!.Value);
     public static string? Nome(ClaimsPrincipal u) => u.FindFirst("nome")?.Value;
+    public static bool EhSuperAdmin(ClaimsPrincipal u) => u.FindFirst("perfil")?.Value == "super_admin";
 
     public static string Gerar(string key, int uid, int empresa, string perfil, Dictionary<string, string> modulos)
     {
@@ -5505,12 +5506,12 @@ static class PlanoEnforcement
     // Verifica se a empresa tem assinatura ativa e retorna os limites
     // Retorna null se não tem assinatura ou está cancelada/past_due
     // Para "sem_plano", retorna limites do catálogo (max 5 pacientes)
-    public static async Task<(bool temAcesso, PlanoLimites limites, string? erro)> VerificarAcessoAsync(
+    public static async Task<(bool temAcesso, PlanoLimites limites, bool bypassLimites, string? erro)> VerificarAcessoAsync(
         NpgsqlDataSource db, int empresaId, string acaoRequerida)
     {
-        // Buscar assinatura ativa
+        // Buscar assinatura ativa (inclui bypass_limites)
         await using var cmd = db.CreateCommand(@"
-            SELECT status, plano, limites
+            SELECT status, plano, limites, COALESCE(bypass_limites, false)
             FROM assinaturas
             WHERE empresa_id = @emp
             ORDER BY id DESC
@@ -5522,18 +5523,19 @@ static class PlanoEnforcement
         {
             // Sem assinatura = sem_plano (plano gratuito com limites)
             var semPlanoLimites = Planos.ObterLimites("sem_plano");
-            return (true, semPlanoLimites, null);
+            return (true, semPlanoLimites, false, null);
         }
 
         var status = rd.GetString(0);
         var plano = rd.GetString(1);
         var limitesJson = rd.IsDBNull(2) ? null : rd.GetString(2);
+        var bypassLimites = rd.GetBoolean(3);
 
         // Se status é cancelada, past_due, inativa -> restrições (sem_plano é plano válido com limites)
         if (status == "cancelada" || status == "past_due" || status == "inativa")
         {
             var semPlanoLimites = Planos.ObterLimites("sem_plano");
-            return (false, semPlanoLimites, "plano_necessario");
+            return (false, semPlanoLimites, false, "plano_necessario");
         }
 
         // Tem assinatura ativa - desserializar limites
@@ -5544,25 +5546,48 @@ static class PlanoEnforcement
         // Verificar ação específica
         if (acaoRequerida == "pdf_export" && status != "ativa")
         {
-            return (false, limites, "plano_necessario");
+            return (false, limites, bypassLimites, "plano_necessario");
         }
 
-        return (true, limites, null);
+        return (true, limites, bypassLimites, null);
     }
 
     // Verifica limite de pacientes para a empresa
+    // Super Admin sempre pode criar (bypass total)
+    // Se assinatura tem bypass_limites = true, também permite (ilimitado)
     public static async Task<(bool podeCriar, int maxPacientes, int atual)> VerificarLimitePacientesAsync(
-        NpgsqlDataSource db, int empresaId)
+        NpgsqlDataSource db, int empresaId, ClaimsPrincipal? user = null)
     {
-        var (temAcesso, limites, _) = await VerificarAcessoAsync(db, empresaId, "pacientes");
+        // Super Admin bypass total
+        if (user != null && Auth.EhSuperAdmin(user))
+        {
+            // Contar pacientes atuais apenas para informação
+            await using var countCmd = db.CreateCommand(
+                "SELECT COUNT(*) FROM pacientes WHERE empresa_id = @emp AND COALESCE(status, 'ativo') = 'ativo';");
+            countCmd.Parameters.AddWithValue("emp", empresaId);
+            var atual = Convert.ToInt32(await countCmd.ExecuteScalarAsync());
+            return (true, int.MaxValue, atual);
+        }
+
+        var (temAcesso, limites, bypassLimites, _) = await VerificarAcessoAsync(db, empresaId, "pacientes");
         if (!temAcesso) return (false, limites.MaxPacientes, 0);
+
+        // Se tem bypass_limites na assinatura, permite ilimitado
+        if (bypassLimites)
+        {
+            await using var countCmd = db.CreateCommand(
+                "SELECT COUNT(*) FROM pacientes WHERE empresa_id = @emp AND COALESCE(status, 'ativo') = 'ativo';");
+            countCmd.Parameters.AddWithValue("emp", empresaId);
+            var atual = Convert.ToInt32(await countCmd.ExecuteScalarAsync());
+            return (true, int.MaxValue, atual);
+        }
 
         await using var cmd = db.CreateCommand(
             "SELECT COUNT(*) FROM pacientes WHERE empresa_id = @emp AND COALESCE(status, 'ativo') = 'ativo';");
         cmd.Parameters.AddWithValue("emp", empresaId);
-        var atual = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+        var atualNormal = Convert.ToInt32(await cmd.ExecuteScalarAsync());
 
-        return (atual < limites.MaxPacientes, limites.MaxPacientes, atual);
+        return (atualNormal < limites.MaxPacientes, limites.MaxPacientes, atualNormal);
     }
 }
 
@@ -5587,7 +5612,9 @@ static class Seed
             // Migração: adicionar coluna dados_extendidos na tabela anamneses (se não existir)
             @"ALTER TABLE anamneses ADD COLUMN IF NOT EXISTS dados_extendidos JSONB DEFAULT '{}'::jsonb;",
             // Índice para JSONB
-            @"CREATE INDEX IF NOT EXISTS idx_anamneses_dados_extendidos ON anamneses USING GIN (dados_extendidos);"
+            @"CREATE INDEX IF NOT EXISTS idx_anamneses_dados_extendidos ON anamneses USING GIN (dados_extendidos);",
+            // Migração: adicionar coluna bypass_limites na tabela assinaturas (se não existir)
+            @"ALTER TABLE assinaturas ADD COLUMN IF NOT EXISTS bypass_limites boolean NOT NULL DEFAULT false;"
         })
         {
             using var c = new NpgsqlCommand(sql, conn);
