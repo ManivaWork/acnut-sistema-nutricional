@@ -180,8 +180,8 @@ public class BillingModuleTests
     public void PlanoLimites_SemPlano_UpgradeParaBasico_DeveTerLimitesDoCatalogo()
     {
         // Simula upgrade sem_plano -> basico: limites devem vir do catálogo
-        var limitesSemPlano = ACNutri.Billing.Planos.Catalogo["sem_plano"].Limites;
-        var limitesBasico = ACNutri.Billing.Planos.Catalogo["basico"].Limites;
+        var limitesSemPlano = ACNutri.Billing.Planos.Limites["sem_plano"];
+        var limitesBasico = ACNutri.Billing.Planos.Limites["basico"];
 
         limitesSemPlano.MaxPacientes.Should().Be(5);
         limitesBasico.MaxPacientes.Should().Be(50);
@@ -214,9 +214,9 @@ public class PlanoEnforcementTests
     public void SemPlano_LimitePacientes_DeveSer5()
     {
         // Testa que o catálogo tem sem_plano com limite 5
-        var catalogo = ACNutri.Billing.Planos.Catalogo;
+        var catalogo = ACNutri.Billing.Planos.Limites;
         catalogo.Should().ContainKey("sem_plano");
-        catalogo["sem_plano"].Limites.MaxPacientes.Should().Be(5);
+        catalogo["sem_plano"].MaxPacientes.Should().Be(5);
     }
 
     [Theory]
@@ -226,9 +226,9 @@ public class PlanoEnforcementTests
     [InlineData("enterprise", 1000)]
     public void Catalogo_DeveTerLimitesCorretos(string planoKey, int maxPacientesEsperado)
     {
-        var catalogo = ACNutri.Billing.Planos.Catalogo;
+        var catalogo = ACNutri.Billing.Planos.Limites;
         catalogo.Should().ContainKey(planoKey);
-        catalogo[planoKey].Limites.MaxPacientes.Should().Be(maxPacientesEsperado);
+        catalogo[planoKey].MaxPacientes.Should().Be(maxPacientesEsperado);
     }
 
     [Theory]
@@ -238,16 +238,16 @@ public class PlanoEnforcementTests
     [InlineData("enterprise", 50)]
     public void Catalogo_DeveTerLimitesProfissionaisCorretos(string planoKey, int maxProfissionaisEsperado)
     {
-        var catalogo = ACNutri.Billing.Planos.Catalogo;
+        var catalogo = ACNutri.Billing.Planos.Limites;
         catalogo.Should().ContainKey(planoKey);
-        catalogo[planoKey].Limites.MaxProfissionais.Should().Be(maxProfissionaisEsperado);
+        catalogo[planoKey].MaxProfissionais.Should().Be(maxProfissionaisEsperado);
     }
 
     [Fact]
     public void PlanoLimites_SemPlano_DevePermiteAte5Pacientes()
     {
         // Testa que os limites do sem_plano permitem até 5 pacientes
-        var limites = ACNutri.Billing.Planos.Catalogo["sem_plano"].Limites;
+        var limites = ACNutri.Billing.Planos.Limites["sem_plano"];
 
         // Verificar que permite até 5
         limites.MaxPacientes.Should().Be(5);
@@ -263,7 +263,7 @@ public class PlanoEnforcementTests
     public void PlanoLimites_SemPlano_DeveBloquear6oPaciente()
     {
         // Testa que o 6º paciente deve ser bloqueado pelo sem_plano
-        var limites = ACNutri.Billing.Planos.Catalogo["sem_plano"].Limites;
+        var limites = ACNutri.Billing.Planos.Limites["sem_plano"];
 
         // O 6º paciente excede o limite
         int sextoPaciente = 6;
@@ -273,7 +273,7 @@ public class PlanoEnforcementTests
     [Fact]
     public void PlanoLimites_Basico_DevePermitirAte50Pacientes()
     {
-        var limites = ACNutri.Billing.Planos.Catalogo["basico"].Limites;
+        var limites = ACNutri.Billing.Planos.Limites["basico"];
         limites.MaxPacientes.Should().Be(50);
 
         // 50 deve ser permitido
@@ -285,7 +285,7 @@ public class PlanoEnforcementTests
     [Fact]
     public void PlanoLimites_Profissional_DevePermitirAte200Pacientes()
     {
-        var limites = ACNutri.Billing.Planos.Catalogo["profissional"].Limites;
+        var limites = ACNutri.Billing.Planos.Limites["profissional"];
         limites.MaxPacientes.Should().Be(200);
 
         200.Should().BeLessThanOrEqualTo(limites.MaxPacientes);
@@ -295,7 +295,7 @@ public class PlanoEnforcementTests
     [Fact]
     public void PlanoLimites_Enterprise_DevePermitirAte1000Pacientes()
     {
-        var limites = ACNutri.Billing.Planos.Catalogo["enterprise"].Limites;
+        var limites = ACNutri.Billing.Planos.Limites["enterprise"];
         limites.MaxPacientes.Should().Be(1000);
 
         1000.Should().BeLessThanOrEqualTo(limites.MaxPacientes);
@@ -305,21 +305,21 @@ public class PlanoEnforcementTests
     [Fact]
     public void PlanoLimites_SemPlano_DeveTerStorage50MB()
     {
-        var limites = ACNutri.Billing.Planos.Catalogo["sem_plano"].Limites;
+        var limites = ACNutri.Billing.Planos.Limites["sem_plano"];
         limites.StorageMB.Should().Be(50);
     }
 
     [Fact]
     public void PlanoLimites_SemPlano_DeveTerMaxVersoesPlano1()
     {
-        var limites = ACNutri.Billing.Planos.Catalogo["sem_plano"].Limites;
+        var limites = ACNutri.Billing.Planos.Limites["sem_plano"];
         limites.MaxVersoesPlano.Should().Be(1);
     }
 
     [Fact]
     public void PlanoLimites_SemPlano_DeveTerMaxProfissionais1()
     {
-        var limites = ACNutri.Billing.Planos.Catalogo["sem_plano"].Limites;
+        var limites = ACNutri.Billing.Planos.Limites["sem_plano"];
         limites.MaxProfissionais.Should().Be(1);
     }
 }

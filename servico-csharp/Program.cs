@@ -3680,7 +3680,7 @@ app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput
             VALUES (@emp, 'sem_plano', 'sem_plano', 0, 'monthly', @limites);", conn, tx))
         {
             cmd.Parameters.AddWithValue("@emp", empresaId);
-            var limitesSemPlano = Planos.Catalogo["sem_plano"].Limites;
+            var limitesSemPlano = Planos.ObterLimites("sem_plano");
             cmd.Parameters.Add(new NpgsqlParameter("limites", NpgsqlTypes.NpgsqlDbType.Jsonb)
             {
                 Value = limitesSemPlano.ToJson()
@@ -5521,7 +5521,7 @@ static class PlanoEnforcement
         if (!await rd.ReadAsync())
         {
             // Sem assinatura = sem_plano (plano gratuito)
-            var semPlanoLimites = Planos.Catalogo["sem_plano"].Limites;
+            var semPlanoLimites = Planos.ObterLimites("sem_plano");
             return (false, semPlanoLimites, "plano_necessario");
         }
 
@@ -5532,13 +5532,13 @@ static class PlanoEnforcement
         // Se status é sem_plano, cancelada, past_due, inativa -> restrições
         if (status != "ativa" && status != "trial")
         {
-            var semPlanoLimites = Planos.Catalogo["sem_plano"].Limites;
+            var semPlanoLimites = Planos.ObterLimites("sem_plano");
             return (false, semPlanoLimites, "plano_necessario");
         }
 
         // Tem assinatura ativa - desserializar limites
         var limites = string.IsNullOrEmpty(limitesJson)
-            ? Planos.Catalogo.GetValueOrDefault(plano).Limites
+            ? Planos.Limites.GetValueOrDefault(plano)
             : ACNutri.Billing.PlanoLimites.FromJson(limitesJson);
 
         // Verificar ação específica

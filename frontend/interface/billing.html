@@ -56,11 +56,16 @@
         <h4 class="text-lg font-bold text-white" id="modal-bill-title">Alterar plano</h4>
         <button onclick="fecharModal('modal-billing')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
       </div>
-      <p class="text-sm text-slate-300">Selecione o novo plano. A alteração entra na próxima cobrança.</p>
+      <p class="text-sm text-slate-300">Selecione o novo plano e o ciclo de cobrança.</p>
       <select id="bill-novo-plano" class="acnut-input">
-        <option value="basico">Básico — R$ 97/mês</option>
-        <option value="profissional">Profissional — R$ 297/mês</option>
-        <option value="enterprise">Enterprise — R$ 797/mês</option>
+        <option value="basico">Básico</option>
+        <option value="profissional">Profissional</option>
+        <option value="enterprise">Enterprise</option>
+      </select>
+      <select id="bill-novo-ciclo" class="acnut-input">
+        <option value="mensal">Mensal — R$ 27,90</option>
+        <option value="semestral">Semestral — R$ 160,00</option>
+        <option value="anual">Anual — R$ 300,00</option>
       </select>
       <div id="bill-preview" class="text-sm text-slate-400 space-y-1"></div>
       <div id="modal-bill-erro" class="hidden lg-error"><i class="fa-solid fa-circle-exclamation"></i><span></span></div>
@@ -95,9 +100,18 @@
 <script>
 // ===== Catálogo de planos (espelha o backend) =====
 const PLANOS_CATALOGO = {
-  basico:       { valor: 97,   limites: { max_pacientes: 50,  max_profissionais: 2,  storage_mb: 500,   max_versoes_plano: 5 }  },
-  profissional: { valor: 297,  limites: { max_pacientes: 200, max_profissionais: 10, storage_mb: 2000,  max_versoes_plano: 20 } },
-  enterprise:   { valor: 797,  limites: { max_pacientes: 1000, max_profissionais: 50, storage_mb: 10000, max_versoes_plano: 100 } }
+  basico:       {
+    precos: { mensal: 27.90, semestral: 160.00, anual: 300.00 },
+    limites: { max_pacientes: 50,  max_profissionais: 2,  storage_mb: 500,   max_versoes_plano: 5 }
+  },
+  profissional: {
+    precos: { mensal: 27.90, semestral: 160.00, anual: 300.00 },
+    limites: { max_pacientes: 200, max_profissionais: 10, storage_mb: 2000,  max_versoes_plano: 20 }
+  },
+  enterprise:   {
+    precos: { mensal: 27.90, semestral: 160.00, anual: 300.00 },
+    limites: { max_pacientes: 1000, max_profissionais: 50, storage_mb: 10000, max_versoes_plano: 100 }
+  }
 };
 
 const PLANO_LABELS = {
@@ -163,7 +177,8 @@ function renderStatus(st) {
   badge.innerText = PLANO_LABELS[st.status] || st.status;
   badge.className = `px-3 py-1 rounded-full text-xs font-bold border ${STATUS_COR[st.status] || STATUS_COR.inativa}`;
 
-  document.getElementById('bill-renovacao').innerText = st.ciclo === 'yearly' ? 'Anual' : 'Mensal';
+  const cicloLabel = { mensal: 'Mensal', semestral: 'Semestral', anual: 'Anual', monthly: 'Mensal', yearly: 'Anual' };
+  document.getElementById('bill-renovacao').innerText = cicloLabel[st.ciclo] || st.ciclo;
   document.getElementById('bill-proximo').innerText = st.fim_vigencia ? new Date(st.fim_vigencia).toLocaleDateString('pt-BR') : '—';
 
   const trialDiv = document.getElementById('bill-trial');
@@ -197,11 +212,21 @@ function renderCatalogo() {
   const el = document.getElementById('bill-catalogo');
   el.innerHTML = Object.entries(PLANOS_CATALOGO).map(([key, p]) => `
     <div class="bg-slate-900/60 border border-slate-700/60 rounded-2xl p-5 space-y-3 relative">
-      <div class="flex items-baseline gap-2">
-        <span class="text-3xl font-extrabold text-white">R$ ${p.valor}</span>
-        <span class="text-slate-400">/mês</span>
-      </div>
       <h4 class="text-lg font-bold text-white">${PLANO_LABELS[key]}</h4>
+      <div class="grid grid-cols-3 gap-2 text-sm">
+        <div class="bg-slate-800/50 rounded-xl p-3 text-center">
+          <p class="text-[10px] uppercase tracking-wider text-slate-500">Mensal</p>
+          <p class="text-xl font-extrabold text-emerald-400">R$ ${p.precos.mensal.toFixed(2).replace('.', ',')}</p>
+        </div>
+        <div class="bg-slate-800/50 rounded-xl p-3 text-center">
+          <p class="text-[10px] uppercase tracking-wider text-slate-500">Semestral</p>
+          <p class="text-xl font-extrabold text-blue-400">R$ ${p.precos.semestral.toFixed(2).replace('.', ',')}</p>
+        </div>
+        <div class="bg-slate-800/50 rounded-xl p-3 text-center">
+          <p class="text-[10px] uppercase tracking-wider text-slate-500">Anual</p>
+          <p class="text-xl font-extrabold text-amber-400">R$ ${p.precos.anual.toFixed(2).replace('.', ',')}</p>
+        </div>
+      </div>
       <ul class="space-y-2 text-sm text-slate-300">
         <li><i class="fa-solid fa-check text-emerald-400 mr-2 w-4"></i>${p.limites.max_pacientes} pacientes</li>
         <li><i class="fa-solid fa-check text-emerald-400 mr-2 w-4"></i>${p.limites.max_profissionais} profissionais</li>
@@ -217,15 +242,33 @@ function renderCatalogo() {
 
 function abrirMudarPlano(atual) {
   document.getElementById('bill-novo-plano').value = atual;
+  document.getElementById('bill-novo-ciclo').value = 'mensal';
   atualizarPreviewPlano();
   abrirModal('modal-billing');
 }
 
+// Atualiza preview quando muda o ciclo
+document.addEventListener('DOMContentLoaded', () => {
+  const cicloSelect = document.getElementById('bill-novo-ciclo');
+  if (cicloSelect) {
+    cicloSelect.addEventListener('change', atualizarPreviewPlano);
+  }
+  const planoSelect = document.getElementById('bill-novo-plano');
+  if (planoSelect) {
+    planoSelect.addEventListener('change', atualizarPreviewPlano);
+  }
+});
+
 function atualizarPreviewPlano() {
-  const key = document.getElementById('bill-novo-plano').value;
-  const p = PLANOS_CATALOGO[key];
+  const plano = document.getElementById('bill-novo-plano').value;
+  const ciclo = document.getElementById('bill-novo-ciclo').value;
+  const p = PLANOS_CATALOGO[plano];
+  const preco = p.precos[ciclo];
+  const labelCiclo = { mensal: 'Mensal', semestral: 'Semestral', anual: 'Anual' }[ciclo];
   document.getElementById('bill-preview').innerHTML = `
-    <strong>Novo valor:</strong> R$ ${p.valor}/mês<br>
+    <strong>Plano:</strong> ${PLANO_LABELS[plano]}<br>
+    <strong>Ciclo:</strong> ${labelCiclo}<br>
+    <strong>Valor:</strong> R$ ${preco.toFixed(2).replace('.', ',')}<br>
     <strong>Pacientes:</strong> ${p.limites.max_pacientes} • <strong>Profissionais:</strong> ${p.limites.max_profissionais}<br>
     <strong>Storage:</strong> ${p.limites.storage_mb} MB • <strong>Versões:</strong> ${p.limites.max_versoes_plano}
   `;
@@ -233,6 +276,7 @@ function atualizarPreviewPlano() {
 
 async function confirmarMudancaPlano() {
   const plano = document.getElementById('bill-novo-plano').value;
+  const ciclo = document.getElementById('bill-novo-ciclo').value;
   const btn = document.getElementById('btn-confirmar-plano');
   const erroDiv = document.getElementById('modal-bill-erro');
   erroDiv.style.display = 'none';
@@ -243,7 +287,7 @@ async function confirmarMudancaPlano() {
     const res = await fetch(`${API_URL}/billing/assinatura/iniciar`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ plano, trialDias: 0 })
+      body: JSON.stringify({ plano, ciclo, trialDias: 0 })
     });
     if (!res.ok) throw new Error((await res.json()).mensagem || 'Erro ao alterar plano');
 

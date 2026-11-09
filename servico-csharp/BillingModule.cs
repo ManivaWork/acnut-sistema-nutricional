@@ -43,16 +43,68 @@ public record PlanoLimites(int MaxPacientes, int MaxProfissionais, int StorageMB
 
 public static class Planos
 {
-    public static readonly Dictionary<string, (decimal ValorMensal, PlanoLimites Limites)> Catalogo = new()
+    // Preços por ciclo (em reais)
+    // Mensal: R$ 27,90 | Semestral: R$ 160,00 | Anual: R$ 300,00
+    public static readonly Dictionary<string, Dictionary<string, decimal>> Precos = new()
     {
-        ["basico"]       = ( 97.00m, new PlanoLimites(  50,  2,   500,   5)),
-        ["profissional"] = (297.00m, new PlanoLimites( 200, 10,  2000,  20)),
-        ["enterprise"]   = (797.00m, new PlanoLimites(1000, 50, 10000, 100)),
-        ["sem_plano"]    = (   0.00m, new PlanoLimites(   5,  1,    50,   1))
+        ["basico"] = new()
+        {
+            ["mensal"] = 27.90m,
+            ["semestral"] = 160.00m,
+            ["anual"] = 300.00m
+        },
+        ["profissional"] = new()
+        {
+            ["mensal"] = 27.90m,
+            ["semestral"] = 160.00m,
+            ["anual"] = 300.00m
+        },
+        ["enterprise"] = new()
+        {
+            ["mensal"] = 27.90m,
+            ["semestral"] = 160.00m,
+            ["anual"] = 300.00m
+        },
+        ["sem_plano"] = new()
+        {
+            ["mensal"] = 0.00m,
+            ["semestral"] = 0.00m,
+            ["anual"] = 0.00m
+        }
     };
 
-    public static (decimal ValorMensal, PlanoLimites Limites) Obter(string plano)
-        => Catalogo.TryGetValue(plano, out var p) ? p : Catalogo["basico"];
+    public static readonly Dictionary<string, PlanoLimites> Limites = new()
+    {
+        ["basico"]       = new PlanoLimites(  50,  2,   500,   5),
+        ["profissional"] = new PlanoLimites( 200, 10,  2000,  20),
+        ["enterprise"]   = new PlanoLimites(1000, 50, 10000, 100),
+        ["sem_plano"]    = new PlanoLimites(   5,  1,    50,   1)
+    };
+
+    // Retorna o preço em centavos para o plano e ciclo especificados
+    public static int ObterValorCentavos(string plano, string ciclo)
+    {
+        var preco = Precos.GetValueOrDefault(plano)?
+            .GetValueOrDefault(ciclo.ToLowerInvariant()) ?? 0;
+        return (int)(preco * 100);
+    }
+
+    // Retorna os limites do plano
+    public static PlanoLimites ObterLimites(string plano)
+        => Limites.GetValueOrDefault(plano) ?? Limites["basico"];
+
+    // Mapeia ciclo interno para valor aceito pelo Asaas
+    public static string MapearCicloAsaas(string ciclo)
+        => ciclo.ToLowerInvariant() switch
+        {
+            "mensal" => "MONTHLY",
+            "semestral" => "SEMIANNUALLY",
+            "anual" => "YEARLY",
+            _ => "MONTHLY"
+        };
+
+    public static bool CicloValido(string ciclo)
+        => ciclo.ToLowerInvariant() is "mensal" or "semestral" or "anual";
 }
 
 public class AsaasClient
@@ -75,18 +127,18 @@ public class AsaasClient
         return await TratarResposta(res);
     }
 
-    public async Task<JsonElement> CriarAssinaturaAsync(string customerId, string plano, int valorCentavos, int cicloDias, DateTime? dataInicio = null)
+    public async Task<JsonElement> CriarAssinaturaAsync(string customerId, string plano, string ciclo, decimal valor, DateTime? dataInicio = null)
     {
-        var (valorMensal, _) = Planos.Obter(plano);
+        var cicloAsaas = Planos.MapearCicloAsaas(ciclo);
         var body = new
         {
             customer = customerId,
             billingType = "CREDIT_CARD",
-            value = valorMensal,
-            cycle = "MONTHLY",
-            description = $"ACNUTRI - Plano {plano}",
+            value = valor,
+            cycle = cicloAsaas,
+            description = $"ACNUTRI - Plano {plano} ({ciclo})",
             nextDueDate = (dataInicio ?? DateTime.UtcNow.AddDays(1)).ToString("yyyy-MM-dd"),
-            externalReference = $"sub_{plano}_{customerId}"
+            externalReference = $"sub_{plano}_{ciclo}_{customerId}"
         };
         var res = await _http.PostAsJsonAsync("/v3/subscriptions", body);
         return await TratarResposta(res);
@@ -177,7 +229,7 @@ public static class BillingEndpoints
 
                 // Se tem coluna limites preenchida, usa ela; senão cai no catálogo do plano
                 var limites = string.IsNullOrEmpty(limitesJson)
-                    ? Planos.Catalogo.GetValueOrDefault(plano).Limites
+                    ? Planos.ObterLimites(plano)
                     : PlanoLimites.FromJson(limitesJson);
 
                 return Results.Ok(new
@@ -238,8 +290,11 @@ grupo.MapGet("/assinatura", async (ClaimsPrincipal user, NpgsqlDataSource db) =>
         // ---- POST: iniciar/alterar plano (cria customer + subscription no Asaas) ----
         grupo.MapPost("/assinatura/iniciar", async (IniciarPlanoInput input, ClaimsPrincipal user, NpgsqlDataSource db, AsaasClient asaas) =>
         {
-            if (!Planos.Catalogo.ContainsKey(input.Plano))
+            if (!Planos.Precos.ContainsKey(input.Plano))
                 return Results.BadRequest(new { mensagem = "Plano inválido." });
+
+            if (!Planos.CicloValido(input.Ciclo))
+                return Results.BadRequest(new { mensagem = "Ciclo inválido. Use: mensal, semestral ou anual." });
 
             int emp = Auth.Empresa(user);
             var perfil = user.FindFirst("perfil")?.Value;
@@ -268,13 +323,15 @@ grupo.MapGet("/assinatura", async (ClaimsPrincipal user, NpgsqlDataSource db) =>
             var customer = await asaas.CriarCustomerAsync(empNome, empEmail, empPhone, empCnpj, $"emp_{emp}");
             string customerId = customer.GetProperty("id").GetString()!;
 
-            // 2. Criar subscription no Asaas (trial de 14 dias se solicitado)
+            // 2. Obter valor e criar subscription no Asaas
+            int valorCentavos = Planos.ObterValorCentavos(input.Plano, input.Ciclo);
+            decimal valor = valorCentavos / 100m;
             DateTime? trialFim = input.TrialDias > 0 ? DateTime.UtcNow.AddDays(input.TrialDias) : null;
-            var sub = await asaas.CriarAssinaturaAsync(customerId, input.Plano, 0, 30, trialFim?.AddDays(1));
+            var sub = await asaas.CriarAssinaturaAsync(customerId, input.Plano, input.Ciclo, valor, trialFim?.AddDays(1));
             string subscriptionId = sub.GetProperty("id").GetString()!;
 
             // 3. Salvar no banco
-            var (valorMensal, limites) = Planos.Obter(input.Plano);
+            var limites = Planos.ObterLimites(input.Plano);
             await using var conn = db.CreateConnection();
             await conn.OpenAsync();
             await using var tx = await conn.BeginTransactionAsync();
@@ -299,8 +356,8 @@ grupo.MapGet("/assinatura", async (ClaimsPrincipal user, NpgsqlDataSource db) =>
                 cmd.Parameters.AddWithValue("sub", subscriptionId);
                 cmd.Parameters.AddWithValue("plano", input.Plano);
                 cmd.Parameters.AddWithValue("status", trialFim.HasValue ? "trial" : "ativa");
-                cmd.Parameters.AddWithValue("valor", (int)(valorMensal * 100));
-                cmd.Parameters.AddWithValue("ciclo", "monthly");
+                cmd.Parameters.AddWithValue("valor", valorCentavos);
+                cmd.Parameters.AddWithValue("ciclo", input.Ciclo);
                 cmd.Parameters.AddWithValue("trial", (object?)trialFim ?? DBNull.Value);
                 cmd.Parameters.Add(new NpgsqlParameter("limites", NpgsqlTypes.NpgsqlDbType.Jsonb)
                 {
@@ -316,7 +373,7 @@ grupo.MapGet("/assinatura", async (ClaimsPrincipal user, NpgsqlDataSource db) =>
                 throw;
             }
 
-            return Results.Ok(new { mensagem = $"Plano {input.Plano} iniciado!", trial_fim = trialFim });
+            return Results.Ok(new { mensagem = $"Plano {input.Plano} ({input.Ciclo}) iniciado!", trial_fim = trialFim });
         });
 
         // ---- POST: cancelar assinatura ----
@@ -419,7 +476,7 @@ grupo.MapGet("/limites", async (ClaimsPrincipal user, NpgsqlDataSource db) =>
     if (!await rd.ReadAsync())
     {
         // Fallback: plano básico em snake_case (o front espera assim)
-        var lim = Planos.Catalogo["basico"].Limites;
+        var lim = Planos.ObterLimites("basico");
         return Results.Ok(new
         {
             tem_assinatura = false,
@@ -566,4 +623,4 @@ grupo.MapGet("/limites", async (ClaimsPrincipal user, NpgsqlDataSource db) =>
 }
 
 
-public record IniciarPlanoInput(string Plano, int TrialDias = 14);
+public record IniciarPlanoInput(string Plano, string Ciclo = "mensal", int TrialDias = 14);
