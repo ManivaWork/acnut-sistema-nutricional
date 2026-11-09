@@ -2725,7 +2725,7 @@ app.MapPost("/api/empresas", async (EmpresaInput input, ClaimsPrincipal user) =>
 })
 .RequireAuthorization();
 
-// GET /api/empresas - Listar empresas (apenas super_admin)
+// GET /api/empresas - Listar empresas com status do plano e bypass_limites (apenas super_admin)
 app.MapGet("/api/empresas", async (ClaimsPrincipal user) =>
 {
     if (!IsSuperAdmin(user))
@@ -2734,10 +2734,29 @@ app.MapGet("/api/empresas", async (ClaimsPrincipal user) =>
     var lista = new List<object>();
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
-    using var cmd = new NpgsqlCommand("SELECT id, nome, criado_em FROM empresas ORDER BY nome;", conn);
+    using var cmd = new NpgsqlCommand(@"
+        SELECT e.id, e.nome, e.criado_em,
+               COALESCE(a.status, 'sem_plano') as plano_status,
+               COALESCE(a.bypass_limites, false) as bypass_limites
+        FROM empresas e
+        LEFT JOIN (
+            SELECT empresa_id, status, bypass_limites
+            FROM assinaturas
+            WHERE id = (
+                SELECT MAX(id) FROM assinaturas a2 WHERE a2.empresa_id = assinaturas.empresa_id
+            )
+        ) a ON a.empresa_id = e.id
+        ORDER BY e.nome;", conn);
     using var rd = await cmd.ExecuteReaderAsync();
     while (await rd.ReadAsync())
-        lista.Add(new { id = rd.GetInt32(0), nome = rd.GetString(1), criadoEm = rd.GetDateTime(2) });
+        lista.Add(new
+        {
+            id = rd.GetInt32(0),
+            nome = rd.GetString(1),
+            criadoEm = rd.GetDateTime(2),
+            planoStatus = rd.IsDBNull(3) ? "sem_plano" : rd.GetString(3),
+            bypassLimites = rd.IsDBNull(4) ? false : rd.GetBoolean(4)
+        });
     return Results.Ok(lista);
 })
 .RequireAuthorization();
@@ -2751,6 +2770,68 @@ app.MapGet("/api/empresas/count", async () =>
     var count = Convert.ToInt32(await cmd.ExecuteScalarAsync());
     return Results.Ok(new { count });
 });
+
+// DELETE /api/admin/empresas/{empresaId} - Excluir empresa (apenas super_admin)
+app.MapDelete("/api/admin/empresas/{empresaId:int}", async (int empresaId, ClaimsPrincipal user) =>
+{
+    if (!IsSuperAdmin(user))
+        return Results.Forbid();
+
+    // Não permitir excluir a própria empresa do super_admin logado
+    int currentEmpresaId = Auth.Empresa(user);
+    if (empresaId == currentEmpresaId)
+        return Results.BadRequest(new { mensagem = "Não é possível excluir a própria empresa." });
+
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+
+    // Verificar se a empresa existe
+    using var checkCmd = new NpgsqlCommand("SELECT id, nome FROM empresas WHERE id = @id", conn);
+    checkCmd.Parameters.AddWithValue("id", empresaId);
+    using var checkRd = await checkCmd.ExecuteReaderAsync();
+    if (!await checkRd.ReadAsync())
+        return Results.NotFound(new { mensagem = "Empresa não encontrada." });
+
+    string empresaNome = checkRd.GetString(1);
+    await checkRd.CloseAsync();
+
+    // Exclusão física (cascata via FK ON DELETE CASCADE)
+    // Ordem: tabelas filhas antes das pais (assinaturas, pacientes, etc. já têm FK com cascade)
+    using var tx = await conn.BeginTransactionAsync();
+    try
+    {
+        // Excluir assinaturas (tem FK para empresas com ON DELETE CASCADE, mas vamos ser explícitos)
+        using (var cmd = new NpgsqlCommand("DELETE FROM assinaturas WHERE empresa_id = @emp", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("emp", empresaId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // Excluir webhook events relacionados
+        using (var cmd = new NpgsqlCommand("DELETE FROM asaas_webhook_events WHERE asaas_event_id IN (SELECT asaas_event_id FROM asaas_webhook_events WHERE payload_jsonb->>'customer' IN (SELECT asaas_customer_id FROM assinaturas WHERE empresa_id = @emp))", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("emp", empresaId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // Excluir a empresa (cascata remove pacientes, anamneses, checkins, etc. via FK)
+        using (var cmd = new NpgsqlCommand("DELETE FROM empresas WHERE id = @id", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("id", empresaId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        await tx.CommitAsync();
+    }
+    catch (Exception ex)
+    {
+        await tx.RollbackAsync();
+        return Results.Problem($"Erro ao excluir empresa: {ex.Message}");
+    }
+
+    return Results.Ok(new { mensagem = $"Empresa '{empresaNome}' excluída com sucesso." });
+})
+.RequireAuthorization();
 
 // GET /api/convites/info/{token} - Info do convite (público, para tela de aceite)
 app.MapGet("/api/convites/info/{token}", async (string token) =>

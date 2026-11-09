@@ -6556,17 +6556,108 @@ function renderEmpresas(empresas) {
     if (!tbody) return;
 
     if (!empresas || empresas.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3" class="py-6 text-center text-slate-400">Nenhuma empresa cadastrada</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-slate-400">Nenhuma empresa cadastrada</td></tr>';
         return;
     }
 
-    tbody.innerHTML = empresas.map(emp => `
-        <tr class="hover:bg-slate-800/50">
+    const statusColor = {
+        ativa: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+        trial: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+        past_due: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+        cancelada: 'bg-rose-500/20 text-rose-400 border-rose-500/30',
+        inativa: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
+        sem_plano: 'bg-slate-500/20 text-slate-400 border-slate-500/30'
+    };
+    const statusLabel = {
+        ativa: 'Ativa',
+        trial: 'Trial',
+        past_due: 'Atrasado',
+        cancelada: 'Cancelada',
+        inativa: 'Inativa',
+        sem_plano: 'Sem Plano'
+    };
+
+    tbody.innerHTML = empresas.map(emp => {
+        const planoStatus = emp.planoStatus || 'sem_plano';
+        const bypassLimites = emp.bypassLimites || false;
+
+        return `
+        <tr class="hover:bg-slate-800/50" data-empresa-id="${emp.id}">
             <td class="py-3 px-4 text-white font-mono">#${emp.id}</td>
             <td class="py-3 px-4 font-medium text-white">${escaparHtml(emp.nome)}</td>
             <td class="py-3 px-4 text-slate-300">${new Date(emp.criadoEm).toLocaleDateString('pt-BR')}</td>
+            <td class="py-3 px-4">
+                <span class="px-3 py-1 rounded-full text-xs font-medium ${statusColor[planoStatus] || statusColor.sem_plano}">
+                    ${statusLabel[planoStatus] || planoStatus}
+                </span>
+            </td>
+            <td class="py-3 px-4">
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" class="sr-only peer"
+                           ${bypassLimites ? 'checked' : ''}
+                           onchange="toggleBypassLimites(${emp.id}, this.checked)"
+                           title="${bypassLimites ? 'Desativar limite ilimitado' : 'Ativar limite ilimitado'}">
+                    <div class="w-11 h-6 bg-slate-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-emerald-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                </label>
+                <span class="ml-2 text-xs ${bypassLimites ? 'text-emerald-400' : 'text-slate-500'}">
+                    ${bypassLimites ? 'Ilimitado' : 'Com limite'}
+                </span>
+            </td>
+            <td class="py-3 px-4">
+                <button onclick="confirmarExcluirEmpresa(${emp.id}, '${escaparHtml(emp.nome)}')"
+                        class="text-rose-400 hover:text-rose-300 text-sm font-medium transition"
+                        title="Excluir empresa">
+                    <i class="fa-solid fa-trash mr-1"></i>Excluir
+                </button>
+            </td>
         </tr>
     `).join('');
+}
+
+// Toggle bypass_limites para uma empresa
+async function toggleBypassLimites(empresaId, bypassLimites) {
+    try {
+        const res = await fetch(`${API_URL}/api/billing/bypass-limites`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ empresaId, bypassLimites })
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.mensagem || 'Erro ao atualizar bypass_limites');
+        }
+        mostrarToast(bypassLimites ? 'Limite ilimitado ATIVADO' : 'Limite ilimitado DESATIVADO', 'sucesso');
+        carregarEmpresas();
+    } catch (err) {
+        console.error('Erro ao toggle bypass_limites:', err);
+        mostrarToast(err.message, 'erro');
+        carregarEmpresas();
+    }
+}
+
+// Confirmar e excluir empresa
+function confirmarExcluirEmpresa(empresaId, empresaNome) {
+    if (!confirm(`Tem certeza que deseja excluir a empresa "${empresaNome}"? Essa ação não pode ser desfeita.`)) {
+        return;
+    }
+    excluirEmpresa(empresaId);
+}
+
+async function excluirEmpresa(empresaId) {
+    try {
+        const res = await fetch(`${API_URL}/api/admin/empresas/${empresaId}`, {
+            method: 'DELETE'
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.mensagem || 'Erro ao excluir empresa');
+        }
+        mostrarToast('Empresa excluída com sucesso', 'sucesso');
+        carregarEmpresas();
+    } catch (err) {
+        console.error('Erro ao excluir empresa:', err);
+        mostrarToast(err.message, 'erro');
+    }
 }
 
 // ===== LGPD - Solicitações da Empresa (Equipe) =====
