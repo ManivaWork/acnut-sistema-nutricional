@@ -132,6 +132,70 @@ public class BillingModuleTests
         limites.MaxVersoesPlano.Should().Be(100);
     }
 
+    [Fact]
+    public void PlanoLimites_FromJson_DeveSerToleranteAoPascalCase_Legado()
+    {
+        // JSON em PascalCase (dados legados gravados antes do fix)
+        var jsonPascalCase = "{\"MaxPacientes\": 3, \"MaxProfissionais\": 1, \"StorageMB\": 50, \"MaxVersoesPlano\": 1}";
+
+        var limites = ACNutri.Billing.PlanoLimites.FromJson(jsonPascalCase);
+
+        limites.Should().NotBeNull();
+        limites.MaxPacientes.Should().Be(3);
+        limites.MaxProfissionais.Should().Be(1);
+        limites.StorageMB.Should().Be(50);
+        limites.MaxVersoesPlano.Should().Be(1);
+    }
+
+    [Fact]
+    public void PlanoLimites_ToJson_DeveSerializarEmSnakeCase()
+    {
+        var limites = new ACNutri.Billing.PlanoLimites(50, 2, 500, 5);
+
+        var json = limites.ToJson();
+
+        json.Should().Contain("max_pacientes");
+        json.Should().Contain("max_profissionais");
+        json.Should().Contain("storage_mb");
+        json.Should().Contain("max_versoes_plano");
+        json.Should().NotContain("MaxPacientes");
+        json.Should().NotContain("MaxProfissionais");
+    }
+
+    [Fact]
+    public void PlanoLimites_ToJson_FromJson_RoundTrip_DevePreservarValores()
+    {
+        var original = new ACNutri.Billing.PlanoLimites(200, 10, 2000, 20);
+
+        var json = original.ToJson();
+        var restored = ACNutri.Billing.PlanoLimites.FromJson(json);
+
+        restored.MaxPacientes.Should().Be(original.MaxPacientes);
+        restored.MaxProfissionais.Should().Be(original.MaxProfissionais);
+        restored.StorageMB.Should().Be(original.StorageMB);
+        restored.MaxVersoesPlano.Should().Be(original.MaxVersoesPlano);
+    }
+
+    [Fact]
+    public void PlanoLimites_SemPlano_UpgradeParaBasico_DeveTerLimitesDoCatalogo()
+    {
+        // Simula upgrade sem_plano -> basico: limites devem vir do catálogo
+        var limitesSemPlano = ACNutri.Billing.Planos.Catalogo["sem_plano"].Limites;
+        var limitesBasico = ACNutri.Billing.Planos.Catalogo["basico"].Limites;
+
+        limitesSemPlano.MaxPacientes.Should().Be(5);
+        limitesBasico.MaxPacientes.Should().Be(50);
+
+        // Ao fazer upgrade, os limites gravados devem ser os do plano novo (basico)
+        var jsonUpgrade = limitesBasico.ToJson();
+        var restored = ACNutri.Billing.PlanoLimites.FromJson(jsonUpgrade);
+
+        restored.MaxPacientes.Should().Be(50);
+        restored.MaxProfissionais.Should().Be(2);
+        restored.StorageMB.Should().Be(500);
+        restored.MaxVersoesPlano.Should().Be(5);
+    }
+
     private record PlanoInfo
     {
         public string Nome { get; init; } = "";

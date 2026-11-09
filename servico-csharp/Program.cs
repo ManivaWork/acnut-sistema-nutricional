@@ -3683,7 +3683,7 @@ app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput
             var limitesSemPlano = Planos.Catalogo["sem_plano"].Limites;
             cmd.Parameters.Add(new NpgsqlParameter("limites", NpgsqlTypes.NpgsqlDbType.Jsonb)
             {
-                Value = JsonSerializer.Serialize(limitesSemPlano)
+                Value = limitesSemPlano.ToJson()
             });
             await cmd.ExecuteNonQueryAsync();
         }

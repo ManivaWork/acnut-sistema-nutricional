@@ -13,15 +13,32 @@ namespace ACNutri.Billing;
 public record AsaasConfig(string BaseUrl, string ApiKey, string WebhookSecret);
 public record PlanoLimites(int MaxPacientes, int MaxProfissionais, int StorageMB, int MaxVersoesPlano)
 {
-    // Desserializa JSON do banco (snake_case) para PascalCase
+    // Serialização/desserialização em snake_case (compatível com PostgreSQL JSONB)
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
     };
 
+    // Desserializa JSON do banco (snake_case) para PascalCase
+    // Tolerante a chaves PascalCase antigas (fallback)
     public static PlanoLimites FromJson(string json)
-        => JsonSerializer.Deserialize<PlanoLimites>(json, JsonOpts)
-           ?? new PlanoLimites(0, 0, 0, 0);
+    {
+        // Tenta snake_case primeiro (padrão atual)
+        var snake = JsonSerializer.Deserialize<PlanoLimites>(json, JsonOpts);
+        if (snake is not null && (snake.MaxPacientes > 0 || snake.MaxProfissionais > 0 || snake.StorageMB > 0 || snake.MaxVersoesPlano > 0))
+            return snake;
+
+        // Fallback: tenta PascalCase (dados legados)
+        var pascal = JsonSerializer.Deserialize<PlanoLimites>(json);
+        if (pascal is not null && (pascal.MaxPacientes > 0 || pascal.MaxProfissionais > 0 || pascal.StorageMB > 0 || pascal.MaxVersoesPlano > 0))
+            return pascal;
+
+        return new PlanoLimites(0, 0, 0, 0);
+    }
+
+    // Serializa para JSON snake_case (para gravar no banco)
+    public string ToJson()
+        => JsonSerializer.Serialize(this, JsonOpts);
 }
 
 public static class Planos
@@ -265,8 +282,8 @@ grupo.MapGet("/assinatura", async (ClaimsPrincipal user, NpgsqlDataSource db) =>
             {
                 await using var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
-                    INSERT INTO assinaturas (empresa_id, asaas_customer_id, asaas_subscription_id, plano, status, valor_centavos, ciclo, trial_fim)
-                    VALUES (@emp, @cust, @sub, @plano, @status, @valor, @ciclo, @trial)
+                    INSERT INTO assinaturas (empresa_id, asaas_customer_id, asaas_subscription_id, plano, status, valor_centavos, ciclo, trial_fim, limites)
+                    VALUES (@emp, @cust, @sub, @plano, @status, @valor, @ciclo, @trial, @limites)
                     ON CONFLICT (empresa_id) DO UPDATE SET
                         asaas_customer_id = EXCLUDED.asaas_customer_id,
                         asaas_subscription_id = EXCLUDED.asaas_subscription_id,
@@ -275,6 +292,7 @@ grupo.MapGet("/assinatura", async (ClaimsPrincipal user, NpgsqlDataSource db) =>
                         valor_centavos = EXCLUDED.valor_centavos,
                         ciclo = EXCLUDED.ciclo,
                         trial_fim = EXCLUDED.trial_fim,
+                        limites = EXCLUDED.limites,
                         atualizado_em = CURRENT_TIMESTAMP";
                 cmd.Parameters.AddWithValue("emp", emp);
                 cmd.Parameters.AddWithValue("cust", customerId);
@@ -284,6 +302,10 @@ grupo.MapGet("/assinatura", async (ClaimsPrincipal user, NpgsqlDataSource db) =>
                 cmd.Parameters.AddWithValue("valor", (int)(valorMensal * 100));
                 cmd.Parameters.AddWithValue("ciclo", "monthly");
                 cmd.Parameters.AddWithValue("trial", (object?)trialFim ?? DBNull.Value);
+                cmd.Parameters.Add(new NpgsqlParameter("limites", NpgsqlTypes.NpgsqlDbType.Jsonb)
+                {
+                    Value = limites.ToJson()
+                });
 
                 await cmd.ExecuteNonQueryAsync();
                 await tx.CommitAsync();
