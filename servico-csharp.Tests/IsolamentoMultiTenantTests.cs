@@ -1004,4 +1004,82 @@ public class IsolamentoMultiTenantTests : IClassFixture<WebApplicationFactory<Pr
             await LimparDadosTesteAsync(empresaId);
         }
     }
+
+    // ============================================
+    // 10. LIMITE DE PACIENTES - sem_plano (plano gratuito)
+    // ============================================
+    [Fact]
+    public async Task POST_Pacientes_SemPlano_Com0Pacientes_DevePermitirCriar()
+    {
+        var testName = nameof(POST_Pacientes_SemPlano_Com0Pacientes_DevePermitirCriar);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        try
+        {
+            // Nova empresa sem assinatura = sem_plano (limite 5 pacientes)
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "admin", modulos: new() { { "nutricao", "total" } });
+            var client = CriarCliente(token);
+
+            var payload = new
+            {
+                nome = "Paciente Teste",
+                email = $"paciente_{testName}@teste.com",
+                telefone = "",
+                data_nascimento = "1990-01-01",
+                sexo = "M",
+                status = "ativo"
+            };
+
+            var response = await client.PostAsJsonAsync("/api/pacientes", payload);
+
+            // Deve permitir criar (status 201 Created)
+            response.StatusCode.Should().Be(HttpStatusCode.Created);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task POST_Pacientes_SemPlano_Com5Pacientes_DeveBloquear6o()
+    {
+        var testName = nameof(POST_Pacientes_SemPlano_Com5Pacientes_DeveBloquear6o);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        try
+        {
+            // Nova empresa sem assinatura = sem_plano (limite 5 pacientes)
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "admin", modulos: new() { { "nutricao", "total" } });
+            var client = CriarCliente(token);
+
+            // Criar 5 pacientes diretamente no banco
+            for (int i = 1; i <= 5; i++)
+            {
+                await CriarPacienteTesteAsync(empresaId, $"{testName}_p{i}");
+            }
+
+            // Tentar criar o 6º paciente via API
+            var payload = new
+            {
+                nome = "Paciente 6",
+                email = $"paciente_6_{testName}@teste.com",
+                telefone = "",
+                data_nascimento = "1990-01-01",
+                sexo = "M",
+                status = "ativo"
+            };
+
+            var response = await client.PostAsJsonAsync("/api/pacientes", payload);
+
+            // Deve bloquear com 403
+            response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+            var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+            result.GetProperty("mensagem").GetString().Should().Contain("Limite de pacientes atingido (5/5)");
+            result.GetProperty("codigo").GetString().Should().Be("plano_necessario");
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
 }

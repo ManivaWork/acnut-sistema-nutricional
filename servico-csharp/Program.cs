@@ -5520,17 +5520,17 @@ static class PlanoEnforcement
 
         if (!await rd.ReadAsync())
         {
-            // Sem assinatura = sem_plano (plano gratuito)
+            // Sem assinatura = sem_plano (plano gratuito com limites)
             var semPlanoLimites = Planos.ObterLimites("sem_plano");
-            return (false, semPlanoLimites, "plano_necessario");
+            return (true, semPlanoLimites, null);
         }
 
         var status = rd.GetString(0);
         var plano = rd.GetString(1);
         var limitesJson = rd.IsDBNull(2) ? null : rd.GetString(2);
 
-        // Se status é sem_plano, cancelada, past_due, inativa -> restrições
-        if (status != "ativa" && status != "trial")
+        // Se status é cancelada, past_due, inativa -> restrições (sem_plano é plano válido com limites)
+        if (status == "cancelada" || status == "past_due" || status == "inativa")
         {
             var semPlanoLimites = Planos.ObterLimites("sem_plano");
             return (false, semPlanoLimites, "plano_necessario");
