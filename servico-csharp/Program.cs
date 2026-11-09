@@ -968,15 +968,21 @@ app.MapDelete("/api/alimentos/{alimentoId:int}/medidas/{medidaId:int}", async (i
 .RequireAuthorization();
 
 // ====================================================== CHECK-INS============================================================
-app.MapPost("/api/checkins", async (CheckinInput input) =>
+app.MapPost("/api/checkins", async (CheckinInput input, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
+    // Validar se paciente pertence à empresa
+    if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, input.PacienteId, emp))
+        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
     using var cmd = new NpgsqlCommand(@"
         INSERT INTO checkins_semanais (paciente_id, empresa_id, peso_atual_kg, adesao_plano_porcentagem, observacoes_paciente)
-        VALUES (@paciente_id, (SELECT empresa_id FROM pacientes WHERE id = @paciente_id), @peso, @adesao, @obs) RETURNING id;", conn);
+        VALUES (@paciente_id, @emp, @peso, @adesao, @obs) RETURNING id;", conn);
 
     cmd.Parameters.AddWithValue("paciente_id", input.PacienteId);
+    cmd.Parameters.AddWithValue("emp", emp);
     cmd.Parameters.AddWithValue("peso", input.PesoAtualKg);
     cmd.Parameters.AddWithValue("adesao", input.AdesaoPlanoPorcentagem);
     cmd.Parameters.AddWithValue("obs", input.Observacoes ?? "");
@@ -984,8 +990,13 @@ app.MapPost("/api/checkins", async (CheckinInput input) =>
     var checkinId = await cmd.ExecuteScalarAsync();
     return Results.Created($"/api/checkins/{checkinId}", new { id = checkinId, mensagem = "Check-in registrado com sucesso!" });
 });
-app.MapGet("/api/checkins/{pacienteId}", async (int pacienteId) =>
+app.MapGet("/api/checkins/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
+    // Validar se paciente pertence à empresa
+    if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
+        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+
     var checkins = new List<object>();
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
@@ -1606,15 +1617,21 @@ app.MapPost("/api/planos/{pacienteId}/versoes", async (int pacienteId, VersaoInp
     return Results.Ok(new { id, numero, mensagem = $"Versão {numero} salva!" });
 });
 
-app.MapGet("/api/planos/{pacienteId}/versoes", async (int pacienteId) =>
+app.MapGet("/api/planos/{pacienteId}/versoes", async (int pacienteId, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
+    // Validar se paciente pertence à empresa
+    if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
+        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+
     var lista = new List<object>();
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
     using var cmd = new NpgsqlCommand(@"
         SELECT id, numero, COALESCE(descricao, ''), criado_em
-        FROM planos_versoes WHERE paciente_id = @p ORDER BY numero DESC;", conn);
+        FROM planos_versoes WHERE paciente_id = @p AND empresa_id = @emp ORDER BY numero DESC;", conn);
     cmd.Parameters.AddWithValue("p", pacienteId);
+    cmd.Parameters.AddWithValue("emp", emp);
     using var rd = await cmd.ExecuteReaderAsync();
     while (await rd.ReadAsync())
     {
@@ -1629,14 +1646,16 @@ app.MapGet("/api/planos/{pacienteId}/versoes", async (int pacienteId) =>
     return Results.Ok(lista);
 });
 
-app.MapGet("/api/planos/versao/{id}", async (int id) =>
+app.MapGet("/api/planos/versao/{id}", async (int id, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
     using var cmd = new NpgsqlCommand(@"
         SELECT numero, COALESCE(descricao, ''), criado_em, snapshot::text
-        FROM planos_versoes WHERE id = @id;", conn);
+        FROM planos_versoes WHERE id = @id AND empresa_id = @emp;", conn);
     cmd.Parameters.AddWithValue("id", id);
+    cmd.Parameters.AddWithValue("emp", emp);
     using var rd = await cmd.ExecuteReaderAsync();
     if (!await rd.ReadAsync())
         return Results.NotFound(new { mensagem = "Versão não encontrada." });
@@ -1651,27 +1670,39 @@ app.MapGet("/api/planos/versao/{id}", async (int id) =>
 });
 
 // ======================================ORIENTAÇÕES NUTRICIONAIS===============================================================
-app.MapPost("/api/orientacoes", async (OrientacaoDto dto) =>
+app.MapPost("/api/orientacoes", async (OrientacaoDto dto, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
+    // Validar se paciente pertence à empresa
+    if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, dto.PacienteId, emp))
+        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
     using var cmd = new NpgsqlCommand(@"
         INSERT INTO orientacoes_nutricionais (paciente_id, empresa_id, texto, atualizado_em)
-        VALUES (@pacienteId, (SELECT empresa_id FROM pacientes WHERE id = @pacienteId), @texto, CURRENT_TIMESTAMP)
+        VALUES (@pacienteId, @emp, @texto, CURRENT_TIMESTAMP)
         ON CONFLICT (paciente_id)
         DO UPDATE SET texto = EXCLUDED.texto, atualizado_em = CURRENT_TIMESTAMP;", conn);
     cmd.Parameters.AddWithValue("pacienteId", dto.PacienteId);
+    cmd.Parameters.AddWithValue("emp", emp);
     cmd.Parameters.AddWithValue("texto", dto.Texto ?? "");
     await cmd.ExecuteNonQueryAsync();
     return Results.Ok(new { mensagem = "Orientações salvas com sucesso!" });
 });
 
-app.MapGet("/api/orientacoes/{pacienteId}", async (int pacienteId) =>
+app.MapGet("/api/orientacoes/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
+    // Validar se paciente pertence à empresa
+    if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
+        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
-    using var cmd = new NpgsqlCommand("SELECT texto FROM orientacoes_nutricionais WHERE paciente_id = @id", conn);
+    using var cmd = new NpgsqlCommand("SELECT texto FROM orientacoes_nutricionais WHERE paciente_id = @id AND empresa_id = @emp", conn);
     cmd.Parameters.AddWithValue("id", pacienteId);
+    cmd.Parameters.AddWithValue("emp", emp);
     var resultado = await cmd.ExecuteScalarAsync();
     return Results.Ok(new { texto = resultado?.ToString() ?? "" });
 });
@@ -1681,8 +1712,13 @@ var resultadosMeta = new HashSet<string> { "mantida", "parcial", "nao_mantida" }
 var statusMeta = new HashSet<string> { "ativa", "concluida", "arquivada" };
 
 // Lista as metas do paciente já com o histórico de acompanhamento
-app.MapGet("/api/metas/{pacienteId}", async (int pacienteId) =>
+app.MapGet("/api/metas/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
+    // Validar se paciente pertence à empresa
+    if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
+        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
@@ -1692,10 +1728,11 @@ app.MapGet("/api/metas/{pacienteId}", async (int pacienteId) =>
     using (var cmd = new NpgsqlCommand(@"
         SELECT id, titulo, COALESCE(descricao, ''), tipo, prazo, status
         FROM metas_paciente
-        WHERE paciente_id = @p
+        WHERE paciente_id = @p AND empresa_id = @emp
         ORDER BY CASE status WHEN 'ativa' THEN 0 WHEN 'concluida' THEN 1 ELSE 2 END, id DESC;", conn))
     {
         cmd.Parameters.AddWithValue("p", pacienteId);
+        cmd.Parameters.AddWithValue("emp", emp);
         using var rd = await cmd.ExecuteReaderAsync();
         while (await rd.ReadAsync())
         {
@@ -1719,10 +1756,11 @@ app.MapGet("/api/metas/{pacienteId}", async (int pacienteId) =>
         SELECT a.id, a.meta_id, a.data_acompanhamento, a.resultado, COALESCE(a.observacao, '')
         FROM metas_acompanhamento a
         JOIN metas_paciente m ON m.id = a.meta_id
-        WHERE m.paciente_id = @p
+        WHERE m.paciente_id = @p AND m.empresa_id = @emp
         ORDER BY a.data_acompanhamento DESC, a.id DESC;", conn))
     {
         cmd.Parameters.AddWithValue("p", pacienteId);
+        cmd.Parameters.AddWithValue("emp", emp);
         using var rd = await cmd.ExecuteReaderAsync();
         while (await rd.ReadAsync())
         {
@@ -1740,10 +1778,15 @@ app.MapGet("/api/metas/{pacienteId}", async (int pacienteId) =>
     return Results.Ok(metas);
 });
 
-app.MapPost("/api/metas", async (MetaInput input) =>
+app.MapPost("/api/metas", async (MetaInput input, ClaimsPrincipal user) =>
 {
     if (string.IsNullOrWhiteSpace(input.Titulo))
         return Results.BadRequest(new { mensagem = "Informe o título da meta." });
+
+    int emp = Auth.Empresa(user);
+    // Validar se paciente pertence à empresa
+    if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, input.PacienteId, emp))
+        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
 
     var tipo = tiposMeta.Contains(input.Tipo ?? "") ? input.Tipo! : "outro";
 
@@ -1751,8 +1794,9 @@ app.MapPost("/api/metas", async (MetaInput input) =>
     await conn.OpenAsync();
     using var cmd = new NpgsqlCommand(@"
         INSERT INTO metas_paciente (paciente_id, empresa_id, titulo, descricao, tipo, prazo)
-        VALUES (@p, (SELECT empresa_id FROM pacientes WHERE id = @p), @titulo, @desc, @tipo, @prazo) RETURNING id;", conn);
+        VALUES (@p, @emp, @titulo, @desc, @tipo, @prazo) RETURNING id;", conn);
     cmd.Parameters.AddWithValue("p", input.PacienteId);
+    cmd.Parameters.AddWithValue("emp", emp);
     cmd.Parameters.AddWithValue("titulo", input.Titulo.Trim());
     cmd.Parameters.AddWithValue("desc", input.Descricao ?? "");
     cmd.Parameters.AddWithValue("tipo", tipo);
@@ -1765,10 +1809,12 @@ app.MapPost("/api/metas", async (MetaInput input) =>
     return Results.Created($"/api/metas/{id}", new { id, mensagem = "Meta criada!" });
 });
 
-app.MapPut("/api/metas/{id}", async (int id, MetaInput input) =>
+app.MapPut("/api/metas/{id}", async (int id, MetaInput input, ClaimsPrincipal user) =>
 {
     if (string.IsNullOrWhiteSpace(input.Titulo))
         return Results.BadRequest(new { mensagem = "Informe o título da meta." });
+
+    int emp = Auth.Empresa(user);
 
     var tipo = tiposMeta.Contains(input.Tipo ?? "") ? input.Tipo! : "outro";
     var status = statusMeta.Contains(input.Status ?? "") ? input.Status! : "ativa";
@@ -1778,8 +1824,9 @@ app.MapPut("/api/metas/{id}", async (int id, MetaInput input) =>
     using var cmd = new NpgsqlCommand(@"
         UPDATE metas_paciente
         SET titulo = @titulo, descricao = @desc, tipo = @tipo, prazo = @prazo, status = @status
-        WHERE id = @id;", conn);
+        WHERE id = @id AND empresa_id = @emp;", conn);
     cmd.Parameters.AddWithValue("id", id);
+    cmd.Parameters.AddWithValue("emp", emp);
     cmd.Parameters.AddWithValue("titulo", input.Titulo.Trim());
     cmd.Parameters.AddWithValue("desc", input.Descricao ?? "");
     cmd.Parameters.AddWithValue("tipo", tipo);
@@ -1795,12 +1842,15 @@ app.MapPut("/api/metas/{id}", async (int id, MetaInput input) =>
         : Results.NotFound(new { mensagem = "Meta não encontrada." });
 });
 
-app.MapDelete("/api/metas/{id}", async (int id) =>
+app.MapDelete("/api/metas/{id}", async (int id, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
+
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
-    using var cmd = new NpgsqlCommand("DELETE FROM metas_paciente WHERE id = @id", conn);
+    using var cmd = new NpgsqlCommand("DELETE FROM metas_paciente WHERE id = @id AND empresa_id = @emp", conn);
     cmd.Parameters.AddWithValue("id", id);
+    cmd.Parameters.AddWithValue("emp", emp);
     var rows = await cmd.ExecuteNonQueryAsync();
     return rows > 0
         ? Results.Ok(new { mensagem = "Meta excluída!" })
@@ -1808,23 +1858,26 @@ app.MapDelete("/api/metas/{id}", async (int id) =>
 });
 
 // Registra como a meta foi no check-in (mantida / parcial / não mantida)
-app.MapPost("/api/metas/acompanhamento", async (AcompanhamentoInput input) =>
+app.MapPost("/api/metas/acompanhamento", async (AcompanhamentoInput input, ClaimsPrincipal user) =>
 {
     if (!resultadosMeta.Contains(input.Resultado ?? ""))
         return Results.BadRequest(new { mensagem = "Resultado inválido." });
 
+    int emp = Auth.Empresa(user);
+
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
-    // Buscar empresa_id via meta -> paciente
+    // Buscar empresa_id via meta -> paciente e validar que pertence à empresa do usuário
     int empresaId;
     using (var cmdEmp = new NpgsqlCommand(@"
         SELECT p.empresa_id
         FROM metas_paciente m
         JOIN pacientes p ON p.id = m.paciente_id
-        WHERE m.id = @metaId", conn))
+        WHERE m.id = @metaId AND m.empresa_id = @emp", conn))
     {
         cmdEmp.Parameters.AddWithValue("metaId", input.MetaId);
+        cmdEmp.Parameters.AddWithValue("emp", emp);
         var result = await cmdEmp.ExecuteScalarAsync();
         if (result == null) return Results.NotFound(new { mensagem = "Meta não encontrada." });
         empresaId = Convert.ToInt32(result);
@@ -1846,12 +1899,15 @@ app.MapPost("/api/metas/acompanhamento", async (AcompanhamentoInput input) =>
     return Results.Created($"/api/metas/acompanhamento/{id}", new { id, mensagem = "Acompanhamento registrado!" });
 });
 
-app.MapDelete("/api/metas/acompanhamento/{id}", async (int id) =>
+app.MapDelete("/api/metas/acompanhamento/{id}", async (int id, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
+
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
-    using var cmd = new NpgsqlCommand("DELETE FROM metas_acompanhamento WHERE id = @id", conn);
+    using var cmd = new NpgsqlCommand("DELETE FROM metas_acompanhamento WHERE id = @id AND empresa_id = @emp", conn);
     cmd.Parameters.AddWithValue("id", id);
+    cmd.Parameters.AddWithValue("emp", emp);
     var rows = await cmd.ExecuteNonQueryAsync();
     return rows > 0
         ? Results.Ok(new { mensagem = "Acompanhamento excluído!" })
@@ -1925,8 +1981,13 @@ app.MapDelete("/api/arquivos/{id}", async (int id, ClaimsPrincipal user, HttpCon
 // =====================================================================
 // EVOLUÇÃO (peso, medidas, fotos, observações)
 // =====================================================================
-app.MapGet("/api/evolucao/{pacienteId}", async (int pacienteId) =>
+app.MapGet("/api/evolucao/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
+    // Validar se paciente pertence à empresa
+    if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
+        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
@@ -1937,9 +1998,10 @@ app.MapGet("/api/evolucao/{pacienteId}", async (int pacienteId) =>
         SELECT id, data_registro, peso_kg, percentual_gordura, cintura_cm, quadril_cm,
                abdomen_cm, braco_cm, coxa_cm, COALESCE(observacao, '')
         FROM evolucao_registros
-        WHERE paciente_id = @p
+        WHERE paciente_id = @p AND empresa_id = @emp
         ORDER BY data_registro DESC, id DESC;", conn);
     cmd.Parameters.AddWithValue("p", pacienteId);
+    cmd.Parameters.AddWithValue("emp", emp);
     using var rd = await cmd.ExecuteReaderAsync();
     while (await rd.ReadAsync())
     {
@@ -1962,11 +2024,16 @@ app.MapGet("/api/evolucao/{pacienteId}", async (int pacienteId) =>
     return Results.Ok(lista);
 });
 
-app.MapPost("/api/evolucao", async (HttpRequest request) =>
+app.MapPost("/api/evolucao", async (HttpRequest request, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
     var form = await request.ReadFormAsync();
     if (!int.TryParse(form["pacienteId"], out var pacienteId))
         return Results.BadRequest(new { mensagem = "Paciente inválido." });
+
+    // Validar se paciente pertence à empresa
+    if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
+        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
 
     var c = EvolucaoCampos.Ler(form);
     if (c.Vazio && form.Files.Count == 0)
@@ -1979,16 +2046,6 @@ app.MapPost("/api/evolucao", async (HttpRequest request) =>
     await conn.OpenAsync();
     using var tx = await conn.BeginTransactionAsync();
 
-    // Buscar empresa_id do paciente
-    int empresaId;
-    using (var cmdEmp = new NpgsqlCommand("SELECT empresa_id FROM pacientes WHERE id = @pid", conn, tx))
-    {
-        cmdEmp.Parameters.AddWithValue("pid", pacienteId);
-        var result = await cmdEmp.ExecuteScalarAsync();
-        if (result == null) return Results.NotFound(new { mensagem = "Paciente não encontrado." });
-        empresaId = Convert.ToInt32(result);
-    }
-
     using var cmd = new NpgsqlCommand(@"
         INSERT INTO evolucao_registros
             (paciente_id, data_registro, peso_kg, percentual_gordura, cintura_cm, quadril_cm,
@@ -1996,6 +2053,7 @@ app.MapPost("/api/evolucao", async (HttpRequest request) =>
         VALUES (@p, @data, @peso, @gord, @cint, @quad, @abd, @braco, @coxa, @obs, @emp)
         RETURNING id;", conn, tx);
     cmd.Parameters.AddWithValue("p", pacienteId);
+    cmd.Parameters.AddWithValue("emp", emp);
     cmd.Parameters.Add(new NpgsqlParameter("data", NpgsqlTypes.NpgsqlDbType.Date) { Value = c.Data });
     cmd.Parameters.Add(ArquivoHelper.Num("peso", c.Peso));
     cmd.Parameters.Add(ArquivoHelper.Num("gord", c.Gordura));
@@ -2005,7 +2063,6 @@ app.MapPost("/api/evolucao", async (HttpRequest request) =>
     cmd.Parameters.Add(ArquivoHelper.Num("braco", c.Braco));
     cmd.Parameters.Add(ArquivoHelper.Num("coxa", c.Coxa));
     cmd.Parameters.AddWithValue("obs", c.Obs);
-    cmd.Parameters.AddWithValue("emp", empresaId);
     int id = Convert.ToInt32(await cmd.ExecuteScalarAsync());
 
     await ArquivoHelper.Salvar(conn, tx, pacienteId, "evolucao", id, form.Files);
@@ -2014,8 +2071,9 @@ app.MapPost("/api/evolucao", async (HttpRequest request) =>
     return Results.Created($"/api/evolucao/{id}", new { id, mensagem = "Registro de evolução salvo!" });
 });
 
-app.MapPut("/api/evolucao/{id}", async (int id, HttpRequest request) =>
+app.MapPut("/api/evolucao/{id}", async (int id, HttpRequest request, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
     var form = await request.ReadFormAsync();
     var c = EvolucaoCampos.Ler(form);
 
@@ -2030,9 +2088,10 @@ app.MapPut("/api/evolucao/{id}", async (int id, HttpRequest request) =>
         UPDATE evolucao_registros SET
             data_registro = @data, peso_kg = @peso, percentual_gordura = @gord, cintura_cm = @cint,
             quadril_cm = @quad, abdomen_cm = @abd, braco_cm = @braco, coxa_cm = @coxa, observacao = @obs
-        WHERE id = @id
+        WHERE id = @id AND empresa_id = @emp
         RETURNING paciente_id;", conn, tx);
     cmd.Parameters.AddWithValue("id", id);
+    cmd.Parameters.AddWithValue("emp", emp);
     cmd.Parameters.Add(new NpgsqlParameter("data", NpgsqlTypes.NpgsqlDbType.Date) { Value = c.Data });
     cmd.Parameters.Add(ArquivoHelper.Num("peso", c.Peso));
     cmd.Parameters.Add(ArquivoHelper.Num("gord", c.Gordura));
@@ -2052,8 +2111,9 @@ app.MapPut("/api/evolucao/{id}", async (int id, HttpRequest request) =>
     return Results.Ok(new { mensagem = "Registro atualizado!" });
 });
 
-app.MapDelete("/api/evolucao/{id}", async (int id) =>
+app.MapDelete("/api/evolucao/{id}", async (int id, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
     using var tx = await conn.BeginTransactionAsync();
@@ -2065,8 +2125,9 @@ app.MapDelete("/api/evolucao/{id}", async (int id) =>
         await cmdA.ExecuteNonQueryAsync();
     }
 
-    using var cmd = new NpgsqlCommand("DELETE FROM evolucao_registros WHERE id = @id", conn, tx);
+    using var cmd = new NpgsqlCommand("DELETE FROM evolucao_registros WHERE id = @id AND empresa_id = @emp", conn, tx);
     cmd.Parameters.AddWithValue("id", id);
+    cmd.Parameters.AddWithValue("emp", emp);
     var rows = await cmd.ExecuteNonQueryAsync();
     await tx.CommitAsync();
 
@@ -2076,8 +2137,13 @@ app.MapDelete("/api/evolucao/{id}", async (int id) =>
 });
 
 // ================================================ EXAMES=====================================================================
-app.MapGet("/api/exames/{pacienteId}", async (int pacienteId) =>
+app.MapGet("/api/exames/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
+    // Validar se paciente pertence à empresa
+    if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
+        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
@@ -2087,9 +2153,10 @@ app.MapGet("/api/exames/{pacienteId}", async (int pacienteId) =>
     using var cmd = new NpgsqlCommand(@"
         SELECT id, titulo_exame, data_exame, COALESCE(observacao, ''), enviado_por
         FROM exames_paciente
-        WHERE paciente_id = @p
+        WHERE paciente_id = @p AND empresa_id = @emp
         ORDER BY data_exame DESC, id DESC;", conn);
     cmd.Parameters.AddWithValue("p", pacienteId);
+    cmd.Parameters.AddWithValue("emp", emp);
     using var rd = await cmd.ExecuteReaderAsync();
     while (await rd.ReadAsync())
     {
@@ -2107,11 +2174,16 @@ app.MapGet("/api/exames/{pacienteId}", async (int pacienteId) =>
     return Results.Ok(lista);
 });
 
-app.MapPost("/api/exames", async (HttpRequest request) =>
+app.MapPost("/api/exames", async (HttpRequest request, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
     var form = await request.ReadFormAsync();
     if (!int.TryParse(form["pacienteId"], out var pacienteId))
         return Results.BadRequest(new { mensagem = "Paciente inválido." });
+
+    // Validar se paciente pertence à empresa
+    if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
+        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
 
     string titulo = form["titulo"].ToString().Trim();
     if (titulo == "")
@@ -2126,8 +2198,9 @@ app.MapPost("/api/exames", async (HttpRequest request) =>
 
     using var cmd = new NpgsqlCommand(@"
         INSERT INTO exames_paciente (paciente_id, empresa_id, titulo_exame, data_exame, observacao)
-        VALUES (@p, (SELECT empresa_id FROM pacientes WHERE id = @p), @titulo, @data, @obs) RETURNING id;", conn, tx);
+        VALUES (@p, @emp, @titulo, @data, @obs) RETURNING id;", conn, tx);
     cmd.Parameters.AddWithValue("p", pacienteId);
+    cmd.Parameters.AddWithValue("emp", emp);
     cmd.Parameters.AddWithValue("titulo", titulo.Length > 100 ? titulo[..100] : titulo);
     cmd.Parameters.Add(new NpgsqlParameter("data", NpgsqlTypes.NpgsqlDbType.Date) { Value = EvolucaoCampos.LerData(form["data"]) });
     cmd.Parameters.AddWithValue("obs", form["observacao"].ToString());
@@ -2139,12 +2212,13 @@ app.MapPost("/api/exames", async (HttpRequest request) =>
     return Results.Created($"/api/exames/{id}", new { id, mensagem = "Exame registrado!" });
 });
 
-app.MapPut("/api/exames/{id}", async (int id, HttpRequest request) =>
+app.MapPut("/api/exames/{id}", async (int id, HttpRequest request, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
     var form = await request.ReadFormAsync();
     string titulo = form["titulo"].ToString().Trim();
     if (titulo == "")
-    return Results.BadRequest(new { mensagem = "Informe o nome do exame." });
+        return Results.BadRequest(new { mensagem = "Informe o nome do exame." });
     var erro = ArquivoHelper.Validar(form.Files, somenteImagem: false);
     if (erro != null) return Results.BadRequest(new { mensagem = erro });
     using var conn = new NpgsqlConnection(connString);
@@ -2153,21 +2227,23 @@ app.MapPut("/api/exames/{id}", async (int id, HttpRequest request) =>
     using var cmd = new NpgsqlCommand(@"
     UPDATE exames_paciente
     SET titulo_exame = @titulo, data_exame = @data, observacao = @obs
-    WHERE id = @id
+    WHERE id = @id AND empresa_id = @emp
     RETURNING paciente_id;", conn, tx);
     cmd.Parameters.AddWithValue("id", id);
+    cmd.Parameters.AddWithValue("emp", emp);
     cmd.Parameters.AddWithValue("titulo", titulo.Length > 100 ? titulo[..100] : titulo);
     cmd.Parameters.Add(new NpgsqlParameter("data", NpgsqlTypes.NpgsqlDbType.Date) { Value = EvolucaoCampos.LerData(form["data"]) });
     cmd.Parameters.AddWithValue("obs", form["observacao"].ToString());
     var pid = await cmd.ExecuteScalarAsync();
     if (pid is null)
-    return Results.NotFound(new { mensagem = "Exame não encontrado." });
+        return Results.NotFound(new { mensagem = "Exame não encontrado." });
     await ArquivoHelper.Salvar(conn, tx, Convert.ToInt32(pid), "exame", id, form.Files);
     await tx.CommitAsync();
     return Results.Ok(new { mensagem = "Exame atualizado!" });
 });
-app.MapDelete("/api/exames/{id}", async (int id) =>
+app.MapDelete("/api/exames/{id}", async (int id, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
     using var tx = await conn.BeginTransactionAsync();
@@ -2177,8 +2253,9 @@ app.MapDelete("/api/exames/{id}", async (int id) =>
     cmdA.Parameters.AddWithValue("id", id);
     await cmdA.ExecuteNonQueryAsync();
     }
-    using var cmd = new NpgsqlCommand("DELETE FROM exames_paciente WHERE id = @id", conn, tx);
+    using var cmd = new NpgsqlCommand("DELETE FROM exames_paciente WHERE id = @id AND empresa_id = @emp", conn, tx);
     cmd.Parameters.AddWithValue("id", id);
+    cmd.Parameters.AddWithValue("emp", emp);
     var rows = await cmd.ExecuteNonQueryAsync();
     await tx.CommitAsync();
     return rows > 0
@@ -2186,80 +2263,98 @@ app.MapDelete("/api/exames/{id}", async (int id) =>
     : Results.NotFound(new { mensagem = "Exame não encontrado." });
     });
 // ======================================= OBSERVAÇÕES (semana do check-in e gerais)============================================
-app.MapGet("/api/observacoes/{pacienteId}", async (int pacienteId) =>
-    {
+app.MapGet("/api/observacoes/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
+{
+    int emp = Auth.Empresa(user);
+    // Validar se paciente pertence à empresa
+    if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
+        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+
     var lista = new List<object>();
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
     using var cmd = new NpgsqlCommand(@"
     SELECT id, tipo, data_ref, texto
     FROM observacoes_paciente
-    WHERE paciente_id = @p
+    WHERE paciente_id = @p AND empresa_id = @emp
     ORDER BY data_ref DESC, id DESC;", conn);
     cmd.Parameters.AddWithValue("p", pacienteId);
+    cmd.Parameters.AddWithValue("emp", emp);
     using var rd = await cmd.ExecuteReaderAsync();
     while (await rd.ReadAsync())
     {
-    lista.Add(new
-    {
-    id = rd.GetInt32(0),
-    tipo = rd.GetString(1),
-    data = rd.GetDateTime(2).ToString("yyyy-MM-dd"),
-    texto = rd.GetString(3)
-    });
+        lista.Add(new
+        {
+            id = rd.GetInt32(0),
+            tipo = rd.GetString(1),
+            data = rd.GetDateTime(2).ToString("yyyy-MM-dd"),
+            texto = rd.GetString(3)
+        });
     }
     return Results.Ok(lista);
-    });
-app.MapPost("/api/observacoes", async (ObservacaoInput input) =>
-    {
+});
+app.MapPost("/api/observacoes", async (ObservacaoInput input, ClaimsPrincipal user) =>
+{
     if (string.IsNullOrWhiteSpace(input.Texto))
-    return Results.BadRequest(new { mensagem = "Escreva a observação." });
+        return Results.BadRequest(new { mensagem = "Escreva a observação." });
+
+    int emp = Auth.Empresa(user);
+    // Validar se paciente pertence à empresa
+    if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, input.PacienteId, emp))
+        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+
     var tipo = input.Tipo == "geral" ? "geral" : "semana";
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
     using var cmd = new NpgsqlCommand(@"
     INSERT INTO observacoes_paciente (paciente_id, empresa_id, tipo, data_ref, texto)
-    VALUES (@p, (SELECT empresa_id FROM pacientes WHERE id = @p), @tipo, @data, @texto) RETURNING id;", conn);
+    VALUES (@p, @emp, @tipo, @data, @texto) RETURNING id;", conn);
     cmd.Parameters.AddWithValue("p", input.PacienteId);
+    cmd.Parameters.AddWithValue("emp", emp);
     cmd.Parameters.AddWithValue("tipo", tipo);
     cmd.Parameters.Add(new NpgsqlParameter("data", NpgsqlTypes.NpgsqlDbType.Date)
     {
-    Value = DateTime.TryParse(input.Data, out var dt) ? dt.Date : DateTime.Today
+        Value = DateTime.TryParse(input.Data, out var dt) ? dt.Date : DateTime.Today
     });
     cmd.Parameters.AddWithValue("texto", input.Texto.Trim());
     var id = await cmd.ExecuteScalarAsync();
     return Results.Created($"/api/observacoes/{id}", new { id, mensagem = "Observação salva!" });
-    });
-app.MapPut("/api/observacoes/{id}", async (int id, ObservacaoInput input) =>
-    {
+});
+app.MapPut("/api/observacoes/{id}", async (int id, ObservacaoInput input, ClaimsPrincipal user) =>
+{
     if (string.IsNullOrWhiteSpace(input.Texto))
-    return Results.BadRequest(new { mensagem = "Escreva a observação." });
+        return Results.BadRequest(new { mensagem = "Escreva a observação." });
+
+    int emp = Auth.Empresa(user);
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
     using var cmd = new NpgsqlCommand(@"
-    UPDATE observacoes_paciente SET data_ref = @data, texto = @texto WHERE id = @id;", conn);
+    UPDATE observacoes_paciente SET data_ref = @data, texto = @texto WHERE id = @id AND empresa_id = @emp;", conn);
     cmd.Parameters.AddWithValue("id", id);
+    cmd.Parameters.AddWithValue("emp", emp);
     cmd.Parameters.Add(new NpgsqlParameter("data", NpgsqlTypes.NpgsqlDbType.Date)
     {
-    Value = DateTime.TryParse(input.Data, out var dt) ? dt.Date : DateTime.Today
+        Value = DateTime.TryParse(input.Data, out var dt) ? dt.Date : DateTime.Today
     });
     cmd.Parameters.AddWithValue("texto", input.Texto.Trim());
     var rows = await cmd.ExecuteNonQueryAsync();
     return rows > 0
-    ? Results.Ok(new { mensagem = "Observação atualizada!" })
-    : Results.NotFound(new { mensagem = "Observação não encontrada." });
-    });
-app.MapDelete("/api/observacoes/{id}", async (int id) =>
-    {
+        ? Results.Ok(new { mensagem = "Observação atualizada!" })
+        : Results.NotFound(new { mensagem = "Observação não encontrada." });
+});
+app.MapDelete("/api/observacoes/{id}", async (int id, ClaimsPrincipal user) =>
+{
+    int emp = Auth.Empresa(user);
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
-    using var cmd = new NpgsqlCommand("DELETE FROM observacoes_paciente WHERE id = @id", conn);
+    using var cmd = new NpgsqlCommand("DELETE FROM observacoes_paciente WHERE id = @id AND empresa_id = @emp", conn);
     cmd.Parameters.AddWithValue("id", id);
+    cmd.Parameters.AddWithValue("emp", emp);
     var rows = await cmd.ExecuteNonQueryAsync();
     return rows > 0
-    ? Results.Ok(new { mensagem = "Observação excluída!" })
-    : Results.NotFound(new { mensagem = "Observação não encontrada." });
-    });
+        ? Results.Ok(new { mensagem = "Observação excluída!" })
+        : Results.NotFound(new { mensagem = "Observação não encontrada." });
+});
 // Duplica uma opção (itens + substituições) para uma nova opção da mesma refeição
 app.MapPost("/api/planos/refeicao/{refeicaoId}/opcao/{opcao}/duplicar", async (int refeicaoId, int opcao) =>
     {
@@ -4377,8 +4472,18 @@ app.MapGet("/api/paciente/tudo", async (ClaimsPrincipal user) =>
 });
 
 // Para a equipe: últimos acessos da paciente
-app.MapGet("/api/acessos/{pacienteId}", async (int pacienteId) =>
+app.MapGet("/api/acessos/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
+    // Apenas usuários do tipo "equipe" podem acessar (não pacientes)
+    var tipo = user.FindFirst("tipo")?.Value;
+    if (tipo != "equipe")
+        return Results.Forbid();
+
+    int emp = Auth.Empresa(user);
+    // Validar se paciente pertence à empresa do usuário
+    if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
+        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+
     var lista = new List<object>();
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
@@ -5507,15 +5612,17 @@ static class Escopo
     static readonly Dictionary<string, string> Sql = new()
     {
         ["paciente"]  = "SELECT empresa_id FROM pacientes WHERE id = @v",
-        ["refeicao"]  = "SELECT empresa_id FROM refeicoes WHERE id = @v",
-        ["item"]      = "SELECT empresa_id FROM itens_refeicao WHERE id = @v",
-        ["versao"]    = "SELECT empresa_id FROM planos_versoes WHERE id = @v",
-        ["meta"]      = "SELECT empresa_id FROM metas_paciente WHERE id = @v",
-        ["acomp"]     = "SELECT empresa_id FROM metas_acompanhamento WHERE id = @v",
-        ["arquivo"]   = "SELECT empresa_id FROM arquivos_paciente WHERE id = @v",
-        ["evolucao"]  = "SELECT empresa_id FROM evolucao_registros WHERE id = @v",
-        ["exame"]     = "SELECT empresa_id FROM exames_paciente WHERE id = @v",
-        ["obs"]       = "SELECT empresa_id FROM observacoes_paciente WHERE id = @v"
+        ["refeicao"]   = "SELECT empresa_id FROM refeicoes WHERE id = @v",
+        ["item"]       = "SELECT empresa_id FROM itens_refeicao WHERE id = @v",
+        ["versao"]     = "SELECT empresa_id FROM planos_versoes WHERE id = @v",
+        ["meta"]       = "SELECT empresa_id FROM metas_paciente WHERE id = @v",
+        ["acomp"]      = "SELECT empresa_id FROM metas_acompanhamento WHERE id = @v",
+        ["arquivo"]    = "SELECT empresa_id FROM arquivos_paciente WHERE id = @v",
+        ["evolucao"]   = "SELECT empresa_id FROM evolucao_registros WHERE id = @v",
+        ["exame"]      = "SELECT empresa_id FROM exames_paciente WHERE id = @v",
+        ["obs"]        = "SELECT empresa_id FROM observacoes_paciente WHERE id = @v",
+        ["checkin"]    = "SELECT empresa_id FROM checkins_semanais WHERE id = @v",
+        ["orientacao"] = "SELECT empresa_id FROM orientacoes_nutricionais WHERE id = @v"
     };
 
     public static async Task<List<(string kind, int id)>> Alvos(HttpContext ctx)
@@ -5632,6 +5739,38 @@ static class Escopo
             if (r is null || Convert.ToInt32(r) != empresa) return false;
         }
         return true;
+    }
+}
+
+// Helper para validação de isolamento multi-tenant (defesa em profundidade)
+static class TenantValidation
+{
+    // Valida se um recurso pertence à empresa do usuário
+    // Retorna true se válido, false se não encontrado (para retornar 404 sem vazamento de informação)
+    public static async Task<bool> ValidarEmpresaAsync(
+        string connString, string table, string idColumn, int resourceId, int empresaId)
+    {
+        if (resourceId <= 0) return false;
+        using var conn = new NpgsqlConnection(connString);
+        await conn.OpenAsync();
+        using var cmd = new NpgsqlCommand($"SELECT 1 FROM {table} WHERE {idColumn} = @id AND empresa_id = @emp", conn);
+        cmd.Parameters.AddWithValue("id", resourceId);
+        cmd.Parameters.AddWithValue("emp", empresaId);
+        var result = await cmd.ExecuteScalarAsync();
+        return result != null;
+    }
+
+    // Valida se um paciente pertence à empresa do usuário
+    public static async Task<bool> ValidarPacienteEmpresaAsync(string connString, int pacienteId, int empresaId)
+    {
+        if (pacienteId <= 0) return false;
+        using var conn = new NpgsqlConnection(connString);
+        await conn.OpenAsync();
+        using var cmd = new NpgsqlCommand("SELECT 1 FROM pacientes WHERE id = @id AND empresa_id = @emp", conn);
+        cmd.Parameters.AddWithValue("id", pacienteId);
+        cmd.Parameters.AddWithValue("emp", empresaId);
+        var result = await cmd.ExecuteScalarAsync();
+        return result != null;
     }
 }
 
