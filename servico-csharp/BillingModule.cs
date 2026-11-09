@@ -30,7 +30,8 @@ public static class Planos
     {
         ["basico"]       = ( 97.00m, new PlanoLimites(  50,  2,   500,   5)),
         ["profissional"] = (297.00m, new PlanoLimites( 200, 10,  2000,  20)),
-        ["enterprise"]   = (797.00m, new PlanoLimites(1000, 50, 10000, 100))
+        ["enterprise"]   = (797.00m, new PlanoLimites(1000, 50, 10000, 100)),
+        ["sem_plano"]    = (   0.00m, new PlanoLimites(   5,  1,    50,   1))
     };
 
     public static (decimal ValorMensal, PlanoLimites Limites) Obter(string plano)
@@ -191,6 +192,7 @@ grupo.MapGet("/assinatura", async (ClaimsPrincipal user, NpgsqlDataSource db) =>
                    WHEN 'basico'       THEN jsonb_build_object('max_pacientes', 50,  'max_profissionais', 2,  'storage_mb', 500,   'max_versoes_plano', 5)
                    WHEN 'profissional' THEN jsonb_build_object('max_pacientes', 200, 'max_profissionais', 10, 'storage_mb', 2000,  'max_versoes_plano', 20)
                    WHEN 'enterprise'   THEN jsonb_build_object('max_pacientes', 1000,'max_profissionais', 50, 'storage_mb', 10000, 'max_versoes_plano', 100)
+                   WHEN 'sem_plano'    THEN jsonb_build_object('max_pacientes', 5,   'max_profissionais', 1,  'storage_mb', 50,    'max_versoes_plano', 1)
                END AS limites
         FROM assinaturas a
         WHERE a.empresa_id = @emp;");

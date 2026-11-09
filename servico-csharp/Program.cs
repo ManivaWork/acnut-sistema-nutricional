@@ -3677,10 +3677,10 @@ app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput
         // Criar assinatura com status 'sem_plano' (sem customer Asaas ainda)
         using (var cmd = new NpgsqlCommand(@"
             INSERT INTO assinaturas (empresa_id, plano, status, valor_centavos, ciclo, limites)
-            VALUES (@emp, 'basico', 'sem_plano', 0, 'monthly', @limites);", conn, tx))
+            VALUES (@emp, 'sem_plano', 'sem_plano', 0, 'monthly', @limites);", conn, tx))
         {
             cmd.Parameters.AddWithValue("@emp", empresaId);
-            var limitesSemPlano = new PlanoLimites(3, 1, 50, 1);
+            var limitesSemPlano = Planos.Catalogo["sem_plano"].Limites;
             cmd.Parameters.Add(new NpgsqlParameter("limites", NpgsqlTypes.NpgsqlDbType.Jsonb)
             {
                 Value = JsonSerializer.Serialize(limitesSemPlano)
@@ -5504,7 +5504,7 @@ static class PlanoEnforcement
 {
     // Verifica se a empresa tem assinatura ativa e retorna os limites
     // Retorna null se não tem assinatura ou está cancelada/past_due
-    // Para "sem_plano", retorna limites restritos (max 3 pacientes, sem PDF)
+    // Para "sem_plano", retorna limites do catálogo (max 5 pacientes)
     public static async Task<(bool temAcesso, PlanoLimites limites, string? erro)> VerificarAcessoAsync(
         NpgsqlDataSource db, int empresaId, string acaoRequerida)
     {
@@ -5520,8 +5520,9 @@ static class PlanoEnforcement
 
         if (!await rd.ReadAsync())
         {
-            // Sem assinatura = plano básico sem assinatura ativa (sem_plano)
-            return (false, new PlanoLimites(3, 1, 50, 1), "plano_necessario");
+            // Sem assinatura = sem_plano (plano gratuito)
+            var semPlanoLimites = Planos.Catalogo["sem_plano"].Limites;
+            return (false, semPlanoLimites, "plano_necessario");
         }
 
         var status = rd.GetString(0);
@@ -5531,7 +5532,8 @@ static class PlanoEnforcement
         // Se status é sem_plano, cancelada, past_due, inativa -> restrições
         if (status != "ativa" && status != "trial")
         {
-            return (false, new PlanoLimites(3, 1, 50, 1), "plano_necessario");
+            var semPlanoLimites = Planos.Catalogo["sem_plano"].Limites;
+            return (false, semPlanoLimites, "plano_necessario");
         }
 
         // Tem assinatura ativa - desserializar limites

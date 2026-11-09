@@ -18,7 +18,7 @@ DECLARE
     lim_basico jsonb := '{"max_pacientes": 50, "max_profissionais": 2, "storage_mb": 500, "max_versoes_plano": 5}';
     lim_profissional jsonb := '{"max_pacientes": 200, "max_profissionais": 10, "storage_mb": 2000, "max_versoes_plano": 20}';
     lim_enterprise jsonb := '{"max_pacientes": 1000, "max_profissionais": 50, "storage_mb": 10000, "max_versoes_plano": 100}';
-    lim_sem_plano jsonb := '{"max_pacientes": 3, "max_profissionais": 1, "storage_mb": 50, "max_versoes_plano": 1}';
+    lim_sem_plano jsonb := '{"max_pacientes": 5, "max_profissionais": 1, "storage_mb": 50, "max_versoes_plano": 1}';
     linhas integer;
 BEGIN
     UPDATE assinaturas
