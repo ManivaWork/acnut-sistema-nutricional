@@ -1,9 +1,3 @@
--- =====================================================================
--- MIGRAÇÃO: Adicionar coluna 'limites' (JSONB) na tabela assinaturas
--- Idempotente, transacional, sem DROP/DELETE de dados
--- Aplicar no Render: Database → Connect → PSQL → cole este conteúdo
--- =====================================================================
-
 -- 1. Adicionar coluna limites se não existir
 DO $$
 BEGIN
@@ -18,9 +12,7 @@ BEGIN
     END IF;
 END $$;
 
--- 2. Backfill: popular limites para linhas existentes baseando-se no plano
--- Para assinaturas com status 'sem_plano', usar limites restritivos (max 3 pacientes)
--- Para outras, usar os limites do catálogo conforme o plano
+-- 2. Preencher limites das linhas existentes conforme o plano
 DO $$
 DECLARE
     lim_basico jsonb := '{"max_pacientes": 50, "max_profissionais": 2, "storage_mb": 500, "max_versoes_plano": 5}';
@@ -29,7 +21,6 @@ DECLARE
     lim_sem_plano jsonb := '{"max_pacientes": 3, "max_profissionais": 1, "storage_mb": 50, "max_versoes_plano": 1}';
     linhas integer;
 BEGIN
-    -- Atualizar linhas onde limites IS NULL
     UPDATE assinaturas
     SET limites = CASE
         WHEN status = 'sem_plano' THEN lim_sem_plano
@@ -44,17 +35,5 @@ BEGIN
     RAISE NOTICE 'Backfill de limites concluído: % linhas atualizadas', linhas;
 END $$;
 
--- 3. Verificação rápida
-SELECT
-    'assinaturas' AS tabela,
-    COUNT(*) AS total_linhas,
-    COUNT(limites) AS com_limites,
-    COUNT(*) - COUNT(limites) AS sem_limites
-FROM assinaturas;
-
-SELECT
-    plano,
-    status,
-    limites
-FROM assinaturas
-ORDER BY id;
+-- 3. Verificação
+SELECT empresa_id, plano, status, limites FROM assinaturas ORDER BY id;
