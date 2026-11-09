@@ -24,6 +24,12 @@ public class AnamneseApiTests : IClassFixture<WebApplicationFactory<Program>>
 
     public AnamneseApiTests(WebApplicationFactory<Program> factory)
     {
+        // Trava de segurança: testes só rodam em localhost
+        if (!IsLocalhost())
+        {
+            throw new InvalidOperationException("Testes de isolamento multi-tenant só podem rodar em localhost (proteção contra execução em produção).");
+        }
+
         // Set the JWT key as environment variable before the factory creates the host
         Environment.SetEnvironmentVariable("Jwt:Key", JwtKey);
 
@@ -39,6 +45,42 @@ public class AnamneseApiTests : IClassFixture<WebApplicationFactory<Program>>
         });
     }
 
+    /// <summary>
+    /// Verifica se o ambiente é localhost (proteção contra execução em produção)
+    /// </summary>
+    private static bool IsLocalhost()
+    {
+        var machineName = Environment.MachineName.ToLowerInvariant();
+        var connString = GetConnectionStringStatic();
+
+        // Verificar se é máquina local conhecida
+        if (machineName == "localhost" || machineName.Contains("local") || machineName.Contains("dev"))
+            return true;
+
+        // Verificar connection string - não deve conter hosts remotos de produção
+        if (!string.IsNullOrEmpty(connString))
+        {
+            if (connString.Contains("render.com") || connString.Contains("amazonaws.com") ||
+                connString.Contains("azure.com") || connString.Contains("supabase.co") ||
+                connString.Contains("neon.tech") || connString.Contains("prod") ||
+                connString.Contains("production"))
+            {
+                return false;
+            }
+
+            // Verificar se é IP local ou localhost
+            if (connString.Contains("127.0.0.1") || connString.Contains("localhost") ||
+                connString.Contains("192.168.") || connString.Contains("10.") ||
+                connString.Contains("172.16."))
+            {
+                return true;
+            }
+        }
+
+        // Se não conseguirmos determinar, assumimos que é ambiente de teste/local
+        return true;
+    }
+
     private string GetConnectionString()
     {
         using var scope = _factory.Services.CreateScope();
@@ -46,7 +88,14 @@ public class AnamneseApiTests : IClassFixture<WebApplicationFactory<Program>>
         return config.GetConnectionString("Default") ?? throw new InvalidOperationException("Connection string not found");
     }
 
-    private async Task<(int empresaId, int usuarioId)> CriarEmpresaEUsuariosTesteAsync()
+    private static string GetConnectionStringStatic()
+    {
+        return Environment.GetEnvironmentVariable("ConnectionStrings__Default")
+            ?? Environment.GetEnvironmentVariable("DefaultConnection")
+            ?? "";
+    }
+
+    private async Task<(int empresaId, int usuarioId)> CriarEmpresaEUsuariosTesteAsync(string testName = "")
     {
         var connString = GetConnectionString();
         await using var conn = new NpgsqlConnection(connString);
@@ -70,29 +119,40 @@ public class AnamneseApiTests : IClassFixture<WebApplicationFactory<Program>>
             var result = await cmd.ExecuteScalarAsync();
             int empresaId = Convert.ToInt32(result);
 
-            // Criar usuário (uid=1 para bater com o token de teste) - usar 'profissional' que existe no banco
+            // Criar usuário com ID único baseado no hash do nome do teste + timestamp
+            int usuarioId = Math.Abs((testName + Environment.TickCount).GetHashCode()) % 1000000 + 1000;
+            string userEmail = $"usuario_{testName}_{Guid.NewGuid():N}@teste.com".Replace("-", "");
+            if (userEmail.Length > 100) userEmail = userEmail.Substring(0, 100);
+
             await using var cmdUser = new NpgsqlCommand(@"
                 INSERT INTO usuarios (id, empresa_id, nome, email, senha_hash, perfil, ativo)
-                VALUES (1, @emp, 'Usuário Teste', 'teste@teste.com', 'hash', 'profissional', true)
-                ON CONFLICT (id) DO UPDATE SET empresa_id = EXCLUDED.empresa_id;", conn);
+                VALUES (@uid, @emp, 'Usuário Teste', @email, 'hash', 'profissional', true)
+                ON CONFLICT (id) DO UPDATE SET empresa_id = EXCLUDED.empresa_id, email = EXCLUDED.email;", conn);
+            cmdUser.Parameters.AddWithValue("uid", usuarioId);
             cmdUser.Parameters.AddWithValue("emp", empresaId);
+            cmdUser.Parameters.AddWithValue("email", userEmail);
             await cmdUser.ExecuteNonQueryAsync();
 
-            return (empresaId, 1);
+            return (empresaId, usuarioId);
         }
     }
 
-    private async Task<int> CriarPacienteTesteAsync(int empresaId, string nome = "Paciente Teste", string email = "paciente@teste.com")
+    private async Task<int> CriarPacienteTesteAsync(int empresaId, string testName = "")
     {
         var connString = GetConnectionString();
         await using var conn = new NpgsqlConnection(connString);
         await conn.OpenAsync();
+
+        // Email único para evitar conflito de chave única
+        string email = $"paciente_{testName}_{Guid.NewGuid():N}@teste.com".Replace("-", "");
+        if (email.Length > 100) email = email.Substring(0, 100);
+
         await using var cmd = new NpgsqlCommand(@"
             INSERT INTO pacientes (empresa_id, nome, email, telefone, data_nascimento, sexo, status, cpf)
             VALUES (@emp, @nome, @email, '', '1990-01-01', 'M', 'ativo', NULL)
             RETURNING id;", conn);
         cmd.Parameters.AddWithValue("emp", empresaId);
-        cmd.Parameters.AddWithValue("nome", nome);
+        cmd.Parameters.AddWithValue("nome", $"Paciente {testName}");
         cmd.Parameters.AddWithValue("email", email);
         var result = await cmd.ExecuteScalarAsync();
         return Convert.ToInt32(result);
@@ -104,20 +164,20 @@ public class AnamneseApiTests : IClassFixture<WebApplicationFactory<Program>>
         await using var conn = new NpgsqlConnection(connString);
         await conn.OpenAsync();
         // Limpar na ordem correta (filhos antes dos pais)
-        await using (var cmd = new NpgsqlCommand("DELETE FROM anamneses WHERE empresa_id = @emp", conn))
+        var tabelas = new[]
         {
-            cmd.Parameters.AddWithValue("emp", empresaId);
-            await cmd.ExecuteNonQueryAsync();
-        }
-        await using (var cmd = new NpgsqlCommand("DELETE FROM pacientes WHERE empresa_id = @emp", conn))
+            "anamneses", "pacientes", "usuarios", "empresas"
+        };
+
+        foreach (var tabela in tabelas)
         {
-            cmd.Parameters.AddWithValue("emp", empresaId);
-            await cmd.ExecuteNonQueryAsync();
-        }
-        await using (var cmd = new NpgsqlCommand("DELETE FROM empresas WHERE id = @emp", conn))
-        {
-            cmd.Parameters.AddWithValue("emp", empresaId);
-            await cmd.ExecuteNonQueryAsync();
+            try
+            {
+                await using var cmd = new NpgsqlCommand($"DELETE FROM {tabela} WHERE empresa_id = @emp", conn);
+                cmd.Parameters.AddWithValue("emp", empresaId);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            catch { /* tabela pode não existir, ignora */ }
         }
     }
 
@@ -169,8 +229,8 @@ public class AnamneseApiTests : IClassFixture<WebApplicationFactory<Program>>
     [Fact]
     public async Task POST_Anamnese_EmpresaA_NaoPodeGravarPacienteDaEmpresaB_DeveRetornar404()
     {
-        // Arrange - criar empresa e usuário de teste para empresa 1
-        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync();
+        var testName = nameof(POST_Anamnese_EmpresaA_NaoPodeGravarPacienteDaEmpresaB_DeveRetornar404);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
         try
         {
             var tokenEmpresaA = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
@@ -202,8 +262,8 @@ public class AnamneseApiTests : IClassFixture<WebApplicationFactory<Program>>
     [Fact]
     public async Task GET_Anamnese_EmpresaA_NaoPodeLerPacienteDaEmpresaB_DeveRetornar404()
     {
-        // Arrange - criar empresa e usuário de teste para empresa 1
-        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync();
+        var testName = nameof(GET_Anamnese_EmpresaA_NaoPodeLerPacienteDaEmpresaB_DeveRetornar404);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
         try
         {
             var tokenEmpresaA = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "leitura" } });
@@ -224,9 +284,9 @@ public class AnamneseApiTests : IClassFixture<WebApplicationFactory<Program>>
     [Fact]
     public async Task POST_Anamnese_NutricionistaDaMesmaEmpresa_PodeGravar_DeveRetornar200()
     {
-        // Arrange - criar empresa, usuário e paciente de teste reais
-        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync();
-        var pacienteId = await CriarPacienteTesteAsync(empresaId);
+        var testName = nameof(POST_Anamnese_NutricionistaDaMesmaEmpresa_PodeGravar_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId = await CriarPacienteTesteAsync(empresaId, testName);
         try
         {
             // Global middleware checks mod_nutricao, so include it
@@ -267,9 +327,9 @@ public class AnamneseApiTests : IClassFixture<WebApplicationFactory<Program>>
     [Fact]
     public async Task GET_Anamnese_NutricionistaDaMesmaEmpresa_PodeLer_DeveRetornar200()
     {
-        // Arrange - criar empresa, usuário e paciente de teste reais, e gravar uma anamnese primeiro
-        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync();
-        var pacienteId = await CriarPacienteTesteAsync(empresaId);
+        var testName = nameof(GET_Anamnese_NutricionistaDaMesmaEmpresa_PodeLer_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId = await CriarPacienteTesteAsync(empresaId, testName);
         try
         {
             // Primeiro gravar uma anamnese via POST
@@ -401,9 +461,9 @@ public class AnamneseApiTests : IClassFixture<WebApplicationFactory<Program>>
     [Fact]
     public async Task POST_Anamnese_PerfilProfissional_PodeGravar_DeveRetornar200()
     {
-        // Arrange - perfil "profissional" deve ter permissão para anamnese (criado via fluxo de convites)
-        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync();
-        var pacienteId = await CriarPacienteTesteAsync(empresaId);
+        var testName = nameof(POST_Anamnese_PerfilProfissional_PodeGravar_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId = await CriarPacienteTesteAsync(empresaId, testName);
         try
         {
             var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
@@ -439,9 +499,9 @@ public class AnamneseApiTests : IClassFixture<WebApplicationFactory<Program>>
     [Fact]
     public async Task GET_Anamnese_PerfilProfissional_PodeLer_DeveRetornar200()
     {
-        // Arrange - perfil "profissional" deve ter permissão para ler anamnese
-        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync();
-        var pacienteId = await CriarPacienteTesteAsync(empresaId);
+        var testName = nameof(GET_Anamnese_PerfilProfissional_PodeLer_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId = await CriarPacienteTesteAsync(empresaId, testName);
         try
         {
             // Primeiro gravar uma anamnese

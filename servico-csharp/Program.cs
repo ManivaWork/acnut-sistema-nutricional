@@ -989,7 +989,7 @@ app.MapPost("/api/checkins", async (CheckinInput input, ClaimsPrincipal user) =>
 
     var checkinId = await cmd.ExecuteScalarAsync();
     return Results.Created($"/api/checkins/{checkinId}", new { id = checkinId, mensagem = "Check-in registrado com sucesso!" });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 app.MapGet("/api/checkins/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
     int emp = Auth.Empresa(user);
@@ -1015,7 +1015,7 @@ app.MapGet("/api/checkins/{pacienteId}", async (int pacienteId, ClaimsPrincipal 
         });
     }
     return Results.Ok(checkins);
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 // Helper: busca últimos valores de peso/altura/%gordura de 3 fontes para um paciente
 async Task<object> BuscarUltimosValoresPaciente(int pacienteId)
@@ -1576,7 +1576,7 @@ app.MapDelete("/api/planos/item/{id}", async (int id) =>
 app.MapGet("/api/planos/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
     return Results.Ok(await PlanoHelper.Montar(connString, pacienteId, Auth.Empresa(user)));
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 // Salvar versão (snapshot do plano + orientações)
 app.MapPost("/api/planos/{pacienteId}/versoes", async (int pacienteId, VersaoInput input, ClaimsPrincipal user) =>
 {
@@ -1615,7 +1615,7 @@ app.MapPost("/api/planos/{pacienteId}/versoes", async (int pacienteId, VersaoInp
 
     var id = await cmd.ExecuteScalarAsync();
     return Results.Ok(new { id, numero, mensagem = $"Versão {numero} salva!" });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 app.MapGet("/api/planos/{pacienteId}/versoes", async (int pacienteId, ClaimsPrincipal user) =>
 {
@@ -1644,7 +1644,7 @@ app.MapGet("/api/planos/{pacienteId}/versoes", async (int pacienteId, ClaimsPrin
         });
     }
     return Results.Ok(lista);
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 app.MapGet("/api/planos/versao/{id}", async (int id, ClaimsPrincipal user) =>
 {
@@ -1667,7 +1667,7 @@ app.MapGet("/api/planos/versao/{id}", async (int id, ClaimsPrincipal user) =>
         criado_em = rd.GetDateTime(2).ToString("yyyy-MM-ddTHH:mm:ss"),
         snapshot = JsonDocument.Parse(rd.GetString(3)).RootElement
     });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 // ======================================ORIENTAÇÕES NUTRICIONAIS===============================================================
 app.MapPost("/api/orientacoes", async (OrientacaoDto dto, ClaimsPrincipal user) =>
@@ -1689,7 +1689,7 @@ app.MapPost("/api/orientacoes", async (OrientacaoDto dto, ClaimsPrincipal user) 
     cmd.Parameters.AddWithValue("texto", dto.Texto ?? "");
     await cmd.ExecuteNonQueryAsync();
     return Results.Ok(new { mensagem = "Orientações salvas com sucesso!" });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 app.MapGet("/api/orientacoes/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
@@ -1705,7 +1705,7 @@ app.MapGet("/api/orientacoes/{pacienteId}", async (int pacienteId, ClaimsPrincip
     cmd.Parameters.AddWithValue("emp", emp);
     var resultado = await cmd.ExecuteScalarAsync();
     return Results.Ok(new { texto = resultado?.ToString() ?? "" });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 // ============================================= METAS DO PACIENTE=====================================================================
 var tiposMeta = new HashSet<string> { "agua", "frutas", "refeicoes", "atividade", "sono", "outro" };
 var resultadosMeta = new HashSet<string> { "mantida", "parcial", "nao_mantida" };
@@ -1776,7 +1776,7 @@ app.MapGet("/api/metas/{pacienteId}", async (int pacienteId, ClaimsPrincipal use
     }
 
     return Results.Ok(metas);
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 app.MapPost("/api/metas", async (MetaInput input, ClaimsPrincipal user) =>
 {
@@ -1807,7 +1807,7 @@ app.MapPost("/api/metas", async (MetaInput input, ClaimsPrincipal user) =>
 
     var id = await cmd.ExecuteScalarAsync();
     return Results.Created($"/api/metas/{id}", new { id, mensagem = "Meta criada!" });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 app.MapPut("/api/metas/{id}", async (int id, MetaInput input, ClaimsPrincipal user) =>
 {
@@ -1840,7 +1840,7 @@ app.MapPut("/api/metas/{id}", async (int id, MetaInput input, ClaimsPrincipal us
     return rows > 0
         ? Results.Ok(new { mensagem = "Meta atualizada!" })
         : Results.NotFound(new { mensagem = "Meta não encontrada." });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 app.MapDelete("/api/metas/{id}", async (int id, ClaimsPrincipal user) =>
 {
@@ -1855,7 +1855,7 @@ app.MapDelete("/api/metas/{id}", async (int id, ClaimsPrincipal user) =>
     return rows > 0
         ? Results.Ok(new { mensagem = "Meta excluída!" })
         : Results.NotFound(new { mensagem = "Meta não encontrada." });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 // Registra como a meta foi no check-in (mantida / parcial / não mantida)
 app.MapPost("/api/metas/acompanhamento", async (AcompanhamentoInput input, ClaimsPrincipal user) =>
@@ -1897,7 +1897,7 @@ app.MapPost("/api/metas/acompanhamento", async (AcompanhamentoInput input, Claim
 
     var id = await cmd.ExecuteScalarAsync();
     return Results.Created($"/api/metas/acompanhamento/{id}", new { id, mensagem = "Acompanhamento registrado!" });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 app.MapDelete("/api/metas/acompanhamento/{id}", async (int id, ClaimsPrincipal user) =>
 {
@@ -1912,7 +1912,7 @@ app.MapDelete("/api/metas/acompanhamento/{id}", async (int id, ClaimsPrincipal u
     return rows > 0
         ? Results.Ok(new { mensagem = "Acompanhamento excluído!" })
         : Results.NotFound(new { mensagem = "Acompanhamento não encontrado." });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 // =====================================================================
 // ARQUIVOS (fotos de evolução e exames)
@@ -2022,7 +2022,7 @@ app.MapGet("/api/evolucao/{pacienteId}", async (int pacienteId, ClaimsPrincipal 
         });
     }
     return Results.Ok(lista);
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 app.MapPost("/api/evolucao", async (HttpRequest request, ClaimsPrincipal user) =>
 {
@@ -2069,7 +2069,7 @@ app.MapPost("/api/evolucao", async (HttpRequest request, ClaimsPrincipal user) =
     await tx.CommitAsync();
 
     return Results.Created($"/api/evolucao/{id}", new { id, mensagem = "Registro de evolução salvo!" });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 app.MapPut("/api/evolucao/{id}", async (int id, HttpRequest request, ClaimsPrincipal user) =>
 {
@@ -2109,7 +2109,7 @@ app.MapPut("/api/evolucao/{id}", async (int id, HttpRequest request, ClaimsPrinc
     await ArquivoHelper.Salvar(conn, tx, Convert.ToInt32(pid), "evolucao", id, form.Files);
     await tx.CommitAsync();
     return Results.Ok(new { mensagem = "Registro atualizado!" });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 app.MapDelete("/api/evolucao/{id}", async (int id, ClaimsPrincipal user) =>
 {
@@ -2134,7 +2134,7 @@ app.MapDelete("/api/evolucao/{id}", async (int id, ClaimsPrincipal user) =>
     return rows > 0
         ? Results.Ok(new { mensagem = "Registro excluído!" })
         : Results.NotFound(new { mensagem = "Registro não encontrado." });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 // ================================================ EXAMES=====================================================================
 app.MapGet("/api/exames/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
@@ -2172,7 +2172,7 @@ app.MapGet("/api/exames/{pacienteId}", async (int pacienteId, ClaimsPrincipal us
         });
     }
     return Results.Ok(lista);
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 app.MapPost("/api/exames", async (HttpRequest request, ClaimsPrincipal user) =>
 {
@@ -2210,7 +2210,7 @@ app.MapPost("/api/exames", async (HttpRequest request, ClaimsPrincipal user) =>
     await tx.CommitAsync();
 
     return Results.Created($"/api/exames/{id}", new { id, mensagem = "Exame registrado!" });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 app.MapPut("/api/exames/{id}", async (int id, HttpRequest request, ClaimsPrincipal user) =>
 {
@@ -2240,7 +2240,8 @@ app.MapPut("/api/exames/{id}", async (int id, HttpRequest request, ClaimsPrincip
     await ArquivoHelper.Salvar(conn, tx, Convert.ToInt32(pid), "exame", id, form.Files);
     await tx.CommitAsync();
     return Results.Ok(new { mensagem = "Exame atualizado!" });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
+
 app.MapDelete("/api/exames/{id}", async (int id, ClaimsPrincipal user) =>
 {
     int emp = Auth.Empresa(user);
@@ -2261,7 +2262,7 @@ app.MapDelete("/api/exames/{id}", async (int id, ClaimsPrincipal user) =>
     return rows > 0
     ? Results.Ok(new { mensagem = "Exame excluído!" })
     : Results.NotFound(new { mensagem = "Exame não encontrado." });
-    });
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 // ======================================= OBSERVAÇÕES (semana do check-in e gerais)============================================
 app.MapGet("/api/observacoes/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
@@ -2292,7 +2293,8 @@ app.MapGet("/api/observacoes/{pacienteId}", async (int pacienteId, ClaimsPrincip
         });
     }
     return Results.Ok(lista);
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
+
 app.MapPost("/api/observacoes", async (ObservacaoInput input, ClaimsPrincipal user) =>
 {
     if (string.IsNullOrWhiteSpace(input.Texto))
@@ -2319,7 +2321,8 @@ app.MapPost("/api/observacoes", async (ObservacaoInput input, ClaimsPrincipal us
     cmd.Parameters.AddWithValue("texto", input.Texto.Trim());
     var id = await cmd.ExecuteScalarAsync();
     return Results.Created($"/api/observacoes/{id}", new { id, mensagem = "Observação salva!" });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
+
 app.MapPut("/api/observacoes/{id}", async (int id, ObservacaoInput input, ClaimsPrincipal user) =>
 {
     if (string.IsNullOrWhiteSpace(input.Texto))
@@ -2341,7 +2344,8 @@ app.MapPut("/api/observacoes/{id}", async (int id, ObservacaoInput input, Claims
     return rows > 0
         ? Results.Ok(new { mensagem = "Observação atualizada!" })
         : Results.NotFound(new { mensagem = "Observação não encontrada." });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
+
 app.MapDelete("/api/observacoes/{id}", async (int id, ClaimsPrincipal user) =>
 {
     int emp = Auth.Empresa(user);
@@ -2354,7 +2358,7 @@ app.MapDelete("/api/observacoes/{id}", async (int id, ClaimsPrincipal user) =>
     return rows > 0
         ? Results.Ok(new { mensagem = "Observação excluída!" })
         : Results.NotFound(new { mensagem = "Observação não encontrada." });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 // Duplica uma opção (itens + substituições) para uma nova opção da mesma refeição
 app.MapPost("/api/planos/refeicao/{refeicaoId}/opcao/{opcao}/duplicar", async (int refeicaoId, int opcao) =>
     {
@@ -4493,7 +4497,7 @@ app.MapGet("/api/acessos/{pacienteId}", async (int pacienteId, ClaimsPrincipal u
     using var rd = await c.ExecuteReaderAsync();
     while (await rd.ReadAsync()) lista.Add(new { em = rd.GetDateTime(0).ToString("yyyy-MM-ddTHH:mm:ss") });
     return Results.Ok(lista);
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 // =====================================================================
 // ÁREA DO PACIENTE: EXAMES
@@ -5092,8 +5096,13 @@ app.MapPatch("/api/empresa/solicitacoes/{id:long}/atender", async (long id, Http
 // =====================================================================
 // HISTÓRICO UNIFICADO (linha do tempo do paciente)
 // =====================================================================
-app.MapGet("/api/historico/{pacienteId}", async (int pacienteId) =>
+app.MapGet("/api/historico/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
+    // Validar se paciente pertence à empresa (defesa em profundidade)
+    if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
+        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+
     var lista = new List<object>();
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
@@ -5152,7 +5161,7 @@ app.MapGet("/api/historico/{pacienteId}", async (int pacienteId) =>
             extra = rd.GetString(5)
         });
     return Results.Ok(lista);
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 // ===========================EXECUÇÃO DA APLICAÇÃO=========================================
 app.Run();
@@ -5771,6 +5780,105 @@ static class TenantValidation
         cmd.Parameters.AddWithValue("emp", empresaId);
         var result = await cmd.ExecuteScalarAsync();
         return result != null;
+    }
+}
+
+// Endpoint Filter reutilizável para isolamento multi-tenant por pacienteId
+// Extrai pacienteId da rota (path) ou do body (JSON/form), valida se pertence à empresa do token
+// Se token for tipo "paciente": só permite o próprio pid; caso contrário 404
+class TenantIsolationFilter : IEndpointFilter
+{
+    private readonly string _connString;
+
+    public TenantIsolationFilter(string connString)
+    {
+        _connString = connString;
+    }
+
+    public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    {
+        var httpContext = context.HttpContext;
+        var user = httpContext.User;
+
+        // Obter empresa_id do token
+        var empresaClaim = user.FindFirst("empresa");
+        if (empresaClaim == null || !int.TryParse(empresaClaim.Value, out var empresaId))
+        {
+            return Results.NotFound(new { mensagem = "Registro não encontrado." });
+        }
+
+        // Obter tipo do token
+        var tipoClaim = user.FindFirst("tipo")?.Value;
+
+        // Extrair pacienteId: primeiro da rota, depois do body
+        int pacienteId = 0;
+
+        // 1. Tentar da rota (path parameters)
+        if (context.HttpContext.Request.RouteValues.TryGetValue("pacienteId", out var routeValue) && routeValue is int pid)
+        {
+            pacienteId = pid;
+        }
+        else if (context.HttpContext.Request.RouteValues.TryGetValue("pacienteId", out var routeStr) && int.TryParse(routeStr?.ToString(), out var pidFromStr))
+        {
+            pacienteId = pidFromStr;
+        }
+
+        // 2. Se não veio da rota, tentar ler do body (JSON ou form)
+        if (pacienteId <= 0)
+        {
+            pacienteId = await LerPacienteIdDoBody(httpContext);
+        }
+
+        // Se não conseguiu extrair pacienteId, não bloqueia (pode ser endpoint que não usa pacienteId)
+        if (pacienteId <= 0)
+        {
+            return await next(context);
+        }
+
+        // Se token é de paciente, só permite acessar o próprio pid
+        if (tipoClaim == "paciente")
+        {
+            var pidClaim = user.FindFirst("pid");
+            if (pidClaim == null || !int.TryParse(pidClaim.Value, out var tokenPacienteId) || tokenPacienteId != pacienteId)
+            {
+                return Results.NotFound(new { mensagem = "Registro não encontrado." });
+            }
+            return await next(context);
+        }
+
+        // Token de equipe: validar se paciente pertence à empresa do token
+        if (!await TenantValidation.ValidarPacienteEmpresaAsync(_connString, pacienteId, empresaId))
+        {
+            return Results.NotFound(new { mensagem = "Registro não encontrado." });
+        }
+
+        return await next(context);
+    }
+
+    private static async Task<int> LerPacienteIdDoBody(HttpContext httpContext)
+    {
+        var req = httpContext.Request;
+        try
+        {
+            if (req.HasFormContentType)
+            {
+                var form = await req.ReadFormAsync();
+                return int.TryParse(form["pacienteId"], out var f) ? f : 0;
+            }
+            if ((req.ContentType ?? "").Contains("json", StringComparison.OrdinalIgnoreCase))
+            {
+                req.EnableBuffering();
+                using var doc = await JsonDocument.ParseAsync(req.Body);
+                req.Body.Position = 0;
+                if (doc.RootElement.ValueKind != JsonValueKind.Object) return 0;
+                foreach (var p in doc.RootElement.EnumerateObject())
+                    if (p.Name.Equals("pacienteId", StringComparison.OrdinalIgnoreCase)
+                        && p.Value.ValueKind == JsonValueKind.Number && p.Value.TryGetInt32(out var n))
+                        return n;
+            }
+        }
+        catch { }
+        return 0;
     }
 }
 
