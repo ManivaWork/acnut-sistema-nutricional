@@ -5237,16 +5237,126 @@ function abaPaciente(aba) {
                         ${pontos ? `<div class="flex items-center gap-1.5 mt-3">${pontos}</div>` : ""}
                     </div>`;
                 }).join("") : vazio("Nenhuma meta combinada ainda.", `abaPaciente('metas')`);
-
-            } else if (aba === "anamnese") {
-                renderAnamneseForm(d.pid);
-                carregarExamesPaciente();
-            }
         } catch (err) {
             console.error(`Erro ao carregar aba ${aba}:`, err);
             el.innerHTML = erro("Erro ao carregar", "Ocorreu um erro inesperado.", `abaPaciente('${aba}')`);
         }
     }, 0);
+}
+}
+
+// ===== ANAMNESE - Página separada (full-screen) =====
+function abrirAnamnese() {
+    const d = dadosPaciente;
+    if (!d || !d.pid) return;
+
+    // Criar overlay full-screen
+    const overlay = document.createElement('div');
+    overlay.id = 'anamnese-overlay';
+    overlay.className = 'fixed inset-0 z-50 bg-slate-950 overflow-y-auto';
+    overlay.innerHTML = `
+        <div class="max-w-3xl mx-auto p-4 md:p-8 min-h-screen">
+            <!-- Header com botão fechar -->
+            <div class="flex items-center justify-between mb-6 sticky top-0 bg-slate-950/95 backdrop-blur-sm z-10 py-4 border-b border-white/10">
+                <div>
+                    <h1 class="text-2xl font-bold text-white">Anamnese Nutricional</h1>
+                    <p class="text-sm text-slate-400 mt-1">Preencha suas informações para um atendimento personalizado</p>
+                </div>
+                <button onclick="fecharAnamnese()" class="p-2 rounded-xl bg-slate-800 border border-white/10 text-slate-300 hover:bg-slate-700 hover:text-white transition">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <!-- Conteúdo da anamnese -->
+            <div id="anamnese-content" class="space-y-6">
+                <div class="flex items-center justify-center h-48"><div class="animate-spin rounded-full h-8 w-8 border-4 border-purple-600 border-t-transparent"></div></div>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+    document.body.style.overflow = 'hidden';
+
+    // Renderizar o formulário dentro do overlay
+    renderAnamneseFormInOverlay(d.pid);
+}
+
+function fecharAnamnese() {
+    const overlay = document.getElementById('anamnese-overlay');
+    if (overlay) {
+        overlay.remove();
+        document.body.style.overflow = '';
+    }
+}
+
+async function renderAnamneseFormInOverlay(pacienteId) {
+    anamneseState.pacienteId = pacienteId;
+    anamneseState.currentSection = 1;
+    anamneseState.data = {};
+    anamneseState.originalData = {};
+
+    const el = document.getElementById("anamnese-content");
+    if (!el) return;
+
+    el.innerHTML = `
+        <div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5 space-y-5">
+            <!-- Progress Bar -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-sm">
+                    <span class="text-slate-300" id="anamnese-progress-text">Seção 1 de 8</span>
+                    <span class="text-slate-400" id="anamnese-progress-percent">0%</span>
+                </div>
+                <div class="h-2 bg-slate-700 rounded-full overflow-hidden">
+                    <div id="anamnese-progress-bar" class="h-full bg-gradient-to-r from-purple-600 to-pink-600 rounded-full transition-all duration-300" style="width: 12.5%"></div>
+                </div>
+            </div>
+
+            <!-- Section Navigation Pills -->
+            <div class="flex flex-wrap gap-1.5 p-1 bg-slate-900/50 rounded-xl" id="anamnese-nav-pills">
+                ${anamneseSections.map(s => `
+                    <button type="button" onclick="anamneseGoToSection(${s.id})"
+                        class="anamnese-pill px-3 py-1.5 text-xs font-medium rounded-lg transition
+                            ${s.id === 1 ? 'bg-purple-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600 hover:text-white'}"
+                        data-section="${s.id}">
+                        <i class="fa-solid ${s.icon} mr-1"></i>${s.title}
+                    </button>
+                `).join("")}
+            </div>
+
+            <!-- Section Content -->
+            <div id="anamnese-section-content" class="space-y-4 min-h-[300px]">
+                <!-- Content rendered here -->
+            </div>
+
+            <!-- Navigation Buttons -->
+            <div class="flex items-center justify-between pt-4 border-t border-white/10">
+                <button type="button" onclick="anamnesePrevSection()"
+                    id="anamnese-btn-prev"
+                    class="px-5 py-2.5 text-sm font-semibold rounded-xl bg-slate-700 text-slate-300 hover:bg-slate-600 hover:text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled>
+                    <i class="fa-solid fa-chevron-left mr-2"></i>Anterior
+                </button>
+                <div class="flex items-center gap-3">
+                    <button type="button" onclick="anamneseSaveDraft()"
+                        class="px-5 py-2.5 text-sm font-semibold rounded-xl bg-slate-700 text-slate-300 hover:bg-slate-600 hover:text-white transition">
+                        <i class="fa-solid fa-floppy-disk mr-2"></i>Salvar rascunho
+                    </button>
+                    <button type="button" onclick="anamneseNextSection()"
+                        id="anamnese-btn-next"
+                        class="px-5 py-2.5 text-sm font-semibold rounded-xl text-white transition"
+                        style="background:linear-gradient(90deg,#6c34eb,#b731b4)">
+                        Seguinte<i class="fa-solid fa-chevron-right ml-2"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Load existing data from server
+    await anamneseLoadFromServer();
+
+    // Render first section
+    renderAnamneseSection(1);
 }
 
 // ===== ANAMNESE - Formulário de 8 seções =====
