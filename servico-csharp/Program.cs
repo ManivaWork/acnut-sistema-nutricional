@@ -1261,29 +1261,41 @@ app.MapGet("/api/anamnese/{pacienteId}", async (int pacienteId, ClaimsPrincipal 
 }).RequireAuthorization();
 
 // =============================================== PLANO ALIMENTAR: REFEIÇÕES =====================================================
-app.MapPost("/api/planos/refeicao", async (RefeicaoInput input) =>
+app.MapPost("/api/planos/refeicao", async (RefeicaoInput input, ClaimsPrincipal user) =>
 {
     if (string.IsNullOrWhiteSpace(input.NomeRefeicao))
         return Results.BadRequest(new { mensagem = "Informe o nome da refeição." });
 
+    int emp = Auth.Empresa(user);
+
+    // Validar se paciente pertence à empresa do token
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
+    using (var cmdVal = new NpgsqlCommand("SELECT 1 FROM pacientes WHERE id = @id AND empresa_id = @emp", conn))
+    {
+        cmdVal.Parameters.AddWithValue("id", input.PacienteId);
+        cmdVal.Parameters.AddWithValue("emp", emp);
+        if (await cmdVal.ExecuteScalarAsync() == null)
+            return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+    }
 
     // Um plano por paciente (cria só se não existir)
     using var cmdPlano = new NpgsqlCommand(@"
         INSERT INTO planos_alimentares (paciente_id, empresa_id, nome_plano, meta_calorica_kcal)
-        VALUES (@paciente_id, (SELECT empresa_id FROM pacientes WHERE id = @paciente_id), 'Plano Personalizado', 2000)
+        VALUES (@paciente_id, @emp, 'Plano Personalizado', 2000)
         ON CONFLICT (paciente_id) DO UPDATE SET paciente_id = EXCLUDED.paciente_id
         RETURNING id;", conn);
     cmdPlano.Parameters.AddWithValue("paciente_id", input.PacienteId);
+    cmdPlano.Parameters.AddWithValue("emp", emp);
     var planoId = Convert.ToInt32(await cmdPlano.ExecuteScalarAsync());
 
     using var cmdRef = new NpgsqlCommand(@"
         INSERT INTO refeicoes (plano_id, empresa_id, nome_refeicao, horario, observacoes)
-        VALUES (@plano_id, (SELECT empresa_id FROM planos_alimentares WHERE id = @plano_id), @nome, @horario::time, @obs)
+        VALUES (@plano_id, @emp, @nome, @horario::time, @obs)
         ON CONFLICT (plano_id, nome_refeicao) DO NOTHING
         RETURNING id;", conn);
     cmdRef.Parameters.AddWithValue("plano_id", planoId);
+    cmdRef.Parameters.AddWithValue("emp", emp);
     cmdRef.Parameters.AddWithValue("nome", input.NomeRefeicao.Trim());
     cmdRef.Parameters.AddWithValue("horario", string.IsNullOrWhiteSpace(input.Horario) ? "08:00" : input.Horario);
     cmdRef.Parameters.AddWithValue("obs", input.Observacoes ?? "");
@@ -1293,7 +1305,7 @@ app.MapPost("/api/planos/refeicao", async (RefeicaoInput input) =>
         return Results.Conflict(new { mensagem = "Já existe uma refeição com esse nome neste plano." });
 
     return Results.Created($"/api/planos/refeicao/{id}", new { id, mensagem = "Refeição criada!" });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 app.MapPut("/api/planos/refeicao/{id}", async (int id, RefeicaoInput input, ClaimsPrincipal user) =>
 {
@@ -1720,23 +1732,52 @@ app.MapGet("/api/planos/{pacienteId}/versoes", async (int pacienteId, ClaimsPrin
 app.MapGet("/api/planos/versao/{id}", async (int id, ClaimsPrincipal user) =>
 {
     int emp = Auth.Empresa(user);
+    var tipoClaim = user.FindFirst("tipo")?.Value;
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
-    using var cmd = new NpgsqlCommand(@"
+
+    // Para token de paciente: validar que a versão pertence ao próprio paciente
+    if (tipoClaim == "paciente")
+    {
+        var pidClaim = user.FindFirst("pid");
+        if (pidClaim == null || !int.TryParse(pidClaim.Value, out var tokenPacienteId))
+            return Results.NotFound(new { mensagem = "Versão não encontrada." });
+
+        using var cmd = new NpgsqlCommand(@"
+            SELECT numero, COALESCE(descricao, ''), criado_em, snapshot::text
+            FROM planos_versoes WHERE id = @id AND empresa_id = @emp AND paciente_id = @pid;", conn);
+        cmd.Parameters.AddWithValue("id", id);
+        cmd.Parameters.AddWithValue("emp", emp);
+        cmd.Parameters.AddWithValue("pid", tokenPacienteId);
+        using var rd = await cmd.ExecuteReaderAsync();
+        if (!await rd.ReadAsync())
+            return Results.NotFound(new { mensagem = "Versão não encontrada." });
+
+        return Results.Ok(new
+        {
+            numero = rd.GetInt32(0),
+            descricao = rd.GetString(1),
+            criado_em = rd.GetDateTime(2).ToString("yyyy-MM-ddTHH:mm:ss"),
+            snapshot = JsonDocument.Parse(rd.GetString(3)).RootElement
+        });
+    }
+
+    // Token de equipe: validar apenas empresa_id
+    using var cmdEquipe = new NpgsqlCommand(@"
         SELECT numero, COALESCE(descricao, ''), criado_em, snapshot::text
         FROM planos_versoes WHERE id = @id AND empresa_id = @emp;", conn);
-    cmd.Parameters.AddWithValue("id", id);
-    cmd.Parameters.AddWithValue("emp", emp);
-    using var rd = await cmd.ExecuteReaderAsync();
-    if (!await rd.ReadAsync())
+    cmdEquipe.Parameters.AddWithValue("id", id);
+    cmdEquipe.Parameters.AddWithValue("emp", emp);
+    using var rdEquipe = await cmdEquipe.ExecuteReaderAsync();
+    if (!await rdEquipe.ReadAsync())
         return Results.NotFound(new { mensagem = "Versão não encontrada." });
 
     return Results.Ok(new
     {
-        numero = rd.GetInt32(0),
-        descricao = rd.GetString(1),
-        criado_em = rd.GetDateTime(2).ToString("yyyy-MM-ddTHH:mm:ss"),
-        snapshot = JsonDocument.Parse(rd.GetString(3)).RootElement
+        numero = rdEquipe.GetInt32(0),
+        descricao = rdEquipe.GetString(1),
+        criado_em = rdEquipe.GetDateTime(2).ToString("yyyy-MM-ddTHH:mm:ss"),
+        snapshot = JsonDocument.Parse(rdEquipe.GetString(3)).RootElement
     });
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 

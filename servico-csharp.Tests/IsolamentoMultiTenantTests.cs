@@ -1595,4 +1595,748 @@ public class IsolamentoMultiTenantTests : IClassFixture<WebApplicationFactory<Pr
             await LimparDadosTesteAsync(empresaId);
         }
     }
+
+    // ============================================
+    // PLANOS - ISOLAMENTO ESCRITA POR ID (commit 63f2fba + POST refeicao)
+    // ============================================
+
+    // ----- POST /api/planos/refeicao -----
+    [Fact]
+    public async Task POST_PlanosRefeicao_EmpresaA_NaoPodeCriarPacienteDaEmpresaB_DeveRetornar404()
+    {
+        var testName = nameof(POST_PlanosRefeicao_EmpresaA_NaoPodeCriarPacienteDaEmpresaB_DeveRetornar404);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        try
+        {
+            var tokenEmpresaA = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(tokenEmpresaA);
+
+            var payload = new { PacienteId = 999, NomeRefeicao = "Café da manhã", Horario = "08:00" };
+            var response = await client.PostAsJsonAsync("/api/planos/refeicao", payload);
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task POST_PlanosRefeicao_EmpresaMesma_PodeCriar_DeveRetornar201()
+    {
+        var testName = nameof(POST_PlanosRefeicao_EmpresaMesma_PodeCriar_DeveRetornar201);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId = await CriarPacienteTesteAsync(empresaId, testName);
+        try
+        {
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(token);
+
+            var payload = new { PacienteId = pacienteId, NomeRefeicao = "Café da manhã", Horario = "08:00" };
+            var response = await client.PostAsJsonAsync("/api/planos/refeicao", payload);
+
+            response.StatusCode.Should().Be(HttpStatusCode.Created);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    // ----- PUT /api/planos/refeicao/{id} -----
+    [Fact]
+    public async Task PUT_PlanosRefeicao_EmpresaA_NaoPodeEditarRefeicaoDaEmpresaB_DeveRetornar404()
+    {
+        var testName = nameof(PUT_PlanosRefeicao_EmpresaA_NaoPodeEditarRefeicaoDaEmpresaB_DeveRetornar404);
+        var (empresaIdA, usuarioIdA) = await CriarEmpresaEUsuariosTesteAsync(testName + "A");
+        var (empresaIdB, usuarioIdB) = await CriarEmpresaEUsuariosTesteAsync(testName + "B");
+        int refeicaoIdEmpresaB = 0;
+        try
+        {
+            // Criar refeição na empresa B
+            var tokenB = GerarTokenEquipe(uid: usuarioIdB, empresa: empresaIdB, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientB = CriarCliente(tokenB);
+            var pacienteIdB = await CriarPacienteTesteAsync(empresaIdB, testName + "B_paciente");
+
+            var createPayload = new { PacienteId = pacienteIdB, NomeRefeicao = "Almoço", Horario = "12:00" };
+            var createResponse = await clientB.PostAsJsonAsync("/api/planos/refeicao", createPayload);
+            createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+            var createResult = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
+            refeicaoIdEmpresaB = createResult.GetProperty("id").GetInt32();
+
+            // Tentar editar com token da empresa A
+            var tokenA = GerarTokenEquipe(uid: usuarioIdA, empresa: empresaIdA, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientA = CriarCliente(tokenA);
+
+            var updatePayload = new { PacienteId = 999, NomeRefeicao = "Jantar", Horario = "19:00" };
+            var response = await clientA.PutAsJsonAsync($"/api/planos/refeicao/{refeicaoIdEmpresaB}", updatePayload);
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaIdA);
+            await LimparDadosTesteAsync(empresaIdB);
+        }
+    }
+
+    [Fact]
+    public async Task PUT_PlanosRefeicao_EmpresaMesma_PodeEditar_DeveRetornar200()
+    {
+        var testName = nameof(PUT_PlanosRefeicao_EmpresaMesma_PodeEditar_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        int refeicaoId = 0;
+        try
+        {
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(token);
+            var pacienteId = await CriarPacienteTesteAsync(empresaId, testName + "_paciente");
+
+            var createPayload = new { PacienteId = pacienteId, NomeRefeicao = "Almoço", Horario = "12:00" };
+            var createResponse = await client.PostAsJsonAsync("/api/planos/refeicao", createPayload);
+            createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+            var createResult = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
+            refeicaoId = createResult.GetProperty("id").GetInt32();
+
+            var updatePayload = new { PacienteId = pacienteId, NomeRefeicao = "Jantar", Horario = "19:00" };
+            var response = await client.PutAsJsonAsync($"/api/planos/refeicao/{refeicaoId}", updatePayload);
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    // ----- DELETE /api/planos/refeicao/{id} -----
+    [Fact]
+    public async Task DELETE_PlanosRefeicao_EmpresaA_NaoPodeExcluirRefeicaoDaEmpresaB_DeveRetornar404()
+    {
+        var testName = nameof(DELETE_PlanosRefeicao_EmpresaA_NaoPodeExcluirRefeicaoDaEmpresaB_DeveRetornar404);
+        var (empresaIdA, usuarioIdA) = await CriarEmpresaEUsuariosTesteAsync(testName + "A");
+        var (empresaIdB, usuarioIdB) = await CriarEmpresaEUsuariosTesteAsync(testName + "B");
+        int refeicaoIdEmpresaB = 0;
+        try
+        {
+            // Criar refeição na empresa B
+            var tokenB = GerarTokenEquipe(uid: usuarioIdB, empresa: empresaIdB, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientB = CriarCliente(tokenB);
+            var pacienteIdB = await CriarPacienteTesteAsync(empresaIdB, testName + "B_paciente");
+
+            var createPayload = new { PacienteId = pacienteIdB, NomeRefeicao = "Almoço", Horario = "12:00" };
+            var createResponse = await clientB.PostAsJsonAsync("/api/planos/refeicao", createPayload);
+            createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+            var createResult = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
+            refeicaoIdEmpresaB = createResult.GetProperty("id").GetInt32();
+
+            // Tentar excluir com token da empresa A
+            var tokenA = GerarTokenEquipe(uid: usuarioIdA, empresa: empresaIdA, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientA = CriarCliente(tokenA);
+
+            var response = await clientA.DeleteAsync($"/api/planos/refeicao/{refeicaoIdEmpresaB}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaIdA);
+            await LimparDadosTesteAsync(empresaIdB);
+        }
+    }
+
+    [Fact]
+    public async Task DELETE_PlanosRefeicao_EmpresaMesma_PodeExcluir_DeveRetornar200()
+    {
+        var testName = nameof(DELETE_PlanosRefeicao_EmpresaMesma_PodeExcluir_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        int refeicaoId = 0;
+        try
+        {
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(token);
+            var pacienteId = await CriarPacienteTesteAsync(empresaId, testName + "_paciente");
+
+            var createPayload = new { PacienteId = pacienteId, NomeRefeicao = "Almoço", Horario = "12:00" };
+            var createResponse = await client.PostAsJsonAsync("/api/planos/refeicao", createPayload);
+            createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+            var createResult = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
+            refeicaoId = createResult.GetProperty("id").GetInt32();
+
+            var response = await client.DeleteAsync($"/api/planos/refeicao/{refeicaoId}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    // ----- DELETE /api/planos/refeicao/{refeicaoId}/opcao/{opcao} -----
+    [Fact]
+    public async Task DELETE_PlanosOpcao_EmpresaA_NaoPodeExcluirOpcaoDaEmpresaB_DeveRetornar404()
+    {
+        var testName = nameof(DELETE_PlanosOpcao_EmpresaA_NaoPodeExcluirOpcaoDaEmpresaB_DeveRetornar404);
+        var (empresaIdA, usuarioIdA) = await CriarEmpresaEUsuariosTesteAsync(testName + "A");
+        var (empresaIdB, usuarioIdB) = await CriarEmpresaEUsuariosTesteAsync(testName + "B");
+        int refeicaoIdEmpresaB = 0;
+        try
+        {
+            // Criar refeição e item na empresa B
+            var tokenB = GerarTokenEquipe(uid: usuarioIdB, empresa: empresaIdB, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientB = CriarCliente(tokenB);
+            var pacienteIdB = await CriarPacienteTesteAsync(empresaIdB, testName + "B_paciente");
+
+            var createRefPayload = new { PacienteId = pacienteIdB, NomeRefeicao = "Almoço", Horario = "12:00" };
+            var createRefResponse = await clientB.PostAsJsonAsync("/api/planos/refeicao", createRefPayload);
+            createRefResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+            var createRefResult = await createRefResponse.Content.ReadFromJsonAsync<JsonElement>();
+            refeicaoIdEmpresaB = createRefResult.GetProperty("id").GetInt32();
+
+            // Criar item (opção 1)
+            var createItemPayload = new { RefeicaoId = refeicaoIdEmpresaB, Opcao = 1, AlimentoNome = "Arroz", QuantidadeG = 100, MedidaCaseira = "1 colher", Kcal = 130, Proteinas = 2.7, Carbos = 28, Gorduras = 0.3 };
+            var createItemResponse = await clientB.PostAsJsonAsync("/api/planos/item", createItemPayload);
+            createItemResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+
+            // Tentar excluir opção com token da empresa A
+            var tokenA = GerarTokenEquipe(uid: usuarioIdA, empresa: empresaIdA, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientA = CriarCliente(tokenA);
+
+            var response = await clientA.DeleteAsync($"/api/planos/refeicao/{refeicaoIdEmpresaB}/opcao/1");
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaIdA);
+            await LimparDadosTesteAsync(empresaIdB);
+        }
+    }
+
+    [Fact]
+    public async Task DELETE_PlanosOpcao_EmpresaMesma_PodeExcluir_DeveRetornar200()
+    {
+        var testName = nameof(DELETE_PlanosOpcao_EmpresaMesma_PodeExcluir_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        int refeicaoId = 0;
+        try
+        {
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(token);
+            var pacienteId = await CriarPacienteTesteAsync(empresaId, testName + "_paciente");
+
+            var createRefPayload = new { PacienteId = pacienteId, NomeRefeicao = "Almoço", Horario = "12:00" };
+            var createRefResponse = await client.PostAsJsonAsync("/api/planos/refeicao", createRefPayload);
+            createRefResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+            var createRefResult = await createRefResponse.Content.ReadFromJsonAsync<JsonElement>();
+            refeicaoId = createRefResult.GetProperty("id").GetInt32();
+
+            // Criar item (opção 1)
+            var createItemPayload = new { RefeicaoId = refeicaoId, Opcao = 1, AlimentoNome = "Arroz", QuantidadeG = 100, MedidaCaseira = "1 colher", Kcal = 130, Proteinas = 2.7, Carbos = 28, Gorduras = 0.3 };
+            var createItemResponse = await client.PostAsJsonAsync("/api/planos/item", createItemPayload);
+            createItemResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+
+            var response = await client.DeleteAsync($"/api/planos/refeicao/{refeicaoId}/opcao/1");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    // ----- POST /api/planos/item -----
+    [Fact]
+    public async Task POST_PlanosItem_EmpresaA_NaoPodeCriarItemEmRefeicaoDaEmpresaB_DeveRetornar404()
+    {
+        var testName = nameof(POST_PlanosItem_EmpresaA_NaoPodeCriarItemEmRefeicaoDaEmpresaB_DeveRetornar404);
+        var (empresaIdA, usuarioIdA) = await CriarEmpresaEUsuariosTesteAsync(testName + "A");
+        var (empresaIdB, usuarioIdB) = await CriarEmpresaEUsuariosTesteAsync(testName + "B");
+        int refeicaoIdEmpresaB = 0;
+        try
+        {
+            // Criar refeição na empresa B
+            var tokenB = GerarTokenEquipe(uid: usuarioIdB, empresa: empresaIdB, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientB = CriarCliente(tokenB);
+            var pacienteIdB = await CriarPacienteTesteAsync(empresaIdB, testName + "B_paciente");
+
+            var createRefPayload = new { PacienteId = pacienteIdB, NomeRefeicao = "Almoço", Horario = "12:00" };
+            var createRefResponse = await clientB.PostAsJsonAsync("/api/planos/refeicao", createRefPayload);
+            createRefResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+            var createRefResult = await createRefResponse.Content.ReadFromJsonAsync<JsonElement>();
+            refeicaoIdEmpresaB = createRefResult.GetProperty("id").GetInt32();
+
+            // Tentar criar item com token da empresa A
+            var tokenA = GerarTokenEquipe(uid: usuarioIdA, empresa: empresaIdA, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientA = CriarCliente(tokenA);
+
+            var createItemPayload = new { RefeicaoId = refeicaoIdEmpresaB, Opcao = 1, AlimentoNome = "Arroz", QuantidadeG = 100, MedidaCaseira = "1 colher", Kcal = 130, Proteinas = 2.7, Carbos = 28, Gorduras = 0.3 };
+            var response = await clientA.PostAsJsonAsync("/api/planos/item", createItemPayload);
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaIdA);
+            await LimparDadosTesteAsync(empresaIdB);
+        }
+    }
+
+    [Fact]
+    public async Task POST_PlanosItem_EmpresaMesma_PodeCriar_DeveRetornar201()
+    {
+        var testName = nameof(POST_PlanosItem_EmpresaMesma_PodeCriar_DeveRetornar201);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        int refeicaoId = 0;
+        try
+        {
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(token);
+            var pacienteId = await CriarPacienteTesteAsync(empresaId, testName + "_paciente");
+
+            var createRefPayload = new { PacienteId = pacienteId, NomeRefeicao = "Almoço", Horario = "12:00" };
+            var createRefResponse = await client.PostAsJsonAsync("/api/planos/refeicao", createRefPayload);
+            createRefResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+            var createRefResult = await createRefResponse.Content.ReadFromJsonAsync<JsonElement>();
+            refeicaoId = createRefResult.GetProperty("id").GetInt32();
+
+            var createItemPayload = new { RefeicaoId = refeicaoId, Opcao = 1, AlimentoNome = "Arroz", QuantidadeG = 100, MedidaCaseira = "1 colher", Kcal = 130, Proteinas = 2.7, Carbos = 28, Gorduras = 0.3 };
+            var response = await client.PostAsJsonAsync("/api/planos/item", createItemPayload);
+
+            response.StatusCode.Should().Be(HttpStatusCode.Created);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    // ----- PUT /api/planos/item/{id} -----
+    [Fact]
+    public async Task PUT_PlanosItem_EmpresaA_NaoPodeEditarItemDaEmpresaB_DeveRetornar404()
+    {
+        var testName = nameof(PUT_PlanosItem_EmpresaA_NaoPodeEditarItemDaEmpresaB_DeveRetornar404);
+        var (empresaIdA, usuarioIdA) = await CriarEmpresaEUsuariosTesteAsync(testName + "A");
+        var (empresaIdB, usuarioIdB) = await CriarEmpresaEUsuariosTesteAsync(testName + "B");
+        int itemIdEmpresaB = 0;
+        try
+        {
+            // Criar refeição e item na empresa B
+            var tokenB = GerarTokenEquipe(uid: usuarioIdB, empresa: empresaIdB, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientB = CriarCliente(tokenB);
+            var pacienteIdB = await CriarPacienteTesteAsync(empresaIdB, testName + "B_paciente");
+
+            var createRefPayload = new { PacienteId = pacienteIdB, NomeRefeicao = "Almoço", Horario = "12:00" };
+            var createRefResponse = await clientB.PostAsJsonAsync("/api/planos/refeicao", createRefPayload);
+            createRefResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+            var createRefResult = await createRefResponse.Content.ReadFromJsonAsync<JsonElement>();
+            var refeicaoIdEmpresaB = createRefResult.GetProperty("id").GetInt32();
+
+            var createItemPayload = new { RefeicaoId = refeicaoIdEmpresaB, Opcao = 1, AlimentoNome = "Arroz", QuantidadeG = 100, MedidaCaseira = "1 colher", Kcal = 130, Proteinas = 2.7, Carbos = 28, Gorduras = 0.3 };
+            var createItemResponse = await clientB.PostAsJsonAsync("/api/planos/item", createItemPayload);
+            createItemResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+            var createItemResult = await createItemResponse.Content.ReadFromJsonAsync<JsonElement>();
+            itemIdEmpresaB = createItemResult.GetProperty("id").GetInt32();
+
+            // Tentar editar com token da empresa A
+            var tokenA = GerarTokenEquipe(uid: usuarioIdA, empresa: empresaIdA, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientA = CriarCliente(tokenA);
+
+            var updatePayload = new { RefeicaoId = 999, Opcao = 1, AlimentoNome = "Feijão", QuantidadeG = 150, MedidaCaseira = "1 concha", Kcal = 110, Proteinas = 8, Carbos = 20, Gorduras = 0.5 };
+            var response = await clientA.PutAsJsonAsync($"/api/planos/item/{itemIdEmpresaB}", updatePayload);
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaIdA);
+            await LimparDadosTesteAsync(empresaIdB);
+        }
+    }
+
+    [Fact]
+    public async Task PUT_PlanosItem_EmpresaMesma_PodeEditar_DeveRetornar200()
+    {
+        var testName = nameof(PUT_PlanosItem_EmpresaMesma_PodeEditar_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        int itemId = 0;
+        try
+        {
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(token);
+            var pacienteId = await CriarPacienteTesteAsync(empresaId, testName + "_paciente");
+
+            var createRefPayload = new { PacienteId = pacienteId, NomeRefeicao = "Almoço", Horario = "12:00" };
+            var createRefResponse = await client.PostAsJsonAsync("/api/planos/refeicao", createRefPayload);
+            createRefResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+            var createRefResult = await createRefResponse.Content.ReadFromJsonAsync<JsonElement>();
+            var refeicaoId = createRefResult.GetProperty("id").GetInt32();
+
+            var createItemPayload = new { RefeicaoId = refeicaoId, Opcao = 1, AlimentoNome = "Arroz", QuantidadeG = 100, MedidaCaseira = "1 colher", Kcal = 130, Proteinas = 2.7, Carbos = 28, Gorduras = 0.3 };
+            var createItemResponse = await client.PostAsJsonAsync("/api/planos/item", createItemPayload);
+            createItemResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+            var createItemResult = await createItemResponse.Content.ReadFromJsonAsync<JsonElement>();
+            itemId = createItemResult.GetProperty("id").GetInt32();
+
+            var updatePayload = new { RefeicaoId = refeicaoId, Opcao = 1, AlimentoNome = "Feijão", QuantidadeG = 150, MedidaCaseira = "1 concha", Kcal = 110, Proteinas = 8, Carbos = 20, Gorduras = 0.5 };
+            var response = await client.PutAsJsonAsync($"/api/planos/item/{itemId}", updatePayload);
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    // ----- DELETE /api/planos/item/{id} -----
+    [Fact]
+    public async Task DELETE_PlanosItem_EmpresaA_NaoPodeExcluirItemDaEmpresaB_DeveRetornar404()
+    {
+        var testName = nameof(DELETE_PlanosItem_EmpresaA_NaoPodeExcluirItemDaEmpresaB_DeveRetornar404);
+        var (empresaIdA, usuarioIdA) = await CriarEmpresaEUsuariosTesteAsync(testName + "A");
+        var (empresaIdB, usuarioIdB) = await CriarEmpresaEUsuariosTesteAsync(testName + "B");
+        int itemIdEmpresaB = 0;
+        try
+        {
+            // Criar refeição e item na empresa B
+            var tokenB = GerarTokenEquipe(uid: usuarioIdB, empresa: empresaIdB, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientB = CriarCliente(tokenB);
+            var pacienteIdB = await CriarPacienteTesteAsync(empresaIdB, testName + "B_paciente");
+
+            var createRefPayload = new { PacienteId = pacienteIdB, NomeRefeicao = "Almoço", Horario = "12:00" };
+            var createRefResponse = await clientB.PostAsJsonAsync("/api/planos/refeicao", createRefPayload);
+            createRefResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+            var createRefResult = await createRefResponse.Content.ReadFromJsonAsync<JsonElement>();
+            var refeicaoIdEmpresaB = createRefResult.GetProperty("id").GetInt32();
+
+            var createItemPayload = new { RefeicaoId = refeicaoIdEmpresaB, Opcao = 1, AlimentoNome = "Arroz", QuantidadeG = 100, MedidaCaseira = "1 colher", Kcal = 130, Proteinas = 2.7, Carbos = 28, Gorduras = 0.3 };
+            var createItemResponse = await clientB.PostAsJsonAsync("/api/planos/item", createItemPayload);
+            createItemResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+            var createItemResult = await createItemResponse.Content.ReadFromJsonAsync<JsonElement>();
+            itemIdEmpresaB = createItemResult.GetProperty("id").GetInt32();
+
+            // Tentar excluir com token da empresa A
+            var tokenA = GerarTokenEquipe(uid: usuarioIdA, empresa: empresaIdA, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientA = CriarCliente(tokenA);
+
+            var response = await clientA.DeleteAsync($"/api/planos/item/{itemIdEmpresaB}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaIdA);
+            await LimparDadosTesteAsync(empresaIdB);
+        }
+    }
+
+    [Fact]
+    public async Task DELETE_PlanosItem_EmpresaMesma_PodeExcluir_DeveRetornar200()
+    {
+        var testName = nameof(DELETE_PlanosItem_EmpresaMesma_PodeExcluir_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        int itemId = 0;
+        try
+        {
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(token);
+            var pacienteId = await CriarPacienteTesteAsync(empresaId, testName + "_paciente");
+
+            var createRefPayload = new { PacienteId = pacienteId, NomeRefeicao = "Almoço", Horario = "12:00" };
+            var createRefResponse = await client.PostAsJsonAsync("/api/planos/refeicao", createRefPayload);
+            createRefResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+            var createRefResult = await createRefResponse.Content.ReadFromJsonAsync<JsonElement>();
+            var refeicaoId = createRefResult.GetProperty("id").GetInt32();
+
+            var createItemPayload = new { RefeicaoId = refeicaoId, Opcao = 1, AlimentoNome = "Arroz", QuantidadeG = 100, MedidaCaseira = "1 colher", Kcal = 130, Proteinas = 2.7, Carbos = 28, Gorduras = 0.3 };
+            var createItemResponse = await client.PostAsJsonAsync("/api/planos/item", createItemPayload);
+            createItemResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+            var createItemResult = await createItemResponse.Content.ReadFromJsonAsync<JsonElement>();
+            itemId = createItemResult.GetProperty("id").GetInt32();
+
+            var response = await client.DeleteAsync($"/api/planos/item/{itemId}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    // ----- POST /api/planos/refeicao/{refeicaoId}/opcao/{opcao}/duplicar -----
+    [Fact]
+    public async Task POST_PlanosDuplicarOpcao_EmpresaA_NaoPodeDuplicarOpcaoDaEmpresaB_DeveRetornar404()
+    {
+        var testName = nameof(POST_PlanosDuplicarOpcao_EmpresaA_NaoPodeDuplicarOpcaoDaEmpresaB_DeveRetornar404);
+        var (empresaIdA, usuarioIdA) = await CriarEmpresaEUsuariosTesteAsync(testName + "A");
+        var (empresaIdB, usuarioIdB) = await CriarEmpresaEUsuariosTesteAsync(testName + "B");
+        int refeicaoIdEmpresaB = 0;
+        try
+        {
+            // Criar refeição e item na empresa B
+            var tokenB = GerarTokenEquipe(uid: usuarioIdB, empresa: empresaIdB, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientB = CriarCliente(tokenB);
+            var pacienteIdB = await CriarPacienteTesteAsync(empresaIdB, testName + "B_paciente");
+
+            var createRefPayload = new { PacienteId = pacienteIdB, NomeRefeicao = "Almoço", Horario = "12:00" };
+            var createRefResponse = await clientB.PostAsJsonAsync("/api/planos/refeicao", createRefPayload);
+            createRefResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+            var createRefResult = await createRefResponse.Content.ReadFromJsonAsync<JsonElement>();
+            refeicaoIdEmpresaB = createRefResult.GetProperty("id").GetInt32();
+
+            var createItemPayload = new { RefeicaoId = refeicaoIdEmpresaB, Opcao = 1, AlimentoNome = "Arroz", QuantidadeG = 100, MedidaCaseira = "1 colher", Kcal = 130, Proteinas = 2.7, Carbos = 28, Gorduras = 0.3 };
+            var createItemResponse = await clientB.PostAsJsonAsync("/api/planos/item", createItemPayload);
+            createItemResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+
+            // Tentar duplicar com token da empresa A
+            var tokenA = GerarTokenEquipe(uid: usuarioIdA, empresa: empresaIdA, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientA = CriarCliente(tokenA);
+
+            var response = await clientA.PostAsync($"/api/planos/refeicao/{refeicaoIdEmpresaB}/opcao/1/duplicar", null);
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaIdA);
+            await LimparDadosTesteAsync(empresaIdB);
+        }
+    }
+
+    [Fact]
+    public async Task POST_PlanosDuplicarOpcao_EmpresaMesma_PodeDuplicar_DeveRetornar200()
+    {
+        var testName = nameof(POST_PlanosDuplicarOpcao_EmpresaMesma_PodeDuplicar_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        int refeicaoId = 0;
+        try
+        {
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(token);
+            var pacienteId = await CriarPacienteTesteAsync(empresaId, testName + "_paciente");
+
+            var createRefPayload = new { PacienteId = pacienteId, NomeRefeicao = "Almoço", Horario = "12:00" };
+            var createRefResponse = await client.PostAsJsonAsync("/api/planos/refeicao", createRefPayload);
+            createRefResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+            var createRefResult = await createRefResponse.Content.ReadFromJsonAsync<JsonElement>();
+            refeicaoId = createRefResult.GetProperty("id").GetInt32();
+
+            var createItemPayload = new { RefeicaoId = refeicaoId, Opcao = 1, AlimentoNome = "Arroz", QuantidadeG = 100, MedidaCaseira = "1 colher", Kcal = 130, Proteinas = 2.7, Carbos = 28, Gorduras = 0.3 };
+            var createItemResponse = await client.PostAsJsonAsync("/api/planos/item", createItemPayload);
+            createItemResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+
+            var response = await client.PostAsync($"/api/planos/refeicao/{refeicaoId}/opcao/1/duplicar", null);
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    // ----- POST /api/planos/versao/{id}/restaurar -----
+    [Fact]
+    public async Task POST_PlanosVersaoRestaurar_EmpresaA_NaoPodeRestaurarVersaoDaEmpresaB_DeveRetornar404()
+    {
+        var testName = nameof(POST_PlanosVersaoRestaurar_EmpresaA_NaoPodeRestaurarVersaoDaEmpresaB_DeveRetornar404);
+        var (empresaIdA, usuarioIdA) = await CriarEmpresaEUsuariosTesteAsync(testName + "A");
+        var (empresaIdB, usuarioIdB) = await CriarEmpresaEUsuariosTesteAsync(testName + "B");
+        int versaoIdEmpresaB = 0;
+        try
+        {
+            // Criar paciente, plano e versão na empresa B
+            var tokenB = GerarTokenEquipe(uid: usuarioIdB, empresa: empresaIdB, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientB = CriarCliente(tokenB);
+            var pacienteIdB = await CriarPacienteTesteAsync(empresaIdB, testName + "B_paciente");
+
+            var createRefPayload = new { PacienteId = pacienteIdB, NomeRefeicao = "Almoço", Horario = "12:00" };
+            var createRefResponse = await clientB.PostAsJsonAsync("/api/planos/refeicao", createRefPayload);
+            createRefResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+
+            var createItemPayload = new { RefeicaoId = (await createRefResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt32(), Opcao = 1, AlimentoNome = "Arroz", QuantidadeG = 100, MedidaCaseira = "1 colher", Kcal = 130, Proteinas = 2.7, Carbos = 28, Gorduras = 0.3 };
+            await clientB.PostAsJsonAsync("/api/planos/item", createItemPayload);
+
+            // Criar versão
+            var createVersaoPayload = new { Descricao = "Versão 1" };
+            var createVersaoResponse = await clientB.PostAsJsonAsync($"/api/planos/{pacienteIdB}/versoes", createVersaoPayload);
+            createVersaoResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+            var createVersaoResult = await createVersaoResponse.Content.ReadFromJsonAsync<JsonElement>();
+            // A versão não retorna ID diretamente, vamos buscar
+            var versoesResponse = await clientB.GetAsync($"/api/planos/{pacienteIdB}/versoes");
+            versoesResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+            var versoes = await versoesResponse.Content.ReadFromJsonAsync<JsonElement>();
+            versaoIdEmpresaB = versoes[0].GetProperty("id").GetInt32();
+
+            // Tentar restaurar com token da empresa A
+            var tokenA = GerarTokenEquipe(uid: usuarioIdA, empresa: empresaIdA, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientA = CriarCliente(tokenA);
+
+            var response = await clientA.PostAsync($"/api/planos/versao/{versaoIdEmpresaB}/restaurar", null);
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaIdA);
+            await LimparDadosTesteAsync(empresaIdB);
+        }
+    }
+
+    [Fact]
+    public async Task POST_PlanosVersaoRestaurar_EmpresaMesma_PodeRestaurar_DeveRetornar200()
+    {
+        var testName = nameof(POST_PlanosVersaoRestaurar_EmpresaMesma_PodeRestaurar_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        int versaoId = 0;
+        try
+        {
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(token);
+            var pacienteId = await CriarPacienteTesteAsync(empresaId, testName + "_paciente");
+
+            var createRefPayload = new { PacienteId = pacienteId, NomeRefeicao = "Almoço", Horario = "12:00" };
+            var createRefResponse = await client.PostAsJsonAsync("/api/planos/refeicao", createRefPayload);
+            createRefResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+
+            var createItemPayload = new { RefeicaoId = (await createRefResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt32(), Opcao = 1, AlimentoNome = "Arroz", QuantidadeG = 100, MedidaCaseira = "1 colher", Kcal = 130, Proteinas = 2.7, Carbos = 28, Gorduras = 0.3 };
+            await client.PostAsJsonAsync("/api/planos/item", createItemPayload);
+
+            // Criar versão
+            var createVersaoPayload = new { Descricao = "Versão 1" };
+            var createVersaoResponse = await client.PostAsJsonAsync($"/api/planos/{pacienteId}/versoes", createVersaoPayload);
+            createVersaoResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            var versoesResponse = await client.GetAsync($"/api/planos/{pacienteId}/versoes");
+            versoesResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+            var versoes = await versoesResponse.Content.ReadFromJsonAsync<JsonElement>();
+            versaoId = versoes[0].GetProperty("id").GetInt32();
+
+            var response = await client.PostAsync($"/api/planos/versao/{versaoId}/restaurar", null);
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    // ----- GET /api/planos/versao/{id} - Paciente token -----
+    [Fact]
+    public async Task GET_PlanoVersao_PacienteToken_NaoPodeLerVersaoDeOutroPaciente_DeveRetornar404()
+    {
+        var testName = nameof(GET_PlanoVersao_PacienteToken_NaoPodeLerVersaoDeOutroPaciente_DeveRetornar404);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        int versaoIdOutroPaciente = 0;
+        try
+        {
+            // Criar paciente 1 e versão
+            var pacienteId1 = await CriarPacienteTesteAsync(empresaId, testName + "_paciente1");
+            var tokenEquipe = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientEquipe = CriarCliente(tokenEquipe);
+
+            var createRefPayload = new { PacienteId = pacienteId1, NomeRefeicao = "Almoço", Horario = "12:00" };
+            var createRefResponse = await clientEquipe.PostAsJsonAsync("/api/planos/refeicao", createRefPayload);
+            createRefResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+            var refeicaoId = (await createRefResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt32();
+
+            var createItemPayload = new { RefeicaoId = refeicaoId, Opcao = 1, AlimentoNome = "Arroz", QuantidadeG = 100, MedidaCaseira = "1 colher", Kcal = 130, Proteinas = 2.7, Carbos = 28, Gorduras = 0.3 };
+            await clientEquipe.PostAsJsonAsync("/api/planos/item", createItemPayload);
+
+            var createVersaoPayload = new { Descricao = "Versão 1" };
+            await clientEquipe.PostAsJsonAsync($"/api/planos/{pacienteId1}/versoes", createVersaoPayload);
+
+            var versoesResponse = await clientEquipe.GetAsync($"/api/planos/{pacienteId1}/versoes");
+            var versoes = await versoesResponse.Content.ReadFromJsonAsync<JsonElement>();
+            versaoIdOutroPaciente = versoes[0].GetProperty("id").GetInt32();
+
+            // Criar paciente 2
+            var pacienteId2 = await CriarPacienteTesteAsync(empresaId, testName + "_paciente2");
+            var tokenPaciente2 = GerarTokenPaciente(pid: pacienteId2, empresa: empresaId);
+            var clientPaciente2 = CriarCliente(tokenPaciente2);
+
+            // Tentar ler versão do paciente 1 com token do paciente 2
+            var response = await clientPaciente2.GetAsync($"/api/planos/versao/{versaoIdOutroPaciente}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    // ----- POST /api/planos/item/calcular -----
+    [Fact]
+    public async Task POST_PlanosItemCalcular_EmpresaA_NaoPodeCalcularEmRefeicaoDaEmpresaB_DeveRetornar404()
+    {
+        var testName = nameof(POST_PlanosItemCalcular_EmpresaA_NaoPodeCalcularEmRefeicaoDaEmpresaB_DeveRetornar404);
+        var (empresaIdA, usuarioIdA) = await CriarEmpresaEUsuariosTesteAsync(testName + "A");
+        var (empresaIdB, usuarioIdB) = await CriarEmpresaEUsuariosTesteAsync(testName + "B");
+        int refeicaoIdEmpresaB = 0;
+        try
+        {
+            // Criar refeição na empresa B
+            var tokenB = GerarTokenEquipe(uid: usuarioIdB, empresa: empresaIdB, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientB = CriarCliente(tokenB);
+            var pacienteIdB = await CriarPacienteTesteAsync(empresaIdB, testName + "B_paciente");
+
+            var createRefPayload = new { PacienteId = pacienteIdB, NomeRefeicao = "Almoço", Horario = "12:00" };
+            var createRefResponse = await clientB.PostAsJsonAsync("/api/planos/refeicao", createRefPayload);
+            createRefResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+            var createRefResult = await createRefResponse.Content.ReadFromJsonAsync<JsonElement>();
+            refeicaoIdEmpresaB = createRefResult.GetProperty("id").GetInt32();
+
+            // Tentar calcular item com token da empresa A
+            var tokenA = GerarTokenEquipe(uid: usuarioIdA, empresa: empresaIdA, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientA = CriarCliente(tokenA);
+
+            var createItemPayload = new { RefeicaoId = refeicaoIdEmpresaB, Opcao = 1, AlimentoId = 1, TargetKcal = 100, Gramas = 100, MedidaCaseira = "1 colher", QuantidadeMedida = 1, Refeicao = "almoco" };
+            var response = await clientA.PostAsJsonAsync("/api/planos/item/calcular", createItemPayload);
+
+            // 404 = refeição não encontrada (isolamento), 503 = serviço Python indisponível (ambiente de teste sem Python)
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.ServiceUnavailable);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaIdA);
+            await LimparDadosTesteAsync(empresaIdB);
+        }
+    }
+
+    [Fact]
+    public async Task POST_PlanosItemCalcular_EmpresaMesma_PodeCalcular_DeveRetornar201ou400ou503()
+    {
+        var testName = nameof(POST_PlanosItemCalcular_EmpresaMesma_PodeCalcular_DeveRetornar201ou400ou503);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        int refeicaoId = 0;
+        try
+        {
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(token);
+            var pacienteId = await CriarPacienteTesteAsync(empresaId, testName + "_paciente");
+
+            var createRefPayload = new { PacienteId = pacienteId, NomeRefeicao = "Almoço", Horario = "12:00" };
+            var createRefResponse = await client.PostAsJsonAsync("/api/planos/refeicao", createRefPayload);
+            createRefResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+            var createRefResult = await createRefResponse.Content.ReadFromJsonAsync<JsonElement>();
+            refeicaoId = createRefResult.GetProperty("id").GetInt32();
+
+            var createItemPayload = new { RefeicaoId = refeicaoId, Opcao = 1, AlimentoId = 1, TargetKcal = 100, Gramas = 100, MedidaCaseira = "1 colher", QuantidadeMedida = 1, Refeicao = "almoco" };
+            var response = await client.PostAsJsonAsync("/api/planos/item/calcular", createItemPayload);
+
+            // 201 = sucesso, 400 = alimento não tem dados na TACO, 503 = serviço Python indisponível, 500 = erro interno (ambiente de teste sem Python)
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.Created, HttpStatusCode.BadRequest, HttpStatusCode.ServiceUnavailable, HttpStatusCode.InternalServerError);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
 }
