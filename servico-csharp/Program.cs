@@ -232,10 +232,18 @@ app.Use(async (ctx, next) =>
     }
     var u = ctx.User;
         if (u.Identity?.IsAuthenticated != true) { await Negar(401, "Sessão expirada. Entre novamente."); return; }
-    // Token de paciente: GET em /api/paciente/* + POST/DELETE em /api/paciente/exames + POST/GET em /api/paciente/consentimentos + POST/GET em /api/anamnese
+    // Token de paciente: GET em /api/paciente/* + POST/DELETE em /api/paciente/exames + POST/GET em /api/paciente/consentimentos
+    // + GET/POST em /api/anamnese + GET em /api/planos, /api/checkins, /api/metas, /api/orientacoes, /api/exames, /api/evolucao (próprios dados)
     if (u.FindFirst("tipo")?.Value == "paciente")
     {
-        bool isPacientePath = path.StartsWith("/api/paciente/") || path.StartsWith("/api/anamnese");
+        bool isPacientePath = path.StartsWith("/api/paciente/")
+            || path.StartsWith("/api/anamnese")
+            || path.StartsWith("/api/planos/")
+            || path.StartsWith("/api/checkins/")
+            || path.StartsWith("/api/metas/")
+            || path.StartsWith("/api/orientacoes/")
+            || path.StartsWith("/api/exames/")
+            || path.StartsWith("/api/evolucao/");
         if (!isPacientePath)
         { await Negar(403, "Acesso não permitido."); return; }
         if (!HttpMethods.IsGet(m))
@@ -4553,7 +4561,7 @@ app.MapGet("/api/paciente/tudo", async (ClaimsPrincipal user) =>
                 l.Add(new { data = rd.GetDateTime(1).ToString("yyyy-MM-dd"), resultado = rd.GetString(2) });
     }
 
-    return Results.Ok(new { nome, plano, orientacoes, metas });
+    return Results.Ok(new { pid, nome, plano, orientacoes, metas });
 });
 
 // Para a equipe: últimos acessos da paciente

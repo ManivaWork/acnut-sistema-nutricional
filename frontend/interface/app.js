@@ -5110,6 +5110,10 @@ async function carregarAreaPaciente() {
         const res = await fetch(`${API_URL}/paciente/tudo`);
         if (!res.ok) throw new Error(res.status);
         dadosPaciente = await res.json();
+        // Backend agora retorna 'pid' (patient ID)
+        if (!dadosPaciente.pid) {
+            throw new Error("ID do paciente não encontrado na resposta");
+        }
         document.getElementById("pac-nome").innerText = dadosPaciente.nome.split(" ")[0];
 
         // Verificar consentimento
@@ -5153,7 +5157,7 @@ function abaPaciente(aba) {
     };
 
     if (aba === "dashboard") {
-        carregarDashboardPaciente(d.id);
+        carregarDashboardPaciente(d.pid);
         return;
     }
 
@@ -5236,6 +5240,21 @@ async function carregarDashboardPaciente(pacienteId) {
 
     el.innerHTML = `<div class="flex items-center justify-center h-64"><div class="animate-spin rounded-full h-8 w-8 border-4 border-purple-600 border-t-transparent"></div></div>`;
 
+    // Helper para criar card de erro
+    const cardErro = (titulo, mensagem, botaoTexto, botaoOnclick, corBorda = "rose") => `
+        <div class="bg-slate-800/50 border border-${corBorda}-500/30 rounded-2xl p-5">
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    <p class="text-xs font-semibold text-${corBorda}-300 uppercase tracking-wider">${titulo}</p>
+                    <p class="text-white font-medium mt-1">${mensagem}</p>
+                    <p class="text-sm text-${corBorda}-300 mt-2">Tente recarregar a página</p>
+                </div>
+                ${botaoTexto ? `<button onclick="${botaoOnclick}" class="shrink-0 h-9 px-4 rounded-xl text-xs font-semibold text-white bg-${corBorda}-600 hover:bg-${corBorda}-500 transition flex items-center gap-1">
+                    <i class="fa-solid fa-refresh text-xs"></i> ${botaoTexto}
+                </button>` : ''}
+            </div>
+        </div>`;
+
     try {
         // Buscar dados em paralelo
         const [anamneseRes, planoRes, checkinsRes] = await Promise.allSettled([
@@ -5244,9 +5263,14 @@ async function carregarDashboardPaciente(pacienteId) {
             fetch(`${API_URL}/checkins/${pacienteId}`)
         ]);
 
+        // Rastrear erros de fetch
+        const anamneseErro = anamneseRes.status === 'rejected' || (anamneseRes.status === 'fulfilled' && !anamneseRes.value.ok);
+        const planoErro = planoRes.status === 'rejected' || (planoRes.status === 'fulfilled' && !planoRes.value.ok);
+        const checkinsErro = checkinsRes.status === 'rejected' || (checkinsRes.status === 'fulfilled' && !checkinsRes.value.ok);
+
         // Última anamnese
         let ultimaAnamnese = null;
-        if (anamneseRes.status === 'fulfilled' && anamneseRes.value.ok) {
+        if (!anamneseErro && anamneseRes.status === 'fulfilled' && anamneseRes.value.ok) {
             const an = await anamneseRes.value.json();
             if (an && (an.dados_extendidos || an.historico_medico || an.alergias)) {
                 ultimaAnamnese = an;
@@ -5255,7 +5279,7 @@ async function carregarDashboardPaciente(pacienteId) {
 
         // Plano atual
         let planoAtual = null;
-        if (planoRes.status === 'fulfilled' && planoRes.value.ok) {
+        if (!planoErro && planoRes.status === 'fulfilled' && planoRes.value.ok) {
             const plano = await planoRes.value.json();
             if (plano && plano.refeicoes && plano.refeicoes.length > 0) {
                 planoAtual = plano;
@@ -5264,7 +5288,7 @@ async function carregarDashboardPaciente(pacienteId) {
 
         // Próxima consulta - usar check-ins como proxy (mais recente)
         let proximaConsulta = null;
-        if (checkinsRes.status === 'fulfilled' && checkinsRes.value.ok) {
+        if (!checkinsErro && checkinsRes.status === 'fulfilled' && checkinsRes.value.ok) {
             const checkins = await checkinsRes.value.json();
             if (checkins && checkins.length > 0) {
                 const ultimo = checkins[0];
@@ -5284,91 +5308,100 @@ async function carregarDashboardPaciente(pacienteId) {
             return `${d}/${m}/${a}`;
         };
 
-        const cardAnamnese = ultimaAnamnese
-            ? `
-                <div class="bg-slate-800/50 border border-purple-500/30 rounded-2xl p-5">
-                    <div class="flex items-start justify-between gap-4">
-                        <div>
-                            <p class="text-xs font-semibold text-purple-300 uppercase tracking-wider">Última Anamnese</p>
-                            <p class="text-white font-medium mt-1">${formatarDataBR(ultimaAnamnese.atualizado_em || ultimaAnamnese.criado_em)}</p>
-                            <p class="text-sm text-slate-400 mt-2">Dados completos preenchidos</p>
+        // Card Anamnese: erro > vazio > com dados
+        const cardAnamnese = anamneseErro
+            ? cardErro("Última Anamnese", "Erro ao carregar", "Tentar novamente", `carregarDashboardPaciente(${pacienteId})`)
+            : (ultimaAnamnese
+                ? `
+                    <div class="bg-slate-800/50 border border-purple-500/30 rounded-2xl p-5">
+                        <div class="flex items-start justify-between gap-4">
+                            <div>
+                                <p class="text-xs font-semibold text-purple-300 uppercase tracking-wider">Última Anamnese</p>
+                                <p class="text-white font-medium mt-1">${formatarDataBR(ultimaAnamnese.atualizado_em || ultimaAnamnese.criado_em)}</p>
+                                <p class="text-sm text-slate-400 mt-2">Dados completos preenchidos</p>
+                            </div>
+                            <button onclick="abaPaciente('anamnese')" class="shrink-0 h-9 px-4 rounded-xl text-xs font-semibold text-white bg-purple-600 hover:bg-purple-500 transition flex items-center gap-1">
+                                <i class="fa-solid fa-arrow-right text-xs"></i> Ver
+                            </button>
                         </div>
-                        <button onclick="abaPaciente('anamnese')" class="shrink-0 h-9 px-4 rounded-xl text-xs font-semibold text-white bg-purple-600 hover:bg-purple-500 transition flex items-center gap-1">
-                            <i class="fa-solid fa-arrow-right text-xs"></i> Ver
-                        </button>
-                    </div>
-                </div>`
-            : `
-                <div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5">
-                    <div class="flex items-start justify-between gap-4">
-                        <div>
-                            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Última Anamnese</p>
-                            <p class="text-white font-medium mt-1">Não preenchida</p>
-                            <p class="text-sm text-slate-500 mt-2">Complete sua anamnese inicial</p>
+                    </div>`
+                : `
+                    <div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5">
+                        <div class="flex items-start justify-between gap-4">
+                            <div>
+                                <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Última Anamnese</p>
+                                <p class="text-white font-medium mt-1">Não preenchida</p>
+                                <p class="text-sm text-slate-500 mt-2">Complete sua anamnese inicial</p>
+                            </div>
+                            <button onclick="abaPaciente('anamnese')" class="shrink-0 h-9 px-4 rounded-xl text-xs font-semibold text-white bg-slate-700 hover:bg-slate-600 transition flex items-center gap-1">
+                                <i class="fa-solid fa-plus text-xs"></i> Iniciar
+                            </button>
                         </div>
-                        <button onclick="abaPaciente('anamnese')" class="shrink-0 h-9 px-4 rounded-xl text-xs font-semibold text-white bg-slate-700 hover:bg-slate-600 transition flex items-center gap-1">
-                            <i class="fa-solid fa-plus text-xs"></i> Iniciar
-                        </button>
-                    </div>
-                </div>`;
+                    </div>`);
 
-        const cardPlano = planoAtual
-            ? `
-                <div class="bg-slate-800/50 border border-emerald-500/30 rounded-2xl p-5">
-                    <div class="flex items-start justify-between gap-4">
-                        <div>
-                            <p class="text-xs font-semibold text-emerald-300 uppercase tracking-wider">Plano Atual</p>
-                            <p class="text-white font-medium mt-1">${planoAtual.refeicoes.length} refeições</p>
-                            <p class="text-sm text-slate-400 mt-2">${planoAtual.refeicoes.reduce((acc, r) => acc + (r.itens?.length || 0), 0)} alimentos no total</p>
+        // Card Plano: erro > vazio > com dados
+        const cardPlano = planoErro
+            ? cardErro("Plano Atual", "Erro ao carregar", "Tentar novamente", `carregarDashboardPaciente(${pacienteId})`)
+            : (planoAtual
+                ? `
+                    <div class="bg-slate-800/50 border border-emerald-500/30 rounded-2xl p-5">
+                        <div class="flex items-start justify-between gap-4">
+                            <div>
+                                <p class="text-xs font-semibold text-emerald-300 uppercase tracking-wider">Plano Atual</p>
+                                <p class="text-white font-medium mt-1">${planoAtual.refeicoes.length} refeições</p>
+                                <p class="text-sm text-slate-400 mt-2">${planoAtual.refeicoes.reduce((acc, r) => acc + (r.itens?.length || 0), 0)} alimentos no total</p>
+                            </div>
+                            <button onclick="abaPaciente('plano')" class="shrink-0 h-9 px-4 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 transition flex items-center gap-1">
+                                <i class="fa-solid fa-arrow-right text-xs"></i> Ver
+                            </button>
                         </div>
-                        <button onclick="abaPaciente('plano')" class="shrink-0 h-9 px-4 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 transition flex items-center gap-1">
-                            <i class="fa-solid fa-arrow-right text-xs"></i> Ver
-                        </button>
-                    </div>
-                </div>`
-            : `
-                <div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5">
-                    <div class="flex items-start justify-between gap-4">
-                        <div>
-                            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Plano Atual</p>
-                            <p class="text-white font-medium mt-1">Sem plano alimentar</p>
-                            <p class="text-sm text-slate-500 mt-2">Aguardando nutricionista</p>
+                    </div>`
+                : `
+                    <div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5">
+                        <div class="flex items-start justify-between gap-4">
+                            <div>
+                                <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Plano Atual</p>
+                                <p class="text-white font-medium mt-1">Sem plano alimentar</p>
+                                <p class="text-sm text-slate-500 mt-2">Aguardando nutricionista</p>
+                            </div>
+                            <button onclick="abaPaciente('plano')" class="shrink-0 h-9 px-4 rounded-xl text-xs font-semibold text-white bg-slate-700 hover:bg-slate-600 transition flex items-center gap-1">
+                                <i class="fa-solid fa-bowl-food text-xs"></i> Ver
+                            </button>
                         </div>
-                        <button onclick="abaPaciente('plano')" class="shrink-0 h-9 px-4 rounded-xl text-xs font-semibold text-white bg-slate-700 hover:bg-slate-600 transition flex items-center gap-1">
-                            <i class="fa-solid fa-bowl-food text-xs"></i> Ver
-                        </button>
-                    </div>
-                </div>`;
+                    </div>`);
 
-        const cardConsulta = proximaConsulta
-            ? `
-                <div class="bg-slate-800/50 border border-amber-500/30 rounded-2xl p-5">
-                    <div class="flex items-start justify-between gap-4">
-                        <div>
-                            <p class="text-xs font-semibold text-amber-300 uppercase tracking-wider">Último Acompanhamento</p>
-                            <p class="text-white font-medium mt-1">${proximaConsulta.tipo}</p>
-                            <p class="text-sm text-slate-400 mt-2">${formatarDataBR(proximaConsulta.data)} • ${proximaConsulta.peso}kg • Aderência: ${proximaConsulta.adesao}%</p>
+        // Card Consulta/Check-in: erro > vazio > com dados
+        const cardConsulta = checkinsErro
+            ? cardErro("Último Acompanhamento", "Erro ao carregar", "Tentar novamente", `carregarDashboardPaciente(${pacienteId})`, "amber")
+            : (proximaConsulta
+                ? `
+                    <div class="bg-slate-800/50 border border-amber-500/30 rounded-2xl p-5">
+                        <div class="flex items-start justify-between gap-4">
+                            <div>
+                                <p class="text-xs font-semibold text-amber-300 uppercase tracking-wider">Último Acompanhamento</p>
+                                <p class="text-white font-medium mt-1">${proximaConsulta.tipo}</p>
+                                <p class="text-sm text-slate-400 mt-2">${formatarDataBR(proximaConsulta.data)} • ${proximaConsulta.peso}kg • Aderência: ${proximaConsulta.adesao}%</p>
+                            </div>
+                            <div class="shrink-0 text-right">
+                                <p class="text-xs text-slate-400">Próximo agendado</p>
+                                <p class="text-white font-medium mt-1">—</p>
+                            </div>
                         </div>
-                        <div class="shrink-0 text-right">
-                            <p class="text-xs text-slate-400">Próximo agendado</p>
-                            <p class="text-white font-medium mt-1">—</p>
+                    </div>`
+                : `
+                    <div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5">
+                        <div class="flex items-start justify-between gap-4">
+                            <div>
+                                <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Próxima Consulta</p>
+                                <p class="text-white font-medium mt-1">Não agendada</p>
+                                <p class="text-sm text-slate-500 mt-2">Entre em contato com seu nutricionista</p>
+                            </div>
+                            <div class="shrink-0 text-right">
+                                <p class="text-xs text-slate-400">Agendar</p>
+                                <p class="text-white font-medium mt-1">—</p>
+                            </div>
                         </div>
-                    </div>
-                </div>`
-            : `
-                <div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5">
-                    <div class="flex items-start justify-between gap-4">
-                        <div>
-                            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Próxima Consulta</p>
-                            <p class="text-white font-medium mt-1">Não agendada</p>
-                            <p class="text-sm text-slate-500 mt-2">Entre em contato com seu nutricionista</p>
-                        </div>
-                        <div class="shrink-0 text-right">
-                            <p class="text-xs text-slate-400">Agendar</p>
-                            <p class="text-white font-medium mt-1">—</p>
-                        </div>
-                    </div>
-                </div>`;
+                    </div>`);
 
         el.innerHTML = `
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
