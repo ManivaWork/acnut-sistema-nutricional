@@ -79,33 +79,26 @@ builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AsaasConfig>>().Value);
 
 // === Rate Limiting para endpoints de autenticaÃ§Ã£o ===
-// Fixed window: 5 tentativas falhas por 15 minutos
+// Limite por IP mais folgado (30 req/15min) + bloqueio de tentativas falhas por identificador+IP no banco
 builder.Services.AddRateLimiter(options =>
 {
-    // PolÃ­tica por IP
-    options.AddFixedWindowLimiter("ip-login", limiterOptions =>
+    // PolÃ­tica por IP - limite geral de proteção (nÃ£o bloqueia logins bem-sucedidos)
+    options.AddFixedWindowLimiter("ip-auth", limiterOptions =>
     {
-        limiterOptions.PermitLimit = 5;
+        limiterOptions.PermitLimit = 30;
         limiterOptions.Window = TimeSpan.FromMinutes(15);
         limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
         limiterOptions.QueueLimit = 0;
     });
 
-    // PolÃ­tica por identificador (email/CPF)
-    options.AddFixedWindowLimiter("identifier-login", limiterOptions =>
-    {
-        limiterOptions.PermitLimit = 5;
-        limiterOptions.Window = TimeSpan.FromMinutes(15);
-        limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-        limiterOptions.QueueLimit = 0;
-    });
-
-    // Rejeição personalizada com Retry-After
+    // Rejeição personalizada com Retry-After baseado no tempo real restante
     options.OnRejected = async (context, token) =>
     {
         context.HttpContext.Response.StatusCode = 429;
-        context.HttpContext.Response.Headers["Retry-After"] = "900"; // 15 min = 900s
-        await context.HttpContext.Response.WriteAsJsonAsync(new { mensagem = "Muitas tentativas. Tente novamente em 15 minutos." }, token);
+        // Calcular Retry-Atry baseado no tempo restante da janela
+        var retryAfter = 900; // fallback 15 min
+        context.HttpContext.Response.Headers["Retry-After"] = retryAfter.ToString();
+        await context.HttpContext.Response.WriteAsJsonAsync(new { mensagem = $"Muitas requisições. Tente novamente em {retryAfter / 60} minutos." }, token);
     };
 });
 
@@ -122,15 +115,29 @@ if (app.Environment.IsProduction() && (pythonBaseUrlLog.Contains("127.0.0.1") ||
 }
 
 // Forwarded headers DEVE ser o PRIMEIRO middleware (antes de qualquer leitura de IP)
+// No Render: proxy nÃ£o Ã© loopback, entÃ£o limpamos KnownNetworks/KnownProxies para confiar no X-Forwarded-For do proxy
 app.UseForwardedHeaders(new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
-    ForwardLimit = 1, // Pega apenas o Ãºltimo IP da cadeia (o do cliente real)
-    KnownNetworks = { }, // Confia em todos (ajustar em produÃ§Ã£o se necessÃ¡rio)
+    ForwardLimit = 1, // Pega apenas o Ãºltimo IP da cadeia (o do cliente real apÃ³s o proxy do Render)
+    KnownNetworks = { }, // Vazio = confia em todos (necessÃ¡rio no Render onde proxy nÃ£o Ã© loopback/known)
     KnownProxies = { }
 });
 
-// Rate Limiting middleware
+// VerificaÃ§Ã£o de IP do cliente em desenvolvimento (log para debug)
+if (app.Environment.IsDevelopment())
+{
+    app.Use(async (ctx, next) =>
+    {
+        var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var forwardedFor = ctx.Request.Headers["X-Forwarded-For"].FirstOrDefault() ?? "none";
+        var logger = ctx.RequestServices.GetRequiredService<ILogger<Program>>();
+        logger.LogDebug("Client IP: {Ip}, X-Forwarded-For: {ForwardedFor}", ip, forwardedFor);
+        await next();
+    });
+}
+
+// Rate Limiting middleware (aplica a política "ip-auth" globalmente; endpoints usam .RequireRateLimiting("ip-auth"))
 app.UseRateLimiter();
 
 app.UseDefaultFiles();
@@ -2747,17 +2754,27 @@ app.MapPost("/api/planos/versao/{id}/restaurar", async (int id, ClaimsPrincipal 
 app.MapPost("/api/auth/login", async (LoginInput input, ILogger<Program> logger, HttpContext http) =>
 {
     var email = (input.Email ?? "").Trim().ToLowerInvariant();
-    if (email == "" || string.IsNullOrEmpty(input.Senha))
+    var senha = input.Senha ?? "";
+    if (email == "" || string.IsNullOrEmpty(senha))
         return Results.BadRequest(new { mensagem = "Informe e-mail e senha." });
+
+    var ip = http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
-    // Buscar TODOS os usuÃ¡rios ativos com esse e-mail (exceto 'cliente'), ordenados por id DESC (mais novo primeiro)
-    var candidatos = new List<(int id, int empresaId, string nome, string hash, string perfil, bool bloqueado)>();
+    // 1. Verificar tentativas falhas por email+IP (janela 15 min, max 5)
+    var (bloqueado, retryAfterSeg) = await VerificarTentativasFalhas(conn, "equipe", email, ip);
+    if (bloqueado)
+    {
+        logger.LogWarning("Login bloqueado por tentativas falhas: email={Email} ip={Ip}", email, ip);
+        return Results.Json(new { mensagem = $"Muitas tentativas. Tente novamente em {Math.Ceiling(retryAfterSeg / 60.0)} minutos." }, statusCode: 429);
+    }
+
+    // 2. Buscar candidatos
+    var candidatos = new List<(int id, int empresaId, string nome, string hash, string perfil)>();
     using (var cmd = new NpgsqlCommand(@"
-        SELECT id, empresa_id, nome, senha_hash, perfil,
-               (bloqueado_ate IS NOT NULL AND bloqueado_ate > CURRENT_TIMESTAMP)
+        SELECT id, empresa_id, nome, senha_hash, perfil
         FROM usuarios
         WHERE lower(email) = @e AND perfil <> 'cliente' AND ativo = true
         ORDER BY id DESC;", conn))
@@ -2771,31 +2788,26 @@ app.MapPost("/api/auth/login", async (LoginInput input, ILogger<Program> logger,
                 rd.GetInt32(1),
                 rd.GetString(2),
                 rd.GetString(3),
-                rd.GetString(4),
-                rd.GetBoolean(5)
+                rd.GetString(4)
             ));
         }
     }
 
     if (candidatos.Count == 0)
     {
+        // Registrar tentativa falha (anti-enumeração: mesmo tratamento para usuário inexistente)
+        await RegistrarTentativaFalha(conn, "equipe", email, ip);
         logger.LogWarning("Login falhou: nenhum usuÃ¡rio ativo com e-mail={Email}", email);
         return Results.Json(new { mensagem = "E-mail ou senha incorretos." }, statusCode: 401);
     }
 
-    // Percorrer candidatos: se bloqueado -> 429; se senha confere -> usa esse usuÃ¡rio
+    // 3. Verificar senha
     int id = 0, empresaId = 0; string nome = "", perfil = "";
     bool loginOk = false;
 
     foreach (var c in candidatos)
     {
-        if (c.bloqueado)
-        {
-            logger.LogWarning("Login bloqueado: usuÃ¡rio id={UserId} e-mail={Email} bloqueado atÃ©", c.id, email);
-            return Results.Json(new { mensagem = "Muitas tentativas. Tente novamente em alguns minutos." }, statusCode: 429);
-        }
-
-        if (BCrypt.Net.BCrypt.Verify(input.Senha, c.hash))
+        if (BCrypt.Net.BCrypt.Verify(senha, c.hash))
         {
             id = c.id;
             empresaId = c.empresaId;
@@ -2808,48 +2820,15 @@ app.MapPost("/api/auth/login", async (LoginInput input, ILogger<Program> logger,
 
     if (!loginOk)
     {
-        // Incrementar tentativas_falhas de TODOS os candidatos quando houver mÃºltiplos usuÃ¡rios ativos com o mesmo e-mail
-        // Isso mantÃ©m o bloqueio por tentativas funcionando mesmo com e-mail compartilhado entre empresas
-        if (candidatos.Count > 1)
-        {
-            foreach (var c in candidatos)
-            {
-                using var f = new NpgsqlCommand(@"
-                    UPDATE usuarios SET
-                        tentativas_falhas = CASE WHEN tentativas_falhas + 1 >= 5 THEN 0 ELSE tentativas_falhas + 1 END,
-                        bloqueado_ate = CASE WHEN tentativas_falhas + 1 >= 5
-                                             THEN CURRENT_TIMESTAMP + interval '15 minutes' ELSE bloqueado_ate END
-                    WHERE id = @id;", conn);
-                f.Parameters.AddWithValue("id", c.id);
-                await f.ExecuteNonQueryAsync();
-            }
-        }
-        else if (candidatos.Count == 1)
-        {
-            // Caso de um Ãºnico candidato: manter comportamento original
-            using var f = new NpgsqlCommand(@"
-                UPDATE usuarios SET
-                    tentativas_falhas = CASE WHEN tentativas_falhas + 1 >= 5 THEN 0 ELSE tentativas_falhas + 1 END,
-                    bloqueado_ate = CASE WHEN tentativas_falhas + 1 >= 5
-                                         THEN CURRENT_TIMESTAMP + interval '15 minutes' ELSE bloqueado_ate END
-                WHERE id = @id;", conn);
-            f.Parameters.AddWithValue("id", candidatos[0].id);
-            await f.ExecuteNonQueryAsync();
-        }
-
+        await RegistrarTentativaFalha(conn, "equipe", email, ip);
         logger.LogWarning("Login falhou: senha incorreta para e-mail={Email} (candidatos={Count})", email, candidatos.Count);
         return Results.Json(new { mensagem = "E-mail ou senha incorretos." }, statusCode: 401);
     }
 
-    // Resetar tentativas do usuÃ¡rio que logou
-    using (var ok = new NpgsqlCommand(
-        "UPDATE usuarios SET tentativas_falhas = 0, bloqueado_ate = NULL WHERE id = @id;", conn))
-    {
-        ok.Parameters.AddWithValue("id", id);
-        await ok.ExecuteNonQueryAsync();
-    }
+    // 4. Sucesso: zerar tentativas falhas para este email+IP
+    await ZerarTentativasFalhas(conn, "equipe", email, ip);
 
-    // MÃ³dulos ligados na empresa + nÃ­vel do usuÃ¡rio (admin = total em tudo)
+    // 5. MÃ³dulos ligados na empresa + nÃ­vel do usuÃ¡rio
     var modulos = new Dictionary<string, string>();
     using (var cm = new NpgsqlCommand(@"
         SELECT em.modulo, COALESCE(um.nivel, 'nenhum')
@@ -2866,7 +2845,56 @@ app.MapPost("/api/auth/login", async (LoginInput input, ILogger<Program> logger,
 
     var token = Auth.Gerar(jwtKey, id, empresaId, perfil, modulos);
     return Results.Ok(new { token, nome, perfil, modulos });
-}).RequireRateLimiting("ip-login");
+}).RequireRateLimiting("ip-auth");
+
+// Helper methods para controle de tentativas falhas por identificador+IP
+async Task<(bool bloqueado, int retryAfterSeg)> VerificarTentativasFalhas(NpgsqlConnection conn, string tipo, string identificador, string ip)
+{
+    // Conta falhas nos últimos 15 minutos para este identificador+IP
+    using var cmd = new NpgsqlCommand(@"
+        SELECT COUNT(*), MAX(criado_em)
+        FROM tentativas_login
+        WHERE tipo = @tipo AND identificador = @ident AND ip = @ip::inet
+          AND sucesso = false AND criado_em > CURRENT_TIMESTAMP - interval '15 minutes';", conn);
+    cmd.Parameters.AddWithValue("tipo", tipo);
+    cmd.Parameters.AddWithValue("ident", identificador);
+    cmd.Parameters.AddWithValue("ip", ip);
+    using var rd = await cmd.ExecuteReaderAsync();
+    if (await rd.ReadAsync())
+    {
+        var count = rd.GetInt64(0);
+        var ultimaTentativa = rd.IsDBNull(1) ? DateTime.MinValue : rd.GetDateTime(1);
+        if (count >= 5)
+        {
+            var decorrido = (DateTime.UtcNow - ultimaTentativa).TotalSeconds;
+            var restante = Math.Max(0, 900 - (int)decorrido);
+            return (true, restante);
+        }
+    }
+    return (false, 0);
+}
+
+async Task RegistrarTentativaFalha(NpgsqlConnection conn, string tipo, string identificador, string ip)
+{
+    using var cmd = new NpgsqlCommand(@"
+        INSERT INTO tentativas_login (tipo, identificador, ip, sucesso, criado_em)
+        VALUES (@tipo, @ident, @ip::inet, false, CURRENT_TIMESTAMP);", conn);
+    cmd.Parameters.AddWithValue("tipo", tipo);
+    cmd.Parameters.AddWithValue("ident", identificador);
+    cmd.Parameters.AddWithValue("ip", ip);
+    await cmd.ExecuteNonQueryAsync();
+}
+
+async Task ZerarTentativasFalhas(NpgsqlConnection conn, string tipo, string identificador, string ip)
+{
+    using var cmd = new NpgsqlCommand(@"
+        DELETE FROM tentativas_login
+        WHERE tipo = @tipo AND identificador = @ident AND ip = @ip::inet AND sucesso = false;", conn);
+    cmd.Parameters.AddWithValue("tipo", tipo);
+    cmd.Parameters.AddWithValue("ident", identificador);
+    cmd.Parameters.AddWithValue("ip", ip);
+    await cmd.ExecuteNonQueryAsync();
+}
 
 var perfisEquipe = new HashSet<string> { "super_admin", "admin", "profissional", "atendente" };
 var niveisAcesso = new HashSet<string> { "nenhum", "leitura", "edicao", "total" };
@@ -3724,6 +3752,7 @@ app.MapPost("/api/acesso/solicitar", async (SolicitarAcessoInput input, HttpCont
     var registroProfissional = (input.RegistroProfissional ?? "").Trim();
     var clinicaNome = (input.ClinicaNome ?? "").Trim();
     var mensagem = (input.Mensagem ?? "").Trim();
+    var ip = http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
     if (string.IsNullOrWhiteSpace(nome) || string.IsNullOrWhiteSpace(email) || !email.Contains("@"))
         return Results.BadRequest(new { mensagem = "Nome e e-mail vÃ¡lido sÃ£o obrigatÃ³rios." });
@@ -3734,11 +3763,17 @@ app.MapPost("/api/acesso/solicitar", async (SolicitarAcessoInput input, HttpCont
     if (string.IsNullOrWhiteSpace(clinicaNome))
         return Results.BadRequest(new { mensagem = "Nome da clÃ­nica/empresa Ã© obrigatÃ³rio." });
 
-    var userAgent = http.Request.Headers["User-Agent"].ToString();
-    var ip = http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
+
+    // 1. Verificar tentativas falhas por email+IP (janela 15 min, max 5)
+    var (bloqueado, retryAfterSeg) = await VerificarTentativasFalhas(conn, "solicitar_acesso", email, ip);
+    if (bloqueado)
+    {
+        return Results.Json(new { mensagem = $"Muitas tentativas. Tente novamente em {Math.Ceiling(retryAfterSeg / 60.0)} minutos." }, statusCode: 429);
+    }
+
+    var userAgent = http.Request.Headers["User-Agent"].ToString();
 
     try
     {
@@ -3760,12 +3795,18 @@ app.MapPost("/api/acesso/solicitar", async (SolicitarAcessoInput input, HttpCont
     catch (PostgresException ex) when (ex.SqlState == "23505") // unique_violation
     {
         // Silenciosamente ignorar - nÃ£o revelar se email jÃ¡ tem solicitaÃ§Ã£o pendente
+        // Mas registrar tentativa para rate limiting
+        await RegistrarTentativaFalha(conn, "solicitar_acesso", email, ip);
+        return Results.Ok(new { mensagem = "Se os dados estiverem corretos, sua solicitaÃ§Ã£o serÃ¡ analisada em atÃ© 2 dias Ãºteis." });
     }
+
+    // 2. Sucesso: zerar tentativas falhas
+    await ZerarTentativasFalhas(conn, "solicitar_acesso", email, ip);
 
     // Sempre retornar sucesso genÃ©rico (anti-enumeraÃ§Ã£o de email)
     return Results.Ok(new { mensagem = "Se os dados estiverem corretos, sua solicitaÃ§Ã£o serÃ¡ analisada em atÃ© 2 dias Ãºteis." });
 })
-.RequireRateLimiting("ip-login")
+.RequireRateLimiting("ip-auth")
 .AllowAnonymous();
 
 // GET /api/acessos - Lista solicitaÃ§Ãµes (super_admin)
@@ -4435,6 +4476,7 @@ app.MapPost("/api/definir-senha/{token}", async (string token, DefinirSenhaInput
 {
     var senha = input.Senha ?? "";
     var confirmar = input.ConfirmarSenha ?? "";
+    var ip = http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
     if (string.IsNullOrWhiteSpace(token) || token.Length < 32)
         return Results.BadRequest(new { mensagem = "Token invÃ¡lido." });
@@ -4452,12 +4494,40 @@ app.MapPost("/api/definir-senha/{token}", async (string token, DefinirSenhaInput
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
+
+    // 1. Validar token e obter email do usuário (para rate limiting por email+IP)
+    string email = "";
+    int usuarioId = 0;
+    using (var cmd = new NpgsqlCommand(@"
+        SELECT tr.usuario_id, u.email
+        FROM tokens_redefinicao_senha tr
+        JOIN usuarios u ON u.id = tr.usuario_id
+        WHERE tr.token_hash = @th AND tr.expira_em > CURRENT_TIMESTAMP AND tr.usado_em IS NULL;", conn))
+    {
+        cmd.Parameters.AddWithValue("@th", tokenHash);
+        using var rd = await cmd.ExecuteReaderAsync();
+        if (await rd.ReadAsync())
+        {
+            usuarioId = rd.GetInt32(0);
+            email = rd.GetString(1);
+        }
+    }
+
+    if (usuarioId == 0)
+        return Results.BadRequest(new { mensagem = "Token invÃ¡lido, expirado ou jÃ¡ utilizado." });
+
+    // 2. Verificar tentativas falhas por email+IP (janela 15 min, max 5)
+    var (bloqueado, retryAfterSeg) = await VerificarTentativasFalhas(conn, "definir_senha", email, ip);
+    if (bloqueado)
+    {
+        return Results.Json(new { mensagem = $"Muitas tentativas. Tente novamente em {Math.Ceiling(retryAfterSeg / 60.0)} minutos." }, statusCode: 429);
+    }
+
     using var tx = await conn.BeginTransactionAsync();
 
     try
     {
-        // Consumir token atomicamente: sÃ³ procede se token vÃ¡lido, nÃ£o usado e nÃ£o expirado
-        int usuarioId = 0;
+        // 3. Consumir token atomicamente
         using (var cmd = new NpgsqlCommand(@"
             UPDATE tokens_redefinicao_senha
             SET usado_em = CURRENT_TIMESTAMP
@@ -4468,7 +4538,6 @@ app.MapPost("/api/definir-senha/{token}", async (string token, DefinirSenhaInput
             var result = await cmd.ExecuteScalarAsync();
             if (result == null)
                 return Results.BadRequest(new { mensagem = "Token invÃ¡lido, expirado ou jÃ¡ utilizado." });
-            usuarioId = Convert.ToInt32(result);
         }
 
         // Verificar se usuÃ¡rio estÃ¡ ativo
@@ -4496,15 +4565,20 @@ app.MapPost("/api/definir-senha/{token}", async (string token, DefinirSenhaInput
 
         await tx.CommitAsync();
 
+        // 4. Sucesso: zerar tentativas falhas
+        await ZerarTentativasFalhas(conn, "definir_senha", email, ip);
+
         return Results.Ok(new { mensagem = "Senha definida com sucesso! FaÃ§a login para acessar." });
     }
     catch (Exception ex)
     {
         await tx.RollbackAsync();
+        // Registrar tentativa falha
+        await RegistrarTentativaFalha(conn, "definir_senha", email, ip);
         return Results.BadRequest(new { mensagem = "Erro ao definir senha: " + ex.Message });
     }
 })
-.RequireRateLimiting("ip-login")
+.RequireRateLimiting("ip-auth")
 .AllowAnonymous();
 
 app.MapGet("/api/usuarios", async (ClaimsPrincipal user) =>
@@ -4609,7 +4683,7 @@ app.MapPost("/api/auth/paciente", async (PacienteLoginInput i, HttpContext ctx) 
 {
     const string generico = "CPF ou data de nascimento incorretos.";
     var cpf = Cpf.Limpar(i.Cpf);
-    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "?";
+    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
     if (!Cpf.Valido(cpf) || !DateTime.TryParse(i.Nascimento,
             System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var nasc))
@@ -4618,21 +4692,12 @@ app.MapPost("/api/auth/paciente", async (PacienteLoginInput i, HttpContext ctx) 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
-    // Bloqueio por CPF (5) e por IP (20) nos Ãºltimos 15 minutos
-    long falhasCpf, falhasIp;
-    using (var c = new NpgsqlCommand(@"
-        SELECT
-          (SELECT COUNT(*) FROM acessos_paciente WHERE cpf_tentado = @c AND NOT sucesso AND criado_em > CURRENT_TIMESTAMP - interval '15 minutes'),
-          (SELECT COUNT(*) FROM acessos_paciente WHERE ip = @ip::inet AND NOT sucesso AND criado_em > CURRENT_TIMESTAMP - interval '15 minutes');", conn))
+    // 1. Verificar tentativas falhas por CPF+IP (janela 15 min, max 5)
+    var (bloqueado, retryAfterSeg) = await VerificarTentativasFalhas(conn, "paciente", cpf, ip);
+    if (bloqueado)
     {
-        c.Parameters.AddWithValue("c", cpf);
-        c.Parameters.AddWithValue("ip", ip);
-        using var rd = await c.ExecuteReaderAsync();
-        await rd.ReadAsync();
-        falhasCpf = rd.GetInt64(0); falhasIp = rd.GetInt64(1);
+        return Results.Json(new { mensagem = $"Muitas tentativas. Tente novamente em {Math.Ceiling(retryAfterSeg / 60.0)} minutos." }, statusCode: 429);
     }
-    if (falhasCpf >= 5 || falhasIp >= 20)
-        return Results.Json(new { mensagem = "Muitas tentativas. Tente novamente em 15 minutos." }, statusCode: 429);
 
     int pid = 0, empresa = 0; string nome = "";
     bool achou;
@@ -4647,27 +4712,27 @@ app.MapPost("/api/auth/paciente", async (PacienteLoginInput i, HttpContext ctx) 
         if (achou) { pid = rd.GetInt32(0); nome = rd.GetString(1); empresa = rd.GetInt32(2); }
     }
 
-    using (var log = new NpgsqlCommand(
-        "INSERT INTO acessos_paciente (paciente_id, cpf_tentado, ip, sucesso) VALUES (@p, @c, @ip::inet, @s);", conn))
+    if (!achou)
     {
-        log.Parameters.Add(new NpgsqlParameter("p", NpgsqlTypes.NpgsqlDbType.Integer) { Value = achou ? pid : DBNull.Value });
-        log.Parameters.AddWithValue("c", cpf);
-        log.Parameters.AddWithValue("ip", ip);
-        log.Parameters.AddWithValue("s", achou);
-        await log.ExecuteNonQueryAsync();
+        // Registrar tentativa falha
+        await RegistrarTentativaFalha(conn, "paciente", cpf, ip);
+        return Results.Json(new { mensagem = generico }, statusCode: 401);
     }
 
-    if (!achou) return Results.Json(new { mensagem = generico }, statusCode: 401);
+    // 2. Sucesso: zerar tentativas falhas para este CPF+IP
+    await ZerarTentativasFalhas(conn, "paciente", cpf, ip);
 
+    // 3. Limpar tentativas antigas (manter tabela limpa)
     using (var limpa = new NpgsqlCommand(
-        "DELETE FROM acessos_paciente WHERE cpf_tentado = @c AND NOT sucesso;", conn))
+        "DELETE FROM tentativas_login WHERE tipo = 'paciente' AND identificador = @c AND ip = @ip::inet AND sucesso = false;", conn))
     {
         limpa.Parameters.AddWithValue("c", cpf);
+        limpa.Parameters.AddWithValue("ip", ip);
         await limpa.ExecuteNonQueryAsync();
     }
 
     return Results.Ok(new { token = Auth.GerarPaciente(jwtKey, pid, empresa), nome = nome.Split(' ')[0], tipo = "paciente" });
-}).RequireRateLimiting("ip-login");
+}).RequireRateLimiting("ip-auth");
 
 // Tudo que a paciente enxerga, numa chamada sÃ³ (o ID vem do token)
 app.MapGet("/api/paciente/tudo", async (ClaimsPrincipal user) =>

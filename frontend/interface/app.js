@@ -4154,7 +4154,7 @@ async function enviarSolicitacaoAcesso(e) {
             // Mensagens específicas por status code
             let msg = 'Erro ao enviar solicitação.';
             if (res.status === 400) msg = 'Campos inválidos. Verifique os dados.';
-            else if (res.status === 429) msg = 'Muitas tentativas, tente mais tarde.';
+            else if (res.status === 429) msg = data.mensagem || 'Muitas tentativas, tente mais tarde.';
             else if (res.status >= 500) msg = 'Erro no servidor, tente depois.';
             else if (res.status === 401 || res.status === 404) msg = 'Serviço indisponível.';
             else if (data.mensagem) msg = data.mensagem;
@@ -4473,7 +4473,7 @@ async function inicializarDefinirSenha() {
             estadoInvalido.style.display = 'block';
             let msg = 'Token inválido ou expirado.';
             if (res.status === 400) msg = 'Token inválido.';
-            else if (res.status === 429) msg = 'Muitas tentativas, tente mais tarde.';
+            else if (res.status === 429) msg = data.mensagem || 'Muitas tentativas, tente mais tarde.';
             else if (res.status >= 500) msg = 'Erro no servidor, tente depois.';
             else if (res.status === 401 || res.status === 404) msg = 'Serviço indisponível.';
             else if (data.mensagem) msg = data.mensagem;
@@ -4530,7 +4530,7 @@ async function definirSenha(e) {
         if (!res.ok) {
             let msg = 'Erro ao definir senha.';
             if (res.status === 400) msg = 'Campos inválidos. Verifique os dados.';
-            else if (res.status === 429) msg = 'Muitas tentativas, tente mais tarde.';
+            else if (res.status === 429) msg = data.mensagem || 'Muitas tentativas, tente mais tarde.';
             else if (res.status >= 500) msg = 'Erro no servidor, tente depois.';
             else if (res.status === 401 || res.status === 404) msg = 'Serviço indisponível.';
             else if (data.mensagem) msg = data.mensagem;
