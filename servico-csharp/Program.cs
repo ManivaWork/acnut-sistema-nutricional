@@ -1295,18 +1295,21 @@ app.MapPost("/api/planos/refeicao", async (RefeicaoInput input) =>
     return Results.Created($"/api/planos/refeicao/{id}", new { id, mensagem = "Refeição criada!" });
 });
 
-app.MapPut("/api/planos/refeicao/{id}", async (int id, RefeicaoInput input) =>
+app.MapPut("/api/planos/refeicao/{id}", async (int id, RefeicaoInput input, ClaimsPrincipal user) =>
 {
     if (string.IsNullOrWhiteSpace(input.NomeRefeicao))
         return Results.BadRequest(new { mensagem = "Informe o nome da refeição." });
+
+    int emp = Auth.Empresa(user);
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
     using var cmd = new NpgsqlCommand(@"
         UPDATE refeicoes
         SET nome_refeicao = @nome, horario = @horario::time, observacoes = @obs
-        WHERE id = @id;", conn);
+        WHERE id = @id AND empresa_id = @emp;", conn);
     cmd.Parameters.AddWithValue("id", id);
+    cmd.Parameters.AddWithValue("emp", emp);
     cmd.Parameters.AddWithValue("nome", input.NomeRefeicao.Trim());
     cmd.Parameters.AddWithValue("horario", string.IsNullOrWhiteSpace(input.Horario) ? "08:00" : input.Horario);
     cmd.Parameters.AddWithValue("obs", input.Observacoes ?? "");
@@ -1322,34 +1325,47 @@ app.MapPut("/api/planos/refeicao/{id}", async (int id, RefeicaoInput input) =>
     {
         return Results.Conflict(new { mensagem = "Já existe uma refeição com esse nome neste plano." });
     }
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
-app.MapDelete("/api/planos/refeicao/{id}", async (int id) =>
+app.MapDelete("/api/planos/refeicao/{id}", async (int id, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
-    using var cmd = new NpgsqlCommand("DELETE FROM refeicoes WHERE id = @id", conn);
+    using var cmd = new NpgsqlCommand("DELETE FROM refeicoes WHERE id = @id AND empresa_id = @emp", conn);
     cmd.Parameters.AddWithValue("id", id);
+    cmd.Parameters.AddWithValue("emp", emp);
     var rows = await cmd.ExecuteNonQueryAsync();
     return rows > 0
         ? Results.Ok(new { mensagem = "Refeição excluída!" })
         : Results.NotFound(new { mensagem = "Refeição não encontrada." });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 // Exclui uma opção inteira (todos os itens e substituições dela)
-app.MapDelete("/api/planos/refeicao/{refeicaoId}/opcao/{opcao}", async (int refeicaoId, int opcao) =>
+app.MapDelete("/api/planos/refeicao/{refeicaoId}/opcao/{opcao}", async (int refeicaoId, int opcao, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
+    // Valida que a refeição pertence à empresa do token
+    using (var cmdCheck = new NpgsqlCommand("SELECT 1 FROM refeicoes WHERE id = @r AND empresa_id = @emp", conn))
+    {
+        cmdCheck.Parameters.AddWithValue("r", refeicaoId);
+        cmdCheck.Parameters.AddWithValue("emp", emp);
+        if (await cmdCheck.ExecuteScalarAsync() == null)
+            return Results.NotFound(new { mensagem = "Refeição não encontrada." });
+    }
     using var cmd = new NpgsqlCommand(
         "DELETE FROM itens_refeicao WHERE refeicao_id = @r AND opcao = @o", conn);
     cmd.Parameters.AddWithValue("r", refeicaoId);
     cmd.Parameters.AddWithValue("o", opcao);
     await cmd.ExecuteNonQueryAsync();
     return Results.Ok(new { mensagem = "Opção excluída!" });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 //===================================PLANO ALIMENTAR: ITENS (alimentos, opções e substituições)========================================================
-app.MapPost("/api/planos/item", async (ItemInput input) =>
+app.MapPost("/api/planos/item", async (ItemInput input, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
+
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
@@ -1369,15 +1385,26 @@ app.MapPost("/api/planos/item", async (ItemInput input) =>
         opcao = rd.GetInt32(1);
     }
 
+    // Valida que a refeição pertence à empresa do token
+    using (var cmdCheck = new NpgsqlCommand(
+        "SELECT 1 FROM refeicoes r JOIN planos_alimentares p ON p.id = r.plano_id WHERE r.id = @r AND p.empresa_id = @emp", conn))
+    {
+        cmdCheck.Parameters.AddWithValue("r", refeicaoId);
+        cmdCheck.Parameters.AddWithValue("emp", emp);
+        if (await cmdCheck.ExecuteScalarAsync() == null)
+            return Results.NotFound(new { mensagem = "Refeição não encontrada." });
+    }
+
     using var cmd = new NpgsqlCommand(@"
         INSERT INTO itens_refeicao
             (refeicao_id, empresa_id, opcao, substitui_item_id, alimento_nome_livre, quantidade_g, medida_caseira,
              kcal_manual, proteinas_manual, carbos_manual, gorduras_manual, e_substituicao)
         VALUES
-            (@refeicao_id, (SELECT p.empresa_id FROM refeicoes r JOIN planos_alimentares p ON p.id = r.plano_id WHERE r.id = @refeicao_id), @opcao, @sub, @nome, @qtd, @medida, @kcal, @prot, @carbo, @gord, @e_sub)
+            (@refeicao_id, @emp, @opcao, @sub, @nome, @qtd, @medida, @kcal, @prot, @carbo, @gord, @e_sub)
         RETURNING id;", conn);
 
     cmd.Parameters.AddWithValue("refeicao_id", refeicaoId);
+    cmd.Parameters.AddWithValue("emp", emp);
     cmd.Parameters.AddWithValue("opcao", opcao);
     cmd.Parameters.Add(new NpgsqlParameter("sub", NpgsqlTypes.NpgsqlDbType.Integer)
     {
@@ -1394,11 +1421,13 @@ app.MapPost("/api/planos/item", async (ItemInput input) =>
 
     var id = await cmd.ExecuteScalarAsync();
     return Results.Created($"/api/planos/item/{id}", new { id, mensagem = "Item adicionado!" });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 // POST /api/planos/item/calcular - Calcula macros via Python (TACO) e insere item
-app.MapPost("/api/planos/item/calcular", async (ItemCalcularInput input, IHttpClientFactory clientFactory, ILogger<Program> logger) =>
+app.MapPost("/api/planos/item/calcular", async (ItemCalcularInput input, ClaimsPrincipal user, IHttpClientFactory clientFactory, ILogger<Program> logger) =>
 {
+    int emp = Auth.Empresa(user);
+
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
@@ -1416,6 +1445,16 @@ app.MapPost("/api/planos/item/calcular", async (ItemCalcularInput input, IHttpCl
             return Results.BadRequest(new { mensagem = "Item original não encontrado." });
         refeicaoId = rd.GetInt32(0);
         opcao = rd.GetInt32(1);
+    }
+
+    // Valida que a refeição pertence à empresa do token
+    using (var cmdCheck = new NpgsqlCommand(
+        "SELECT 1 FROM refeicoes r JOIN planos_alimentares p ON p.id = r.plano_id WHERE r.id = @r AND p.empresa_id = @emp", conn))
+    {
+        cmdCheck.Parameters.AddWithValue("r", refeicaoId);
+        cmdCheck.Parameters.AddWithValue("emp", emp);
+        if (await cmdCheck.ExecuteScalarAsync() == null)
+            return Results.NotFound(new { mensagem = "Refeição não encontrada." });
     }
 
     // Chama o microserviço Python para calcular
@@ -1511,10 +1550,11 @@ app.MapPost("/api/planos/item/calcular", async (ItemCalcularInput input, IHttpCl
             (refeicao_id, empresa_id, opcao, substitui_item_id, alimento_nome_livre, quantidade_g, medida_caseira,
              kcal_manual, proteinas_manual, carbos_manual, gorduras_manual, e_substituicao)
         VALUES
-            (@refeicao_id, (SELECT p.empresa_id FROM refeicoes r JOIN planos_alimentares p ON p.id = r.plano_id WHERE r.id = @refeicao_id), @opcao, @sub, @nome, @qtd, @medida, @kcal, @prot, @carbo, @gord, @e_sub)
+            (@refeicao_id, @emp, @opcao, @sub, @nome, @qtd, @medida, @kcal, @prot, @carbo, @gord, @e_sub)
         RETURNING id;", conn);
 
     cmd.Parameters.AddWithValue("refeicao_id", refeicaoId);
+    cmd.Parameters.AddWithValue("emp", emp);
     cmd.Parameters.AddWithValue("opcao", opcao);
     cmd.Parameters.Add(new NpgsqlParameter("sub", NpgsqlTypes.NpgsqlDbType.Integer)
     {
@@ -1536,12 +1576,25 @@ app.MapPost("/api/planos/item/calcular", async (ItemCalcularInput input, IHttpCl
         mensagem = "Item adicionado com cálculo automático!",
         calculo = new { baseCalculo = baseCalculo, gramas, kcal, proteina, carbo, gordura }
     });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
-app.MapPut("/api/planos/item/{id}", async (int id, ItemInput input) =>
+app.MapPut("/api/planos/item/{id}", async (int id, ItemInput input, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
+
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
+
+    // Valida que o item pertence à empresa do token
+    using (var cmdCheck = new NpgsqlCommand(
+        "SELECT 1 FROM itens_refeicao ir JOIN refeicoes r ON r.id = ir.refeicao_id JOIN planos_alimentares p ON p.id = r.plano_id WHERE ir.id = @id AND p.empresa_id = @emp", conn))
+    {
+        cmdCheck.Parameters.AddWithValue("id", id);
+        cmdCheck.Parameters.AddWithValue("emp", emp);
+        if (await cmdCheck.ExecuteScalarAsync() == null)
+            return Results.NotFound(new { mensagem = "Item não encontrado." });
+    }
+
     using var cmd = new NpgsqlCommand(@"
         UPDATE itens_refeicao SET
             alimento_nome_livre = @nome, quantidade_g = @qtd, medida_caseira = @medida,
@@ -1561,12 +1614,25 @@ app.MapPut("/api/planos/item/{id}", async (int id, ItemInput input) =>
     return rows > 0
         ? Results.Ok(new { mensagem = "Item atualizado!" })
         : Results.NotFound(new { mensagem = "Item não encontrado." });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
-app.MapDelete("/api/planos/item/{id}", async (int id) =>
+app.MapDelete("/api/planos/item/{id}", async (int id, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
+
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
+
+    // Valida que o item pertence à empresa do token
+    using (var cmdCheck = new NpgsqlCommand(
+        "SELECT 1 FROM itens_refeicao ir JOIN refeicoes r ON r.id = ir.refeicao_id JOIN planos_alimentares p ON p.id = r.plano_id WHERE ir.id = @id AND p.empresa_id = @emp", conn))
+    {
+        cmdCheck.Parameters.AddWithValue("id", id);
+        cmdCheck.Parameters.AddWithValue("emp", emp);
+        if (await cmdCheck.ExecuteScalarAsync() == null)
+            return Results.NotFound(new { mensagem = "Item não encontrado." });
+    }
+
     using var cmd = new NpgsqlCommand("DELETE FROM itens_refeicao WHERE id = @id", conn);
     cmd.Parameters.AddWithValue("id", id);
 
@@ -1574,7 +1640,7 @@ app.MapDelete("/api/planos/item/{id}", async (int id) =>
     return rowsAffected > 0
         ? Results.Ok(new { mensagem = "Item excluído com sucesso!" })
         : Results.NotFound(new { mensagem = "Item não encontrado." });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 // ============================================PLANO ALIMENTAR: LEITURA E VERSÕES===========================================
 // Plano completo (refeições → itens, com opção e substituição)
@@ -2365,10 +2431,23 @@ app.MapDelete("/api/observacoes/{id}", async (int id, ClaimsPrincipal user) =>
         : Results.NotFound(new { mensagem = "Observação não encontrada." });
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 // Duplica uma opção (itens + substituições) para uma nova opção da mesma refeição
-app.MapPost("/api/planos/refeicao/{refeicaoId}/opcao/{opcao}/duplicar", async (int refeicaoId, int opcao) =>
-    {
+app.MapPost("/api/planos/refeicao/{refeicaoId}/opcao/{opcao}/duplicar", async (int refeicaoId, int opcao, ClaimsPrincipal user) =>
+{
+    int emp = Auth.Empresa(user);
+
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
+
+    // Valida que a refeição pertence à empresa do token
+    using (var cmdCheck = new NpgsqlCommand(
+        "SELECT 1 FROM refeicoes r JOIN planos_alimentares p ON p.id = r.plano_id WHERE r.id = @r AND p.empresa_id = @emp", conn))
+    {
+        cmdCheck.Parameters.AddWithValue("r", refeicaoId);
+        cmdCheck.Parameters.AddWithValue("emp", emp);
+        if (await cmdCheck.ExecuteScalarAsync() == null)
+            return Results.NotFound(new { mensagem = "Refeição não encontrada." });
+    }
+
     using var tx = await conn.BeginTransactionAsync();
     int novaOpcao;
     using (var cmdMax = new NpgsqlCommand(
@@ -2404,9 +2483,10 @@ app.MapPost("/api/planos/refeicao/{refeicaoId}/opcao/{opcao}/duplicar", async (i
     INSERT INTO itens_refeicao
     (refeicao_id, empresa_id, opcao, substitui_item_id, alimento_nome_livre, quantidade_g, medida_caseira,
     kcal_manual, proteinas_manual, carbos_manual, gorduras_manual, e_substituicao)
-    VALUES (@r, (SELECT r.empresa_id FROM refeicoes r JOIN planos_alimentares p ON p.id = r.plano_id WHERE r.id = @r), @o, @sub, @nome, @qtd, @medida, @kcal, @prot, @carbo, @gord, @esub)
+    VALUES (@r, @emp, @o, @sub, @nome, @qtd, @medida, @kcal, @prot, @carbo, @gord, @esub)
     RETURNING id;", conn, tx);
     cmd.Parameters.AddWithValue("r", refeicaoId);
+    cmd.Parameters.AddWithValue("emp", emp);
     cmd.Parameters.AddWithValue("o", novaOpcao);
     cmd.Parameters.Add(new NpgsqlParameter("sub", NpgsqlTypes.NpgsqlDbType.Integer)
     {
@@ -2424,11 +2504,12 @@ app.MapPost("/api/planos/refeicao/{refeicaoId}/opcao/{opcao}/duplicar", async (i
     }
     await tx.CommitAsync();
     return Results.Ok(new { opcao = novaOpcao, mensagem = "Opção duplicada!" });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 // Restaura uma versão (antes, guarda o plano atual como nova versão de segurança)
 app.MapPost("/api/planos/versao/{id}/restaurar", async (int id, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
     int pacienteId, numeroOrigem;
     string snapJson;
 
@@ -2436,8 +2517,9 @@ app.MapPost("/api/planos/versao/{id}/restaurar", async (int id, ClaimsPrincipal 
     {
         await conn0.OpenAsync();
         using var cmd0 = new NpgsqlCommand(
-            "SELECT paciente_id, numero, snapshot::text FROM planos_versoes WHERE id = @id", conn0);
+            "SELECT paciente_id, numero, snapshot::text FROM planos_versoes WHERE id = @id AND empresa_id = @emp", conn0);
         cmd0.Parameters.AddWithValue("id", id);
+        cmd0.Parameters.AddWithValue("emp", emp);
         using var rd0 = await cmd0.ExecuteReaderAsync();
         if (!await rd0.ReadAsync())
             return Results.NotFound(new { mensagem = "Versão não encontrada." });
@@ -2564,7 +2646,7 @@ app.MapPost("/api/planos/versao/{id}/restaurar", async (int id, ClaimsPrincipal 
         ? $"Versão {numeroOrigem} restaurada! O plano anterior foi guardado como versão {numeroBackup}."
         : $"Versão {numeroOrigem} restaurada!";
     return Results.Ok(new { mensagem = msg });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 // =====================================================================
 // AUTENTICAÇÃO E USUÁRIOS
