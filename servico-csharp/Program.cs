@@ -533,7 +533,7 @@ app.MapPut("/api/pacientes/{id}", async (int id, HttpRequest request, ClaimsPrin
     {
         return Results.Conflict(new { mensagem = "Já existe um paciente com esse e-mail ou CPF." });
     }
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 // 4. EXCLUIR PACIENTE
 app.MapDelete("/api/pacientes/{id}", async (int id, ClaimsPrincipal user) =>
@@ -548,7 +548,7 @@ app.MapDelete("/api/pacientes/{id}", async (int id, ClaimsPrincipal user) =>
     return rowsAffected > 0
         ? Results.Ok(new { mensagem = "Paciente excluído com sucesso!" })
         : Results.NotFound(new { mensagem = "Paciente não encontrado." });
-});
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 // 5. ANONIMIZAR PACIENTE (LGPD) - apenas admin e super_admin
 app.MapPost("/api/pacientes/{id}/anonimizar", async (int id, ClaimsPrincipal user) =>
@@ -2061,6 +2061,23 @@ app.MapGet("/api/arquivos/{id}", async (int id, ClaimsPrincipal user, HttpContex
 app.MapDelete("/api/arquivos/{id}", async (int id, ClaimsPrincipal user, HttpContext http) =>
 {
     int emp = int.Parse(user.FindFirst("empresa")!.Value);
+
+    // Validar token de paciente: só pode excluir arquivos do próprio paciente
+    var tipoClaim = user.FindFirst("tipo")?.Value;
+    if (tipoClaim == "paciente")
+    {
+        var pidClaim = user.FindFirst("pid");
+        if (pidClaim == null || !int.TryParse(pidClaim.Value, out var tokenPacienteId))
+            return Results.NotFound(new { mensagem = "Arquivo não encontrado." });
+
+        using var connCheck = new NpgsqlConnection(connString);
+        await connCheck.OpenAsync();
+        using var cmdPid = new NpgsqlCommand("SELECT paciente_id FROM arquivos_paciente WHERE id = @id", connCheck);
+        cmdPid.Parameters.AddWithValue("id", id);
+        var arquivoPacienteId = await cmdPid.ExecuteScalarAsync();
+        if (arquivoPacienteId == null || Convert.ToInt32(arquivoPacienteId) != tokenPacienteId)
+            return Results.NotFound(new { mensagem = "Arquivo não encontrado." });
+    }
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
@@ -6051,6 +6068,11 @@ class TenantIsolationFilter : IEndpointFilter
         int pacienteId = 0;
 
         // 1. Tentar da rota (path parameters)
+        // Para endpoints de pacientes (/api/pacientes/{id}), o parâmetro "id" é o pacienteId
+        // Para outros endpoints, procurar parâmetro explícito "pacienteId"
+        var path = httpContext.Request.Path.Value ?? "";
+        var isPacientesEndpoint = path.StartsWith("/api/pacientes/", StringComparison.OrdinalIgnoreCase);
+
         if (context.HttpContext.Request.RouteValues.TryGetValue("pacienteId", out var routeValue) && routeValue is int pid)
         {
             pacienteId = pid;
@@ -6058,6 +6080,15 @@ class TenantIsolationFilter : IEndpointFilter
         else if (context.HttpContext.Request.RouteValues.TryGetValue("pacienteId", out var routeStr) && int.TryParse(routeStr?.ToString(), out var pidFromStr))
         {
             pacienteId = pidFromStr;
+        }
+        // Só tratar "id" como pacienteId se for endpoint /api/pacientes/{id}
+        else if (isPacientesEndpoint && context.HttpContext.Request.RouteValues.TryGetValue("id", out var idValue) && idValue is int idPid)
+        {
+            pacienteId = idPid;
+        }
+        else if (isPacientesEndpoint && context.HttpContext.Request.RouteValues.TryGetValue("id", out var idStr) && int.TryParse(idStr?.ToString(), out var idPidFromStr))
+        {
+            pacienteId = idPidFromStr;
         }
 
         // 2. Se não veio da rota, tentar ler do body (JSON ou form)

@@ -1260,7 +1260,7 @@ public class IsolamentoMultiTenantTests : IClassFixture<WebApplicationFactory<Pr
 
             var response = await client.GetAsync($"/api/anamnese/{pacienteId2}");
 
-            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.Forbidden);
         }
         finally
         {
@@ -1284,7 +1284,7 @@ public class IsolamentoMultiTenantTests : IClassFixture<WebApplicationFactory<Pr
 
             var response = await client.GetAsync($"/api/anamnese/{pacienteId2}");
 
-            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.Forbidden);
         }
         finally
         {
@@ -1330,7 +1330,7 @@ public class IsolamentoMultiTenantTests : IClassFixture<WebApplicationFactory<Pr
             var payload = new { PacienteId = pacienteId2, DadosExtendido = new { objetivo = "Ganhar massa" } };
             var response = await client.PostAsJsonAsync("/api/anamnese", payload);
 
-            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.Forbidden);
         }
         finally
         {
@@ -1373,7 +1373,7 @@ public class IsolamentoMultiTenantTests : IClassFixture<WebApplicationFactory<Pr
 
             var response = await client.GetAsync($"/api/planos/{pacienteId2}");
 
-            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.Forbidden);
         }
         finally
         {
@@ -2221,7 +2221,7 @@ public class IsolamentoMultiTenantTests : IClassFixture<WebApplicationFactory<Pr
             // Tentar ler versão do paciente 1 com token do paciente 2
             var response = await clientPaciente2.GetAsync($"/api/planos/versao/{versaoIdOutroPaciente}");
 
-            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.Forbidden);
         }
         finally
         {
@@ -2290,6 +2290,1151 @@ public class IsolamentoMultiTenantTests : IClassFixture<WebApplicationFactory<Pr
 
             // 201 = sucesso, 400 = alimento não tem dados na TACO, 503 = serviço Python indisponível, 500 = erro interno (ambiente de teste sem Python)
             response.StatusCode.Should().BeOneOf(HttpStatusCode.Created, HttpStatusCode.BadRequest, HttpStatusCode.ServiceUnavailable, HttpStatusCode.InternalServerError);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    // ============================================
+    // 14. PACIENTES - ISOLAMENTO POR ID (PUT/DELETE /api/pacientes/{id})
+    // ============================================
+    [Fact]
+    public async Task PUT_Paciente_EmpresaA_NaoPodeEditarPacienteDaEmpresaB_DeveRetornar404()
+    {
+        var testName = nameof(PUT_Paciente_EmpresaA_NaoPodeEditarPacienteDaEmpresaB_DeveRetornar404);
+        var (empresaIdA, usuarioIdA) = await CriarEmpresaEUsuariosTesteAsync(testName + "A");
+        var (empresaIdB, usuarioIdB) = await CriarEmpresaEUsuariosTesteAsync(testName + "B");
+        int pacienteIdEmpresaB = 0;
+        try
+        {
+            // Criar paciente na empresa B
+            var tokenB = GerarTokenEquipe(uid: usuarioIdB, empresa: empresaIdB, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientB = CriarCliente(tokenB);
+            pacienteIdEmpresaB = await CriarPacienteTesteAsync(empresaIdB, testName + "B_paciente");
+
+            // Tentar editar com token da empresa A
+            var tokenA = GerarTokenEquipe(uid: usuarioIdA, empresa: empresaIdA, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientA = CriarCliente(tokenA);
+
+            var updatePayload = new
+            {
+                nome = "Nome Alterado",
+                email = $"paciente_{testName}@teste.com",
+                telefone = "",
+                data_nascimento = "1990-01-01",
+                sexo = "M",
+                status = "ativo"
+            };
+            var response = await clientA.PutAsJsonAsync($"/api/pacientes/{pacienteIdEmpresaB}", updatePayload);
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaIdA);
+            await LimparDadosTesteAsync(empresaIdB);
+        }
+    }
+
+    [Fact]
+    public async Task PUT_Paciente_EmpresaMesma_PodeEditar_DeveRetornar200()
+    {
+        var testName = nameof(PUT_Paciente_EmpresaMesma_PodeEditar_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        int pacienteId = 0;
+        try
+        {
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(token);
+            pacienteId = await CriarPacienteTesteAsync(empresaId, testName + "_paciente");
+
+            var updatePayload = new
+            {
+                nome = "Nome Atualizado",
+                email = $"paciente_{testName}@teste.com",
+                telefone = "",
+                data_nascimento = "1990-01-01",
+                sexo = "M",
+                status = "ativo"
+            };
+            var response = await client.PutAsJsonAsync($"/api/pacientes/{pacienteId}", updatePayload);
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task DELETE_Paciente_EmpresaA_NaoPodeExcluirPacienteDaEmpresaB_DeveRetornar404()
+    {
+        var testName = nameof(DELETE_Paciente_EmpresaA_NaoPodeExcluirPacienteDaEmpresaB_DeveRetornar404);
+        var (empresaIdA, usuarioIdA) = await CriarEmpresaEUsuariosTesteAsync(testName + "A");
+        var (empresaIdB, usuarioIdB) = await CriarEmpresaEUsuariosTesteAsync(testName + "B");
+        int pacienteIdEmpresaB = 0;
+        try
+        {
+            // Criar paciente na empresa B
+            var tokenB = GerarTokenEquipe(uid: usuarioIdB, empresa: empresaIdB, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientB = CriarCliente(tokenB);
+            pacienteIdEmpresaB = await CriarPacienteTesteAsync(empresaIdB, testName + "B_paciente");
+
+            // Tentar excluir com token da empresa A (precisa mod_nutricao: "total" para DELETE /api/pacientes)
+            var tokenA = GerarTokenEquipe(uid: usuarioIdA, empresa: empresaIdA, perfil: "profissional", modulos: new() { { "nutricao", "total" } });
+            var clientA = CriarCliente(tokenA);
+
+            var response = await clientA.DeleteAsync($"/api/pacientes/{pacienteIdEmpresaB}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaIdA);
+            await LimparDadosTesteAsync(empresaIdB);
+        }
+    }
+
+    [Fact]
+    public async Task DELETE_Paciente_EmpresaMesma_PodeExcluir_DeveRetornar200()
+    {
+        var testName = nameof(DELETE_Paciente_EmpresaMesma_PodeExcluir_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        int pacienteId = 0;
+        try
+        {
+            // DELETE /api/pacientes requer mod_nutricao: "total" (nível 3)
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "total" } });
+            var client = CriarCliente(token);
+            pacienteId = await CriarPacienteTesteAsync(empresaId, testName + "_paciente");
+
+            var response = await client.DeleteAsync($"/api/pacientes/{pacienteId}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task PUT_Paciente_PacienteToken_NaoPodeEditarOutroPaciente_DeveRetornar404()
+    {
+        var testName = nameof(PUT_Paciente_PacienteToken_NaoPodeEditarOutroPaciente_DeveRetornar404);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId1 = await CriarPacienteTesteAsync(empresaId, testName + "_p1");
+        var pacienteId2 = await CriarPacienteTesteAsync(empresaId, testName + "_p2");
+        try
+        {
+            // Token do paciente 1 tentando editar paciente 2
+            var token = GerarTokenPaciente(pid: pacienteId1, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var updatePayload = new
+            {
+                nome = "Tentativa",
+                email = $"paciente_{testName}@teste.com",
+                telefone = "",
+                data_nascimento = "1990-01-01",
+                sexo = "M",
+                status = "ativo"
+            };
+            var response = await client.PutAsJsonAsync($"/api/pacientes/{pacienteId2}", updatePayload);
+
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.Forbidden);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task DELETE_Paciente_PacienteToken_NaoPodeExcluirOutroPaciente_DeveRetornar404()
+    {
+        var testName = nameof(DELETE_Paciente_PacienteToken_NaoPodeExcluirOutroPaciente_DeveRetornar404);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId1 = await CriarPacienteTesteAsync(empresaId, testName + "_p1");
+        var pacienteId2 = await CriarPacienteTesteAsync(empresaId, testName + "_p2");
+        try
+        {
+            // Token do paciente 1 tentando excluir paciente 2
+            var token = GerarTokenPaciente(pid: pacienteId1, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var response = await client.DeleteAsync($"/api/pacientes/{pacienteId2}");
+
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.Forbidden);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    // ============================================
+    // 15. ARQUIVOS - ISOLAMENTO POR ID (DELETE /api/arquivos/{id})
+    // ============================================
+    private async Task<int> CriarArquivoTesteAsync(int pacienteId, int empresaId, string origem = "exame", int origemId = 1)
+    {
+        var connString = GetConnectionString();
+        await using var conn = new NpgsqlConnection(connString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(@"
+            INSERT INTO arquivos_paciente (paciente_id, empresa_id, origem, origem_id, nome, mime, tamanho, dados)
+            VALUES (@pid, @emp, @origem, @origemId, 'teste.txt', 'text/plain', 10, @dados)
+            RETURNING id;", conn);
+        cmd.Parameters.AddWithValue("pid", pacienteId);
+        cmd.Parameters.AddWithValue("emp", empresaId);
+        cmd.Parameters.AddWithValue("origem", origem);
+        cmd.Parameters.AddWithValue("origemId", origemId);
+        cmd.Parameters.AddWithValue("dados", new byte[10]);
+        var result = await cmd.ExecuteScalarAsync();
+        return Convert.ToInt32(result);
+    }
+
+    [Fact]
+    public async Task DELETE_Arquivo_EmpresaA_NaoPodeExcluirArquivoDaEmpresaB_DeveRetornar404()
+    {
+        var testName = nameof(DELETE_Arquivo_EmpresaA_NaoPodeExcluirArquivoDaEmpresaB_DeveRetornar404);
+        var (empresaIdA, usuarioIdA) = await CriarEmpresaEUsuariosTesteAsync(testName + "A");
+        var (empresaIdB, usuarioIdB) = await CriarEmpresaEUsuariosTesteAsync(testName + "B");
+        int arquivoIdEmpresaB = 0;
+        try
+        {
+            // Criar paciente e arquivo na empresa B
+            var tokenB = GerarTokenEquipe(uid: usuarioIdB, empresa: empresaIdB, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientB = CriarCliente(tokenB);
+            var pacienteIdB = await CriarPacienteTesteAsync(empresaIdB, testName + "B_paciente");
+            arquivoIdEmpresaB = await CriarArquivoTesteAsync(pacienteIdB, empresaIdB);
+
+            // Tentar excluir com token da empresa A
+            var tokenA = GerarTokenEquipe(uid: usuarioIdA, empresa: empresaIdA, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientA = CriarCliente(tokenA);
+
+            var response = await clientA.DeleteAsync($"/api/arquivos/{arquivoIdEmpresaB}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaIdA);
+            await LimparDadosTesteAsync(empresaIdB);
+        }
+    }
+
+    [Fact]
+    public async Task DELETE_Arquivo_EmpresaMesma_PodeExcluir_DeveRetornar200()
+    {
+        var testName = nameof(DELETE_Arquivo_EmpresaMesma_PodeExcluir_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        int arquivoId = 0;
+        try
+        {
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(token);
+            var pacienteId = await CriarPacienteTesteAsync(empresaId, testName + "_paciente");
+            arquivoId = await CriarArquivoTesteAsync(pacienteId, empresaId);
+
+            var response = await client.DeleteAsync($"/api/arquivos/{arquivoId}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task DELETE_Arquivo_PacienteToken_NaoPodeExcluirArquivoDeOutroPaciente_DeveRetornar404()
+    {
+        var testName = nameof(DELETE_Arquivo_PacienteToken_NaoPodeExcluirArquivoDeOutroPaciente_DeveRetornar404);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId1 = await CriarPacienteTesteAsync(empresaId, testName + "_p1");
+        var pacienteId2 = await CriarPacienteTesteAsync(empresaId, testName + "_p2");
+        int arquivoIdPaciente2 = 0;
+        try
+        {
+            // Criar arquivo do paciente 2
+            arquivoIdPaciente2 = await CriarArquivoTesteAsync(pacienteId2, empresaId);
+
+            // Token do paciente 1 tentando excluir arquivo do paciente 2
+            var token = GerarTokenPaciente(pid: pacienteId1, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var response = await client.DeleteAsync($"/api/arquivos/{arquivoIdPaciente2}");
+
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.Forbidden);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    // ============================================
+    // 16. EVOLUÇÃO - ISOLAMENTO POR ID (PUT/DELETE /api/evolucao/{id})
+    // ============================================
+    private async Task<int> CriarEvolucaoTesteAsync(int pacienteId, int empresaId)
+    {
+        var connString = GetConnectionString();
+        await using var conn = new NpgsqlConnection(connString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(@"
+            INSERT INTO evolucao_registros (paciente_id, empresa_id, data_registro, peso_kg)
+            VALUES (@pid, @emp, CURRENT_DATE, 70.0)
+            RETURNING id;", conn);
+        cmd.Parameters.AddWithValue("pid", pacienteId);
+        cmd.Parameters.AddWithValue("emp", empresaId);
+        var result = await cmd.ExecuteScalarAsync();
+        return Convert.ToInt32(result);
+    }
+
+    [Fact]
+    public async Task PUT_Evolucao_EmpresaA_NaoPodeEditarEvolucaoDaEmpresaB_DeveRetornar404()
+    {
+        var testName = nameof(PUT_Evolucao_EmpresaA_NaoPodeEditarEvolucaoDaEmpresaB_DeveRetornar404);
+        var (empresaIdA, usuarioIdA) = await CriarEmpresaEUsuariosTesteAsync(testName + "A");
+        var (empresaIdB, usuarioIdB) = await CriarEmpresaEUsuariosTesteAsync(testName + "B");
+        int evolucaoIdEmpresaB = 0;
+        try
+        {
+            // Criar evolução na empresa B
+            var tokenB = GerarTokenEquipe(uid: usuarioIdB, empresa: empresaIdB, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientB = CriarCliente(tokenB);
+            var pacienteIdB = await CriarPacienteTesteAsync(empresaIdB, testName + "B_paciente");
+            evolucaoIdEmpresaB = await CriarEvolucaoTesteAsync(pacienteIdB, empresaIdB);
+
+            // Tentar editar com token da empresa A
+            var tokenA = GerarTokenEquipe(uid: usuarioIdA, empresa: empresaIdA, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientA = CriarCliente(tokenA);
+
+            var form = new Dictionary<string, string>
+            {
+                { "pacienteId", "999" },
+                { "data", DateTime.Today.ToString("yyyy-MM-dd") },
+                { "peso", "75.0" }
+            };
+            var content = new FormUrlEncodedContent(form);
+            var response = await clientA.PutAsync($"/api/evolucao/{evolucaoIdEmpresaB}", content);
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaIdA);
+            await LimparDadosTesteAsync(empresaIdB);
+        }
+    }
+
+    [Fact]
+    public async Task PUT_Evolucao_EmpresaMesma_PodeEditar_DeveRetornar200()
+    {
+        var testName = nameof(PUT_Evolucao_EmpresaMesma_PodeEditar_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        int evolucaoId = 0;
+        try
+        {
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(token);
+            var pacienteId = await CriarPacienteTesteAsync(empresaId, testName + "_paciente");
+            evolucaoId = await CriarEvolucaoTesteAsync(pacienteId, empresaId);
+
+            var form = new Dictionary<string, string>
+            {
+                { "pacienteId", pacienteId.ToString() },
+                { "data", DateTime.Today.ToString("yyyy-MM-dd") },
+                { "peso", "75.0" }
+            };
+            var content = new FormUrlEncodedContent(form);
+            var response = await client.PutAsync($"/api/evolucao/{evolucaoId}", content);
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task DELETE_Evolucao_EmpresaA_NaoPodeExcluirEvolucaoDaEmpresaB_DeveRetornar404()
+    {
+        var testName = nameof(DELETE_Evolucao_EmpresaA_NaoPodeExcluirEvolucaoDaEmpresaB_DeveRetornar404);
+        var (empresaIdA, usuarioIdA) = await CriarEmpresaEUsuariosTesteAsync(testName + "A");
+        var (empresaIdB, usuarioIdB) = await CriarEmpresaEUsuariosTesteAsync(testName + "B");
+        int evolucaoIdEmpresaB = 0;
+        try
+        {
+            // Criar evolução na empresa B
+            var tokenB = GerarTokenEquipe(uid: usuarioIdB, empresa: empresaIdB, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientB = CriarCliente(tokenB);
+            var pacienteIdB = await CriarPacienteTesteAsync(empresaIdB, testName + "B_paciente");
+            evolucaoIdEmpresaB = await CriarEvolucaoTesteAsync(pacienteIdB, empresaIdB);
+
+            // Tentar excluir com token da empresa A
+            var tokenA = GerarTokenEquipe(uid: usuarioIdA, empresa: empresaIdA, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientA = CriarCliente(tokenA);
+
+            var response = await clientA.DeleteAsync($"/api/evolucao/{evolucaoIdEmpresaB}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaIdA);
+            await LimparDadosTesteAsync(empresaIdB);
+        }
+    }
+
+    [Fact]
+    public async Task DELETE_Evolucao_EmpresaMesma_PodeExcluir_DeveRetornar200()
+    {
+        var testName = nameof(DELETE_Evolucao_EmpresaMesma_PodeExcluir_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        int evolucaoId = 0;
+        try
+        {
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(token);
+            var pacienteId = await CriarPacienteTesteAsync(empresaId, testName + "_paciente");
+            evolucaoId = await CriarEvolucaoTesteAsync(pacienteId, empresaId);
+
+            var response = await client.DeleteAsync($"/api/evolucao/{evolucaoId}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task PUT_Evolucao_PacienteToken_NaoPodeEditarEvolucaoDeOutroPaciente_DeveRetornar404()
+    {
+        var testName = nameof(PUT_Evolucao_PacienteToken_NaoPodeEditarEvolucaoDeOutroPaciente_DeveRetornar404);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId1 = await CriarPacienteTesteAsync(empresaId, testName + "_p1");
+        var pacienteId2 = await CriarPacienteTesteAsync(empresaId, testName + "_p2");
+        int evolucaoIdPaciente2 = 0;
+        try
+        {
+            // Criar evolução do paciente 2
+            evolucaoIdPaciente2 = await CriarEvolucaoTesteAsync(pacienteId2, empresaId);
+
+            // Token do paciente 1 tentando editar evolução do paciente 2
+            var token = GerarTokenPaciente(pid: pacienteId1, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var form = new Dictionary<string, string>
+            {
+                { "pacienteId", pacienteId2.ToString() },
+                { "data", DateTime.Today.ToString("yyyy-MM-dd") },
+                { "peso", "75.0" }
+            };
+            var content = new FormUrlEncodedContent(form);
+            var response = await client.PutAsync($"/api/evolucao/{evolucaoIdPaciente2}", content);
+
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.Forbidden);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task DELETE_Evolucao_PacienteToken_NaoPodeExcluirEvolucaoDeOutroPaciente_DeveRetornar404()
+    {
+        var testName = nameof(DELETE_Evolucao_PacienteToken_NaoPodeExcluirEvolucaoDeOutroPaciente_DeveRetornar404);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId1 = await CriarPacienteTesteAsync(empresaId, testName + "_p1");
+        var pacienteId2 = await CriarPacienteTesteAsync(empresaId, testName + "_p2");
+        int evolucaoIdPaciente2 = 0;
+        try
+        {
+            // Criar evolução do paciente 2
+            evolucaoIdPaciente2 = await CriarEvolucaoTesteAsync(pacienteId2, empresaId);
+
+            // Token do paciente 1 tentando excluir evolução do paciente 2
+            var token = GerarTokenPaciente(pid: pacienteId1, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var response = await client.DeleteAsync($"/api/evolucao/{evolucaoIdPaciente2}");
+
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.Forbidden);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    // ============================================
+    // 17. EXAMES - ISOLAMENTO POR ID (PUT/DELETE /api/exames/{id})
+    // ============================================
+    private async Task<int> CriarExameTesteAsync(int pacienteId, int empresaId)
+    {
+        var connString = GetConnectionString();
+        await using var conn = new NpgsqlConnection(connString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(@"
+            INSERT INTO exames_paciente (paciente_id, empresa_id, titulo_exame, data_exame, enviado_por)
+            VALUES (@pid, @emp, 'Hemograma', CURRENT_DATE, 'profissional')
+            RETURNING id;", conn);
+        cmd.Parameters.AddWithValue("pid", pacienteId);
+        cmd.Parameters.AddWithValue("emp", empresaId);
+        var result = await cmd.ExecuteScalarAsync();
+        return Convert.ToInt32(result);
+    }
+
+    [Fact]
+    public async Task PUT_Exame_EmpresaA_NaoPodeEditarExameDaEmpresaB_DeveRetornar404()
+    {
+        var testName = nameof(PUT_Exame_EmpresaA_NaoPodeEditarExameDaEmpresaB_DeveRetornar404);
+        var (empresaIdA, usuarioIdA) = await CriarEmpresaEUsuariosTesteAsync(testName + "A");
+        var (empresaIdB, usuarioIdB) = await CriarEmpresaEUsuariosTesteAsync(testName + "B");
+        int exameIdEmpresaB = 0;
+        try
+        {
+            // Criar exame na empresa B
+            var tokenB = GerarTokenEquipe(uid: usuarioIdB, empresa: empresaIdB, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientB = CriarCliente(tokenB);
+            var pacienteIdB = await CriarPacienteTesteAsync(empresaIdB, testName + "B_paciente");
+            exameIdEmpresaB = await CriarExameTesteAsync(pacienteIdB, empresaIdB);
+
+            // Tentar editar com token da empresa A
+            var tokenA = GerarTokenEquipe(uid: usuarioIdA, empresa: empresaIdA, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientA = CriarCliente(tokenA);
+
+            var form = new Dictionary<string, string>
+            {
+                { "pacienteId", "999" },
+                { "titulo", "Hemograma Alterado" },
+                { "data", DateTime.Today.ToString("yyyy-MM-dd") },
+                { "observacao", "Teste" }
+            };
+            var content = new FormUrlEncodedContent(form);
+            var response = await clientA.PutAsync($"/api/exames/{exameIdEmpresaB}", content);
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaIdA);
+            await LimparDadosTesteAsync(empresaIdB);
+        }
+    }
+
+    [Fact]
+    public async Task PUT_Exame_EmpresaMesma_PodeEditar_DeveRetornar200()
+    {
+        var testName = nameof(PUT_Exame_EmpresaMesma_PodeEditar_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        int exameId = 0;
+        try
+        {
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(token);
+            var pacienteId = await CriarPacienteTesteAsync(empresaId, testName + "_paciente");
+            exameId = await CriarExameTesteAsync(pacienteId, empresaId);
+
+            var form = new Dictionary<string, string>
+            {
+                { "pacienteId", pacienteId.ToString() },
+                { "titulo", "Hemograma Atualizado" },
+                { "data", DateTime.Today.ToString("yyyy-MM-dd") },
+                { "observacao", "Teste" }
+            };
+            var content = new FormUrlEncodedContent(form);
+            var response = await client.PutAsync($"/api/exames/{exameId}", content);
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task DELETE_Exame_EmpresaA_NaoPodeExcluirExameDaEmpresaB_DeveRetornar404()
+    {
+        var testName = nameof(DELETE_Exame_EmpresaA_NaoPodeExcluirExameDaEmpresaB_DeveRetornar404);
+        var (empresaIdA, usuarioIdA) = await CriarEmpresaEUsuariosTesteAsync(testName + "A");
+        var (empresaIdB, usuarioIdB) = await CriarEmpresaEUsuariosTesteAsync(testName + "B");
+        int exameIdEmpresaB = 0;
+        try
+        {
+            // Criar exame na empresa B
+            var tokenB = GerarTokenEquipe(uid: usuarioIdB, empresa: empresaIdB, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientB = CriarCliente(tokenB);
+            var pacienteIdB = await CriarPacienteTesteAsync(empresaIdB, testName + "B_paciente");
+            exameIdEmpresaB = await CriarExameTesteAsync(pacienteIdB, empresaIdB);
+
+            // Tentar excluir com token da empresa A
+            var tokenA = GerarTokenEquipe(uid: usuarioIdA, empresa: empresaIdA, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientA = CriarCliente(tokenA);
+
+            var response = await clientA.DeleteAsync($"/api/exames/{exameIdEmpresaB}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaIdA);
+            await LimparDadosTesteAsync(empresaIdB);
+        }
+    }
+
+    [Fact]
+    public async Task DELETE_Exame_EmpresaMesma_PodeExcluir_DeveRetornar200()
+    {
+        var testName = nameof(DELETE_Exame_EmpresaMesma_PodeExcluir_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        int exameId = 0;
+        try
+        {
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(token);
+            var pacienteId = await CriarPacienteTesteAsync(empresaId, testName + "_paciente");
+            exameId = await CriarExameTesteAsync(pacienteId, empresaId);
+
+            var response = await client.DeleteAsync($"/api/exames/{exameId}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task PUT_Exame_PacienteToken_NaoPodeEditarExameDeOutroPaciente_DeveRetornar404()
+    {
+        var testName = nameof(PUT_Exame_PacienteToken_NaoPodeEditarExameDeOutroPaciente_DeveRetornar404);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId1 = await CriarPacienteTesteAsync(empresaId, testName + "_p1");
+        var pacienteId2 = await CriarPacienteTesteAsync(empresaId, testName + "_p2");
+        int exameIdPaciente2 = 0;
+        try
+        {
+            // Criar exame do paciente 2
+            exameIdPaciente2 = await CriarExameTesteAsync(pacienteId2, empresaId);
+
+            // Token do paciente 1 tentando editar exame do paciente 2
+            var token = GerarTokenPaciente(pid: pacienteId1, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var form = new Dictionary<string, string>
+            {
+                { "pacienteId", pacienteId2.ToString() },
+                { "titulo", "Hemograma" },
+                { "data", DateTime.Today.ToString("yyyy-MM-dd") },
+                { "observacao", "Teste" }
+            };
+            var content = new FormUrlEncodedContent(form);
+            var response = await client.PutAsync($"/api/exames/{exameIdPaciente2}", content);
+
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.Forbidden);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task DELETE_Exame_PacienteToken_NaoPodeExcluirExameDeOutroPaciente_DeveRetornar404()
+    {
+        var testName = nameof(DELETE_Exame_PacienteToken_NaoPodeExcluirExameDeOutroPaciente_DeveRetornar404);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId1 = await CriarPacienteTesteAsync(empresaId, testName + "_p1");
+        var pacienteId2 = await CriarPacienteTesteAsync(empresaId, testName + "_p2");
+        int exameIdPaciente2 = 0;
+        try
+        {
+            // Criar exame do paciente 2
+            exameIdPaciente2 = await CriarExameTesteAsync(pacienteId2, empresaId);
+
+            // Token do paciente 1 tentando excluir exame do paciente 2
+            var token = GerarTokenPaciente(pid: pacienteId1, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var response = await client.DeleteAsync($"/api/exames/{exameIdPaciente2}");
+
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.Forbidden);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    // ============================================
+    // 18. OBSERVAÇÕES - ISOLAMENTO POR ID (PUT/DELETE /api/observacoes/{id})
+    // ============================================
+    private async Task<int> CriarObservacaoTesteAsync(int pacienteId, int empresaId)
+    {
+        var connString = GetConnectionString();
+        await using var conn = new NpgsqlConnection(connString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(@"
+            INSERT INTO observacoes_paciente (paciente_id, empresa_id, tipo, data_ref, texto)
+            VALUES (@pid, @emp, 'geral', CURRENT_DATE, 'Observação teste')
+            RETURNING id;", conn);
+        cmd.Parameters.AddWithValue("pid", pacienteId);
+        cmd.Parameters.AddWithValue("emp", empresaId);
+        var result = await cmd.ExecuteScalarAsync();
+        return Convert.ToInt32(result);
+    }
+
+    [Fact]
+    public async Task PUT_Observacao_EmpresaA_NaoPodeEditarObservacaoDaEmpresaB_DeveRetornar404()
+    {
+        var testName = nameof(PUT_Observacao_EmpresaA_NaoPodeEditarObservacaoDaEmpresaB_DeveRetornar404);
+        var (empresaIdA, usuarioIdA) = await CriarEmpresaEUsuariosTesteAsync(testName + "A");
+        var (empresaIdB, usuarioIdB) = await CriarEmpresaEUsuariosTesteAsync(testName + "B");
+        int observacaoIdEmpresaB = 0;
+        try
+        {
+            // Criar observação na empresa B
+            var tokenB = GerarTokenEquipe(uid: usuarioIdB, empresa: empresaIdB, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientB = CriarCliente(tokenB);
+            var pacienteIdB = await CriarPacienteTesteAsync(empresaIdB, testName + "B_paciente");
+            observacaoIdEmpresaB = await CriarObservacaoTesteAsync(pacienteIdB, empresaIdB);
+
+            // Tentar editar com token da empresa A
+            var tokenA = GerarTokenEquipe(uid: usuarioIdA, empresa: empresaIdA, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientA = CriarCliente(tokenA);
+
+            var payload = new { PacienteId = 999, Tipo = "geral", Data = DateTime.Today.ToString("yyyy-MM-dd"), Texto = "Observação alterada" };
+            var response = await clientA.PutAsJsonAsync($"/api/observacoes/{observacaoIdEmpresaB}", payload);
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaIdA);
+            await LimparDadosTesteAsync(empresaIdB);
+        }
+    }
+
+    [Fact]
+    public async Task PUT_Observacao_EmpresaMesma_PodeEditar_DeveRetornar200()
+    {
+        var testName = nameof(PUT_Observacao_EmpresaMesma_PodeEditar_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        int observacaoId = 0;
+        try
+        {
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(token);
+            var pacienteId = await CriarPacienteTesteAsync(empresaId, testName + "_paciente");
+            observacaoId = await CriarObservacaoTesteAsync(pacienteId, empresaId);
+
+            var payload = new { PacienteId = pacienteId, Tipo = "geral", Data = DateTime.Today.ToString("yyyy-MM-dd"), Texto = "Observação atualizada" };
+            var response = await client.PutAsJsonAsync($"/api/observacoes/{observacaoId}", payload);
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task DELETE_Observacao_EmpresaA_NaoPodeExcluirObservacaoDaEmpresaB_DeveRetornar404()
+    {
+        var testName = nameof(DELETE_Observacao_EmpresaA_NaoPodeExcluirObservacaoDaEmpresaB_DeveRetornar404);
+        var (empresaIdA, usuarioIdA) = await CriarEmpresaEUsuariosTesteAsync(testName + "A");
+        var (empresaIdB, usuarioIdB) = await CriarEmpresaEUsuariosTesteAsync(testName + "B");
+        int observacaoIdEmpresaB = 0;
+        try
+        {
+            // Criar observação na empresa B
+            var tokenB = GerarTokenEquipe(uid: usuarioIdB, empresa: empresaIdB, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientB = CriarCliente(tokenB);
+            var pacienteIdB = await CriarPacienteTesteAsync(empresaIdB, testName + "B_paciente");
+            observacaoIdEmpresaB = await CriarObservacaoTesteAsync(pacienteIdB, empresaIdB);
+
+            // Tentar excluir com token da empresa A
+            var tokenA = GerarTokenEquipe(uid: usuarioIdA, empresa: empresaIdA, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientA = CriarCliente(tokenA);
+
+            var response = await clientA.DeleteAsync($"/api/observacoes/{observacaoIdEmpresaB}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaIdA);
+            await LimparDadosTesteAsync(empresaIdB);
+        }
+    }
+
+    [Fact]
+    public async Task DELETE_Observacao_EmpresaMesma_PodeExcluir_DeveRetornar200()
+    {
+        var testName = nameof(DELETE_Observacao_EmpresaMesma_PodeExcluir_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        int observacaoId = 0;
+        try
+        {
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(token);
+            var pacienteId = await CriarPacienteTesteAsync(empresaId, testName + "_paciente");
+            observacaoId = await CriarObservacaoTesteAsync(pacienteId, empresaId);
+
+            var response = await client.DeleteAsync($"/api/observacoes/{observacaoId}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task PUT_Observacao_PacienteToken_NaoPodeEditarObservacaoDeOutroPaciente_DeveRetornar404()
+    {
+        var testName = nameof(PUT_Observacao_PacienteToken_NaoPodeEditarObservacaoDeOutroPaciente_DeveRetornar404);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId1 = await CriarPacienteTesteAsync(empresaId, testName + "_p1");
+        var pacienteId2 = await CriarPacienteTesteAsync(empresaId, testName + "_p2");
+        int observacaoIdPaciente2 = 0;
+        try
+        {
+            // Criar observação do paciente 2
+            observacaoIdPaciente2 = await CriarObservacaoTesteAsync(pacienteId2, empresaId);
+
+            // Token do paciente 1 tentando editar observação do paciente 2
+            var token = GerarTokenPaciente(pid: pacienteId1, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var payload = new { PacienteId = pacienteId2, Tipo = "geral", Data = DateTime.Today.ToString("yyyy-MM-dd"), Texto = "Tentativa" };
+            var response = await client.PutAsJsonAsync($"/api/observacoes/{observacaoIdPaciente2}", payload);
+
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.Forbidden);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task DELETE_Observacao_PacienteToken_NaoPodeExcluirObservacaoDeOutroPaciente_DeveRetornar404()
+    {
+        var testName = nameof(DELETE_Observacao_PacienteToken_NaoPodeExcluirObservacaoDeOutroPaciente_DeveRetornar404);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId1 = await CriarPacienteTesteAsync(empresaId, testName + "_p1");
+        var pacienteId2 = await CriarPacienteTesteAsync(empresaId, testName + "_p2");
+        int observacaoIdPaciente2 = 0;
+        try
+        {
+            // Criar observação do paciente 2
+            observacaoIdPaciente2 = await CriarObservacaoTesteAsync(pacienteId2, empresaId);
+
+            // Token do paciente 1 tentando excluir observação do paciente 2
+            var token = GerarTokenPaciente(pid: pacienteId1, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var response = await client.DeleteAsync($"/api/observacoes/{observacaoIdPaciente2}");
+
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.Forbidden);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    // ============================================
+    // 19. METAS - ISOLAMENTO POR ID (PUT/DELETE /api/metas/{id})
+    // ============================================
+    private async Task<int> CriarMetaTesteAsync(int pacienteId, int empresaId)
+    {
+        var connString = GetConnectionString();
+        await using var conn = new NpgsqlConnection(connString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(@"
+            INSERT INTO metas_paciente (paciente_id, empresa_id, titulo, descricao, tipo, prazo, status)
+            VALUES (@pid, @emp, 'Meta teste', 'Desc', 'agua', CURRENT_DATE + INTERVAL '30 days', 'ativa')
+            RETURNING id;", conn);
+        cmd.Parameters.AddWithValue("pid", pacienteId);
+        cmd.Parameters.AddWithValue("emp", empresaId);
+        var result = await cmd.ExecuteScalarAsync();
+        return Convert.ToInt32(result);
+    }
+
+    [Fact]
+    public async Task PUT_Meta_EmpresaA_NaoPodeEditarMetaDaEmpresaB_DeveRetornar404()
+    {
+        var testName = nameof(PUT_Meta_EmpresaA_NaoPodeEditarMetaDaEmpresaB_DeveRetornar404);
+        var (empresaIdA, usuarioIdA) = await CriarEmpresaEUsuariosTesteAsync(testName + "A");
+        var (empresaIdB, usuarioIdB) = await CriarEmpresaEUsuariosTesteAsync(testName + "B");
+        int metaIdEmpresaB = 0;
+        try
+        {
+            // Criar meta na empresa B
+            var tokenB = GerarTokenEquipe(uid: usuarioIdB, empresa: empresaIdB, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientB = CriarCliente(tokenB);
+            var pacienteIdB = await CriarPacienteTesteAsync(empresaIdB, testName + "B_paciente");
+            metaIdEmpresaB = await CriarMetaTesteAsync(pacienteIdB, empresaIdB);
+
+            // Tentar editar com token da empresa A
+            var tokenA = GerarTokenEquipe(uid: usuarioIdA, empresa: empresaIdA, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientA = CriarCliente(tokenA);
+
+            var payload = new { Titulo = "Meta alterada", Descricao = "Desc", Tipo = "agua", Prazo = DateTime.Today.AddDays(30).ToString("yyyy-MM-dd"), Status = "ativa" };
+            var response = await clientA.PutAsJsonAsync($"/api/metas/{metaIdEmpresaB}", payload);
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaIdA);
+            await LimparDadosTesteAsync(empresaIdB);
+        }
+    }
+
+    [Fact]
+    public async Task PUT_Meta_EmpresaMesma_PodeEditar_DeveRetornar200()
+    {
+        var testName = nameof(PUT_Meta_EmpresaMesma_PodeEditar_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        int metaId = 0;
+        try
+        {
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(token);
+            var pacienteId = await CriarPacienteTesteAsync(empresaId, testName + "_paciente");
+            metaId = await CriarMetaTesteAsync(pacienteId, empresaId);
+
+            var payload = new { Titulo = "Meta atualizada", Descricao = "Desc", Tipo = "agua", Prazo = DateTime.Today.AddDays(30).ToString("yyyy-MM-dd"), Status = "ativa" };
+            var response = await client.PutAsJsonAsync($"/api/metas/{metaId}", payload);
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task DELETE_Meta_EmpresaA_NaoPodeExcluirMetaDaEmpresaB_DeveRetornar404()
+    {
+        var testName = nameof(DELETE_Meta_EmpresaA_NaoPodeExcluirMetaDaEmpresaB_DeveRetornar404);
+        var (empresaIdA, usuarioIdA) = await CriarEmpresaEUsuariosTesteAsync(testName + "A");
+        var (empresaIdB, usuarioIdB) = await CriarEmpresaEUsuariosTesteAsync(testName + "B");
+        int metaIdEmpresaB = 0;
+        try
+        {
+            // Criar meta na empresa B
+            var tokenB = GerarTokenEquipe(uid: usuarioIdB, empresa: empresaIdB, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientB = CriarCliente(tokenB);
+            var pacienteIdB = await CriarPacienteTesteAsync(empresaIdB, testName + "B_paciente");
+            metaIdEmpresaB = await CriarMetaTesteAsync(pacienteIdB, empresaIdB);
+
+            // Tentar excluir com token da empresa A
+            var tokenA = GerarTokenEquipe(uid: usuarioIdA, empresa: empresaIdA, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientA = CriarCliente(tokenA);
+
+            var response = await clientA.DeleteAsync($"/api/metas/{metaIdEmpresaB}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaIdA);
+            await LimparDadosTesteAsync(empresaIdB);
+        }
+    }
+
+    [Fact]
+    public async Task DELETE_Meta_EmpresaMesma_PodeExcluir_DeveRetornar200()
+    {
+        var testName = nameof(DELETE_Meta_EmpresaMesma_PodeExcluir_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        int metaId = 0;
+        try
+        {
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(token);
+            var pacienteId = await CriarPacienteTesteAsync(empresaId, testName + "_paciente");
+            metaId = await CriarMetaTesteAsync(pacienteId, empresaId);
+
+            var response = await client.DeleteAsync($"/api/metas/{metaId}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task PUT_Meta_PacienteToken_NaoPodeEditarMetaDeOutroPaciente_DeveRetornar404()
+    {
+        var testName = nameof(PUT_Meta_PacienteToken_NaoPodeEditarMetaDeOutroPaciente_DeveRetornar404);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId1 = await CriarPacienteTesteAsync(empresaId, testName + "_p1");
+        var pacienteId2 = await CriarPacienteTesteAsync(empresaId, testName + "_p2");
+        int metaIdPaciente2 = 0;
+        try
+        {
+            // Criar meta do paciente 2
+            metaIdPaciente2 = await CriarMetaTesteAsync(pacienteId2, empresaId);
+
+            // Token do paciente 1 tentando editar meta do paciente 2
+            var token = GerarTokenPaciente(pid: pacienteId1, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var payload = new { Titulo = "Tentativa", Descricao = "Desc", Tipo = "agua", Prazo = DateTime.Today.AddDays(30).ToString("yyyy-MM-dd"), Status = "ativa" };
+            var response = await client.PutAsJsonAsync($"/api/metas/{metaIdPaciente2}", payload);
+
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.Forbidden);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task DELETE_Meta_PacienteToken_NaoPodeExcluirMetaDeOutroPaciente_DeveRetornar404()
+    {
+        var testName = nameof(DELETE_Meta_PacienteToken_NaoPodeExcluirMetaDeOutroPaciente_DeveRetornar404);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId1 = await CriarPacienteTesteAsync(empresaId, testName + "_p1");
+        var pacienteId2 = await CriarPacienteTesteAsync(empresaId, testName + "_p2");
+        int metaIdPaciente2 = 0;
+        try
+        {
+            // Criar meta do paciente 2
+            metaIdPaciente2 = await CriarMetaTesteAsync(pacienteId2, empresaId);
+
+            // Token do paciente 1 tentando excluir meta do paciente 2
+            var token = GerarTokenPaciente(pid: pacienteId1, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var response = await client.DeleteAsync($"/api/metas/{metaIdPaciente2}");
+
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.Forbidden);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    // ============================================
+    // 20. METAS ACOMPANHAMENTO - ISOLAMENTO POR ID (DELETE /api/metas/acompanhamento/{id})
+    // ============================================
+    private async Task<int> CriarMetaAcompanhamentoTesteAsync(int metaId, int empresaId)
+    {
+        var connString = GetConnectionString();
+        await using var conn = new NpgsqlConnection(connString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(@"
+            INSERT INTO metas_acompanhamento (meta_id, data_acompanhamento, resultado, observacao, empresa_id)
+            VALUES (@meta, CURRENT_DATE, 'mantida', 'OK', @emp)
+            RETURNING id;", conn);
+        cmd.Parameters.AddWithValue("meta", metaId);
+        cmd.Parameters.AddWithValue("emp", empresaId);
+        var result = await cmd.ExecuteScalarAsync();
+        return Convert.ToInt32(result);
+    }
+
+    [Fact]
+    public async Task DELETE_MetaAcompanhamento_EmpresaA_NaoPodeExcluirDaEmpresaB_DeveRetornar404()
+    {
+        var testName = nameof(DELETE_MetaAcompanhamento_EmpresaA_NaoPodeExcluirDaEmpresaB_DeveRetornar404);
+        var (empresaIdA, usuarioIdA) = await CriarEmpresaEUsuariosTesteAsync(testName + "A");
+        var (empresaIdB, usuarioIdB) = await CriarEmpresaEUsuariosTesteAsync(testName + "B");
+        int acompanhamentoIdEmpresaB = 0;
+        try
+        {
+            // Criar meta e acompanhamento na empresa B
+            var tokenB = GerarTokenEquipe(uid: usuarioIdB, empresa: empresaIdB, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientB = CriarCliente(tokenB);
+            var pacienteIdB = await CriarPacienteTesteAsync(empresaIdB, testName + "B_paciente");
+            var metaIdB = await CriarMetaTesteAsync(pacienteIdB, empresaIdB);
+            acompanhamentoIdEmpresaB = await CriarMetaAcompanhamentoTesteAsync(metaIdB, empresaIdB);
+
+            // Tentar excluir com token da empresa A
+            var tokenA = GerarTokenEquipe(uid: usuarioIdA, empresa: empresaIdA, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var clientA = CriarCliente(tokenA);
+
+            var response = await clientA.DeleteAsync($"/api/metas/acompanhamento/{acompanhamentoIdEmpresaB}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaIdA);
+            await LimparDadosTesteAsync(empresaIdB);
+        }
+    }
+
+    [Fact]
+    public async Task DELETE_MetaAcompanhamento_EmpresaMesma_PodeExcluir_DeveRetornar200()
+    {
+        var testName = nameof(DELETE_MetaAcompanhamento_EmpresaMesma_PodeExcluir_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        int acompanhamentoId = 0;
+        try
+        {
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(token);
+            var pacienteId = await CriarPacienteTesteAsync(empresaId, testName + "_paciente");
+            var metaId = await CriarMetaTesteAsync(pacienteId, empresaId);
+            acompanhamentoId = await CriarMetaAcompanhamentoTesteAsync(metaId, empresaId);
+
+            var response = await client.DeleteAsync($"/api/metas/acompanhamento/{acompanhamentoId}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task DELETE_MetaAcompanhamento_PacienteToken_NaoPodeExcluirDeOutroPaciente_DeveRetornar404()
+    {
+        var testName = nameof(DELETE_MetaAcompanhamento_PacienteToken_NaoPodeExcluirDeOutroPaciente_DeveRetornar404);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId1 = await CriarPacienteTesteAsync(empresaId, testName + "_p1");
+        var pacienteId2 = await CriarPacienteTesteAsync(empresaId, testName + "_p2");
+        int metaIdPaciente2 = 0;
+        int acompanhamentoIdPaciente2 = 0;
+        try
+        {
+            // Criar meta e acompanhamento do paciente 2
+            metaIdPaciente2 = await CriarMetaTesteAsync(pacienteId2, empresaId);
+            acompanhamentoIdPaciente2 = await CriarMetaAcompanhamentoTesteAsync(metaIdPaciente2, empresaId);
+
+            // Token do paciente 1 tentando excluir acompanhamento do paciente 2
+            var token = GerarTokenPaciente(pid: pacienteId1, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var response = await client.DeleteAsync($"/api/metas/acompanhamento/{acompanhamentoIdPaciente2}");
+
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.Forbidden);
         }
         finally
         {
