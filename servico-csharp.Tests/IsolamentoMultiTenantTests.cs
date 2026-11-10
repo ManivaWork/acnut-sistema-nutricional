@@ -1179,4 +1179,420 @@ public class IsolamentoMultiTenantTests : IClassFixture<WebApplicationFactory<Pr
             await LimparDadosTesteAsync(empresaId);
         }
     }
+
+    // ============================================
+    // 13. PORTAL DO PACIENTE (token tipo=paciente)
+    // ============================================
+    [Fact]
+    public async Task GET_PacienteTudo_PacienteToken_PodeAcessarProprioPid_DeveRetornar200()
+    {
+        var testName = nameof(GET_PacienteTudo_PacienteToken_PodeAcessarProprioPid_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId = await CriarPacienteTesteAsync(empresaId, testName);
+        try
+        {
+            var token = GerarTokenPaciente(pid: pacienteId, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var response = await client.GetAsync("/api/paciente/tudo");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+            var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+            json.GetProperty("pid").GetInt32().Should().Be(pacienteId);
+            json.GetProperty("nome").GetString().Should().NotBeNullOrEmpty();
+            json.GetProperty("plano").Should().NotBeNull();
+            json.GetProperty("orientacoes").Should().NotBeNull();
+            json.GetProperty("metas").Should().NotBeNull();
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task GET_Anamnese_PacienteToken_PodeAcessarPropria_DeveRetornar200()
+    {
+        var testName = nameof(GET_Anamnese_PacienteToken_PodeAcessarPropria_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId = await CriarPacienteTesteAsync(empresaId, testName);
+        try
+        {
+            // Criar anamnese para o paciente
+            var connString = GetConnectionString();
+            await using (var conn = new NpgsqlConnection(connString))
+            {
+                await conn.OpenAsync();
+                await using var cmd = new NpgsqlCommand(@"
+                    INSERT INTO anamneses (paciente_id, empresa_id, dados_extendidos, criado_em)
+                    VALUES (@pid, @emp, '{}', NOW())
+                    ON CONFLICT (paciente_id) DO UPDATE SET dados_extendidos = '{}';", conn);
+                cmd.Parameters.AddWithValue("pid", pacienteId);
+                cmd.Parameters.AddWithValue("emp", empresaId);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            var token = GerarTokenPaciente(pid: pacienteId, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var response = await client.GetAsync($"/api/anamnese/{pacienteId}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task GET_Anamnese_PacienteToken_NaoPodeAcessarOutroPacienteMesmaEmpresa_DeveRetornar404()
+    {
+        var testName = nameof(GET_Anamnese_PacienteToken_NaoPodeAcessarOutroPacienteMesmaEmpresa_DeveRetornar404);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId1 = await CriarPacienteTesteAsync(empresaId, testName + "_p1");
+        var pacienteId2 = await CriarPacienteTesteAsync(empresaId, testName + "_p2");
+        try
+        {
+            // Token do paciente 1 tentando acessar anamnese do paciente 2
+            var token = GerarTokenPaciente(pid: pacienteId1, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var response = await client.GetAsync($"/api/anamnese/{pacienteId2}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task GET_Anamnese_PacienteToken_NaoPodeAcessarOutraEmpresa_DeveRetornar404()
+    {
+        var testName = nameof(GET_Anamnese_PacienteToken_NaoPodeAcessarOutraEmpresa_DeveRetornar404);
+        var (empresaId1, usuarioId1) = await CriarEmpresaEUsuariosTesteAsync(testName + "_e1");
+        var (empresaId2, usuarioId2) = await CriarEmpresaEUsuariosTesteAsync(testName + "_e2");
+        var pacienteId1 = await CriarPacienteTesteAsync(empresaId1, testName + "_p1");
+        var pacienteId2 = await CriarPacienteTesteAsync(empresaId2, testName + "_p2");
+        try
+        {
+            // Token do paciente da empresa 1 tentando acessar anamnese do paciente da empresa 2
+            var token = GerarTokenPaciente(pid: pacienteId1, empresa: empresaId1);
+            var client = CriarCliente(token);
+
+            var response = await client.GetAsync($"/api/anamnese/{pacienteId2}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId1);
+            await LimparDadosTesteAsync(empresaId2);
+        }
+    }
+
+    [Fact]
+    public async Task POST_Anamnese_PacienteToken_PodeGravarPropria_DeveRetornar200()
+    {
+        var testName = nameof(POST_Anamnese_PacienteToken_PodeGravarPropria_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId = await CriarPacienteTesteAsync(empresaId, testName);
+        try
+        {
+            var token = GerarTokenPaciente(pid: pacienteId, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var payload = new { PacienteId = pacienteId, DadosExtendido = new { objetivo = "Perder peso" } };
+            var response = await client.PostAsJsonAsync("/api/anamnese", payload);
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task POST_Anamnese_PacienteToken_NaoPodeGravarOutroPaciente_DeveRetornar404()
+    {
+        var testName = nameof(POST_Anamnese_PacienteToken_NaoPodeGravarOutroPaciente_DeveRetornar404);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId1 = await CriarPacienteTesteAsync(empresaId, testName + "_p1");
+        var pacienteId2 = await CriarPacienteTesteAsync(empresaId, testName + "_p2");
+        try
+        {
+            var token = GerarTokenPaciente(pid: pacienteId1, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var payload = new { PacienteId = pacienteId2, DadosExtendido = new { objetivo = "Ganhar massa" } };
+            var response = await client.PostAsJsonAsync("/api/anamnese", payload);
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task GET_Planos_PacienteToken_PodeAcessarProprio_DeveRetornar200()
+    {
+        var testName = nameof(GET_Planos_PacienteToken_PodeAcessarProprio_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId = await CriarPacienteTesteAsync(empresaId, testName);
+        try
+        {
+            var token = GerarTokenPaciente(pid: pacienteId, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var response = await client.GetAsync($"/api/planos/{pacienteId}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task GET_Planos_PacienteToken_NaoPodeAcessarOutroPacienteMesmaEmpresa_DeveRetornar404()
+    {
+        var testName = nameof(GET_Planos_PacienteToken_NaoPodeAcessarOutroPacienteMesmaEmpresa_DeveRetornar404);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId1 = await CriarPacienteTesteAsync(empresaId, testName + "_p1");
+        var pacienteId2 = await CriarPacienteTesteAsync(empresaId, testName + "_p2");
+        try
+        {
+            var token = GerarTokenPaciente(pid: pacienteId1, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var response = await client.GetAsync($"/api/planos/{pacienteId2}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task GET_Checkins_PacienteToken_PodeAcessarProprio_DeveRetornar200()
+    {
+        var testName = nameof(GET_Checkins_PacienteToken_PodeAcessarProprio_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId = await CriarPacienteTesteAsync(empresaId, testName);
+        try
+        {
+            var token = GerarTokenPaciente(pid: pacienteId, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var response = await client.GetAsync($"/api/checkins/{pacienteId}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task GET_Checkins_PacienteToken_NaoPodeAcessarOutroPacienteMesmaEmpresa_DeveRetornar404()
+    {
+        var testName = nameof(GET_Checkins_PacienteToken_NaoPodeAcessarOutroPacienteMesmaEmpresa_DeveRetornar404);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId1 = await CriarPacienteTesteAsync(empresaId, testName + "_p1");
+        var pacienteId2 = await CriarPacienteTesteAsync(empresaId, testName + "_p2");
+        try
+        {
+            var token = GerarTokenPaciente(pid: pacienteId1, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var response = await client.GetAsync($"/api/checkins/{pacienteId2}");
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task GET_PacienteExames_PacienteToken_PodeAcessarProprio_DeveRetornar200()
+    {
+        var testName = nameof(GET_PacienteExames_PacienteToken_PodeAcessarProprio_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId = await CriarPacienteTesteAsync(empresaId, testName);
+        try
+        {
+            var token = GerarTokenPaciente(pid: pacienteId, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var response = await client.GetAsync("/api/paciente/exames");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task POST_Checkin_PacienteToken_NaoPodeGravar_DeveRetornar403ou405()
+    {
+        var testName = nameof(POST_Checkin_PacienteToken_NaoPodeGravar_DeveRetornar403ou405);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId = await CriarPacienteTesteAsync(empresaId, testName);
+        try
+        {
+            var token = GerarTokenPaciente(pid: pacienteId, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var payload = new { PacienteId = pacienteId, PesoAtualKg = 70.5, AdesaoPlanoPorcentagem = 85 };
+            var response = await client.PostAsJsonAsync("/api/checkins", payload);
+
+            // Paciente não tem permissão de escrita - 403 ou 405
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.Forbidden, HttpStatusCode.MethodNotAllowed);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task POST_PlanosVersoes_PacienteToken_NaoPodeGravar_DeveRetornar403ou405()
+    {
+        var testName = nameof(POST_PlanosVersoes_PacienteToken_NaoPodeGravar_DeveRetornar403ou405);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId = await CriarPacienteTesteAsync(empresaId, testName);
+        try
+        {
+            var token = GerarTokenPaciente(pid: pacienteId, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var payload = new { Descricao = "Tentativa paciente" };
+            var response = await client.PostAsJsonAsync($"/api/planos/{pacienteId}/versoes", payload);
+
+            // Paciente não tem permissão de escrita - 403 ou 405
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.Forbidden, HttpStatusCode.MethodNotAllowed);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task POST_Exames_PacienteToken_NaoPodeGravarViaApiExames_DeveRetornar403ou405()
+    {
+        var testName = nameof(POST_Exames_PacienteToken_NaoPodeGravarViaApiExames_DeveRetornar403ou405);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId = await CriarPacienteTesteAsync(empresaId, testName);
+        try
+        {
+            var token = GerarTokenPaciente(pid: pacienteId, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var form = new Dictionary<string, string>
+            {
+                { "pacienteId", pacienteId.ToString() },
+                { "titulo", "Hemograma" },
+                { "data", DateTime.Today.ToString("yyyy-MM-dd") },
+                { "observacao", "Teste" }
+            };
+            var content = new FormUrlEncodedContent(form);
+            var response = await client.PostAsync("/api/exames", content);
+
+            // Endpoint /api/exames é para equipe, paciente usa /api/paciente/exames
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.Forbidden, HttpStatusCode.MethodNotAllowed);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task POST_Orientacoes_PacienteToken_NaoPodeGravar_DeveRetornar403ou405()
+    {
+        var testName = nameof(POST_Orientacoes_PacienteToken_NaoPodeGravar_DeveRetornar403ou405);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId = await CriarPacienteTesteAsync(empresaId, testName);
+        try
+        {
+            var token = GerarTokenPaciente(pid: pacienteId, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var payload = new { PacienteId = pacienteId, Texto = "Orientação" };
+            var response = await client.PostAsJsonAsync("/api/orientacoes", payload);
+
+            // Paciente não tem permissão de escrita
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.Forbidden, HttpStatusCode.MethodNotAllowed);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task POST_Metas_PacienteToken_NaoPodeGravar_DeveRetornar403ou405()
+    {
+        var testName = nameof(POST_Metas_PacienteToken_NaoPodeGravar_DeveRetornar403ou405);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId = await CriarPacienteTesteAsync(empresaId, testName);
+        try
+        {
+            var token = GerarTokenPaciente(pid: pacienteId, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var payload = new { PacienteId = pacienteId, Titulo = "Meta", Tipo = "agua", Prazo = "2026-12-31" };
+            var response = await client.PostAsJsonAsync("/api/metas", payload);
+
+            // Paciente não tem permissão de escrita
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.Forbidden, HttpStatusCode.MethodNotAllowed);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task POST_Evolucao_PacienteToken_NaoPodeGravar_DeveRetornar403ou405()
+    {
+        var testName = nameof(POST_Evolucao_PacienteToken_NaoPodeGravar_DeveRetornar403ou405);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId = await CriarPacienteTesteAsync(empresaId, testName);
+        try
+        {
+            var token = GerarTokenPaciente(pid: pacienteId, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var form = new Dictionary<string, string>
+            {
+                { "pacienteId", pacienteId.ToString() },
+                { "data", DateTime.Today.ToString("yyyy-MM-dd") },
+                { "peso", "70.5" }
+            };
+            var content = new FormUrlEncodedContent(form);
+            var response = await client.PostAsync("/api/evolucao", content);
+
+            // Paciente não tem permissão de escrita
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.Forbidden, HttpStatusCode.MethodNotAllowed);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
 }
