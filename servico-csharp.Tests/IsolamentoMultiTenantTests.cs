@@ -1382,49 +1382,6 @@ public class IsolamentoMultiTenantTests : IClassFixture<WebApplicationFactory<Pr
     }
 
     [Fact]
-    public async Task GET_Checkins_PacienteToken_PodeAcessarProprio_DeveRetornar200()
-    {
-        var testName = nameof(GET_Checkins_PacienteToken_PodeAcessarProprio_DeveRetornar200);
-        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
-        var pacienteId = await CriarPacienteTesteAsync(empresaId, testName);
-        try
-        {
-            var token = GerarTokenPaciente(pid: pacienteId, empresa: empresaId);
-            var client = CriarCliente(token);
-
-            var response = await client.GetAsync($"/api/checkins/{pacienteId}");
-
-            response.StatusCode.Should().Be(HttpStatusCode.OK);
-        }
-        finally
-        {
-            await LimparDadosTesteAsync(empresaId);
-        }
-    }
-
-    [Fact]
-    public async Task GET_Checkins_PacienteToken_NaoPodeAcessarOutroPacienteMesmaEmpresa_DeveRetornar404()
-    {
-        var testName = nameof(GET_Checkins_PacienteToken_NaoPodeAcessarOutroPacienteMesmaEmpresa_DeveRetornar404);
-        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
-        var pacienteId1 = await CriarPacienteTesteAsync(empresaId, testName + "_p1");
-        var pacienteId2 = await CriarPacienteTesteAsync(empresaId, testName + "_p2");
-        try
-        {
-            var token = GerarTokenPaciente(pid: pacienteId1, empresa: empresaId);
-            var client = CriarCliente(token);
-
-            var response = await client.GetAsync($"/api/checkins/{pacienteId2}");
-
-            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
-        }
-        finally
-        {
-            await LimparDadosTesteAsync(empresaId);
-        }
-    }
-
-    [Fact]
     public async Task GET_PacienteExames_PacienteToken_PodeAcessarProprio_DeveRetornar200()
     {
         var testName = nameof(GET_PacienteExames_PacienteToken_PodeAcessarProprio_DeveRetornar200);

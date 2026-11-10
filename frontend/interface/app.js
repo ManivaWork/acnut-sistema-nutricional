@@ -5123,7 +5123,7 @@ async function carregarAreaPaciente() {
             return;
         }
 
-        abaPaciente("dashboard");
+        abaPaciente("plano");
     } catch {
         el.innerHTML = `<p class="text-rose-400 text-sm">Não foi possível carregar seus dados. Tente novamente.</p>`;
     }
@@ -5131,7 +5131,7 @@ async function carregarAreaPaciente() {
 
 function abaPaciente(aba) {
     // Bloquear navegação se consentimento não foi dado
-    if (!consentimentoAceito && aba !== 'dashboard') {
+    if (!consentimentoAceito) {
         mostrarModalConsentimento();
         // Resetar aba ativa visualmente
         document.querySelectorAll(".pac-aba").forEach(b => {
@@ -5149,297 +5149,104 @@ function abaPaciente(aba) {
     const d = dadosPaciente;
     if (!d) return;
     const el = document.getElementById("pac-conteudo");
-    const vazio = t => `<div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5 text-sm text-slate-400">${t}</div>`;
+
+    // Helper templates
+    const loading = () => `<div class="flex items-center justify-center h-48"><div class="animate-spin rounded-full h-8 w-8 border-4 border-purple-600 border-t-transparent"></div></div>`;
+    const vazio = (t, acao = null) => `
+        <div class="bg-slate-800/50 border border-white/5 rounded-2xl p-6 text-center">
+            <p class="text-slate-400">${t}</p>
+            ${acao ? `<button onclick="${acao}" class="mt-3 px-4 py-2 text-sm font-semibold rounded-xl bg-purple-600 hover:bg-purple-500 text-white transition">Tentar novamente</button>` : ''}
+        </div>`;
+    const erro = (titulo, mensagem, acao = null) => `
+        <div class="bg-slate-800/50 border border-rose-500/30 rounded-2xl p-6 text-center">
+            <p class="text-xs font-semibold text-rose-300 uppercase tracking-wider">${titulo}</p>
+            <p class="text-white font-medium mt-1">${mensagem}</p>
+            ${acao ? `<button onclick="${acao}" class="mt-3 px-4 py-2 text-sm font-semibold rounded-xl bg-rose-600 hover:bg-rose-500 text-white transition">Tentar novamente</button>` : ''}
+        </div>`;
     const alimento = i => {
         const q = Number(i.quantidadeG) > 0 ? ` — ${i.quantidadeG}g` : "";
         const m = i.medidaCaseira ? ` (${escaparHtml(i.medidaCaseira)})` : "";
         return `${escaparHtml(i.alimento)}${q}${m}`;
     };
 
-    if (aba === "dashboard") {
-        carregarDashboardPaciente(d.pid);
-        return;
-    }
+    // Mostrar loading inicial
+    el.innerHTML = loading();
 
-    if (aba === "plano") {
-        const refs = d.plano.refeicoes || [];
-        el.innerHTML = refs.length ? refs.map(r => {
-            const opcoes = agruparOpcoes(r);
-            return `
-            <div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5">
-                <h3 class="font-bold text-white text-lg">${escaparHtml(r.nome)}
-                    <span class="text-sm font-semibold ml-2" style="color:#d8b4fe">${escaparHtml(r.horario)}</span></h3>
-                ${r.observacoes ? `<p class="text-sm text-slate-400 mt-1 whitespace-pre-wrap">${escaparHtml(r.observacoes)}</p>` : ""}
-                ${opcoes.map((o, idx) => `
-                    <p class="text-xs font-bold uppercase tracking-wider mt-4 mb-1" style="color:#d8b4fe">${opcoes.length > 1 ? `Opção ${idx + 1}` : "Refeição"}</p>
-                    ${o.itens.map(i => `
-                        <p class="text-sm text-white py-1">${alimento(i)}</p>
-                        ${i.substituicoes.map(s => `<p class="text-sm text-amber-300 ml-5 pb-1">↳ ou ${alimento(s)}</p>`).join("")}
-                    `).join("")}
-                `).join("")}
-            </div>`;
-        }).join("") : vazio("Seu plano alimentar ainda não foi cadastrado.");
-    }
-
-    else if (aba === "subs") {
-        const blocos = (d.plano.refeicoes || []).map(r => {
-            const comSub = r.itens.filter(i => !i.substituiItemId)
-                .map(i => ({ i, subs: r.itens.filter(s => s.substituiItemId === i.id) }))
-                .filter(x => x.subs.length);
-            if (!comSub.length) return "";
-            return `
-            <div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5 space-y-3">
-                <h3 class="font-bold text-white">${escaparHtml(r.nome)}</h3>
-                ${comSub.map(x => `
-                    <div>
-                        <p class="text-sm text-white font-medium">${alimento(x.i)}</p>
-                        ${x.subs.map(s => `<p class="text-sm text-amber-300 ml-4">↳ pode trocar por: ${alimento(s)}</p>`).join("")}
-                    </div>`).join("")}
-            </div>`;
-        }).join("");
-        el.innerHTML = blocos || vazio("Nenhuma substituição cadastrada.");
-    }
-
-    else if (aba === "orient") {
-        el.innerHTML = d.orientacoes
-            ? `<div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5 text-sm text-slate-200 whitespace-pre-wrap">${escaparHtml(d.orientacoes)}</div>`
-            : vazio("Nenhuma orientação cadastrada.");
-    }
-
-    else if (aba === "metas") {
-        el.innerHTML = d.metas.length ? d.metas.map(m => {
-            const t = TIPOS_META[m.tipo] || TIPOS_META.outro;
-            const pontos = (m.acompanhamentos || []).slice(0, 8).reverse().map(a => {
-                const r = RESULTADOS_META[a.resultado];
-                return `<span title="${formatarData(a.data)} • ${r.rotulo}" class="w-3 h-3 rounded-full ${r.ponto}"></span>`;
-            }).join("");
-            return `
-            <div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5 ${m.status === "concluida" ? "opacity-70" : ""}">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl ${t.cor} flex items-center justify-center"><i class="fa-solid ${t.icone}"></i></div>
-                    <div>
-                        <h3 class="font-bold text-white">${escaparHtml(m.titulo)}${m.status === "concluida" ? " <span class='text-xs text-green-400'>(concluída)</span>" : ""}</h3>
-                        <p class="text-xs text-slate-400">${t.rotulo}${m.prazo ? ` • até ${formatarData(m.prazo)}` : ""}</p>
-                    </div>
-                </div>
-                ${m.descricao ? `<p class="text-sm text-slate-300 mt-3 whitespace-pre-wrap">${escaparHtml(m.descricao)}</p>` : ""}
-                ${pontos ? `<div class="flex items-center gap-1.5 mt-3">${pontos}</div>` : ""}
-            </div>`;
-        }).join("") : vazio("Nenhuma meta combinada ainda.");
-    }
-    else if (aba === "anamnese") {
-        renderAnamneseForm(d.id);
-        carregarExamesPaciente();
-    }
-}
-
-// ===== DASHBOARD PACIENTE =====
-async function carregarDashboardPaciente(pacienteId) {
-    const el = document.getElementById("pac-conteudo");
-    if (!el) return;
-
-    el.innerHTML = `<div class="flex items-center justify-center h-64"><div class="animate-spin rounded-full h-8 w-8 border-4 border-purple-600 border-t-transparent"></div></div>`;
-
-    // Helper para criar card de erro
-    const cardErro = (titulo, mensagem, botaoTexto, botaoOnclick, corBorda = "rose") => `
-        <div class="bg-slate-800/50 border border-${corBorda}-500/30 rounded-2xl p-5">
-            <div class="flex items-start justify-between gap-4">
-                <div>
-                    <p class="text-xs font-semibold text-${corBorda}-300 uppercase tracking-wider">${titulo}</p>
-                    <p class="text-white font-medium mt-1">${mensagem}</p>
-                    <p class="text-sm text-${corBorda}-300 mt-2">Tente recarregar a página</p>
-                </div>
-                ${botaoTexto ? `<button onclick="${botaoOnclick}" class="shrink-0 h-9 px-4 rounded-xl text-xs font-semibold text-white bg-${corBorda}-600 hover:bg-${corBorda}-500 transition flex items-center gap-1">
-                    <i class="fa-solid fa-refresh text-xs"></i> ${botaoTexto}
-                </button>` : ''}
-            </div>
-        </div>`;
-
-    try {
-        // Buscar dados em paralelo
-        const [anamneseRes, planoRes, checkinsRes] = await Promise.allSettled([
-            fetch(`${API_URL}/anamnese/${pacienteId}`),
-            fetch(`${API_URL}/planos/${pacienteId}`),
-            fetch(`${API_URL}/checkins/${pacienteId}`)
-        ]);
-
-        // Rastrear erros de fetch
-        const anamneseErro = anamneseRes.status === 'rejected' || (anamneseRes.status === 'fulfilled' && !anamneseRes.value.ok);
-        const planoErro = planoRes.status === 'rejected' || (planoRes.status === 'fulfilled' && !planoRes.value.ok);
-        const checkinsErro = checkinsRes.status === 'rejected' || (checkinsRes.status === 'fulfilled' && !checkinsRes.value.ok);
-
-        // Última anamnese
-        let ultimaAnamnese = null;
-        if (!anamneseErro && anamneseRes.status === 'fulfilled' && anamneseRes.value.ok) {
-            const an = await anamneseRes.value.json();
-            if (an && (an.dados_extendidos || an.historico_medico || an.alergias)) {
-                ultimaAnamnese = an;
-            }
-        }
-
-        // Plano atual
-        let planoAtual = null;
-        if (!planoErro && planoRes.status === 'fulfilled' && planoRes.value.ok) {
-            const plano = await planoRes.value.json();
-            if (plano && plano.refeicoes && plano.refeicoes.length > 0) {
-                planoAtual = plano;
-            }
-        }
-
-        // Próxima consulta - usar check-ins como proxy (mais recente)
-        let proximaConsulta = null;
-        if (!checkinsErro && checkinsRes.status === 'fulfilled' && checkinsRes.value.ok) {
-            const checkins = await checkinsRes.value.json();
-            if (checkins && checkins.length > 0) {
-                const ultimo = checkins[0];
-                proximaConsulta = {
-                    data: ultimo.data_checkin,
-                    tipo: "Check-in semanal",
-                    peso: ultimo.peso_atual_kg,
-                    adesao: ultimo.adesao_plano_porcentagem
-                };
-            }
-        }
-
-        // Renderizar cards
-        const formatarDataBR = (iso) => {
-            if (!iso) return "—";
-            const [a, m, d] = iso.split("-");
-            return `${d}/${m}/${a}`;
-        };
-
-        // Card Anamnese: erro > vazio > com dados
-        const cardAnamnese = anamneseErro
-            ? cardErro("Última Anamnese", "Erro ao carregar", "Tentar novamente", `carregarDashboardPaciente(${pacienteId})`)
-            : (ultimaAnamnese
-                ? `
-                    <div class="bg-slate-800/50 border border-purple-500/30 rounded-2xl p-5">
-                        <div class="flex items-start justify-between gap-4">
-                            <div>
-                                <p class="text-xs font-semibold text-purple-300 uppercase tracking-wider">Última Anamnese</p>
-                                <p class="text-white font-medium mt-1">${formatarDataBR(ultimaAnamnese.atualizado_em || ultimaAnamnese.criado_em)}</p>
-                                <p class="text-sm text-slate-400 mt-2">Dados completos preenchidos</p>
-                            </div>
-                            <button onclick="abaPaciente('anamnese')" class="shrink-0 h-9 px-4 rounded-xl text-xs font-semibold text-white bg-purple-600 hover:bg-purple-500 transition flex items-center gap-1">
-                                <i class="fa-solid fa-arrow-right text-xs"></i> Ver
-                            </button>
-                        </div>
-                    </div>`
-                : `
+    // Usar setTimeout para permitir renderização do loading antes do processamento
+    setTimeout(() => {
+        try {
+            if (aba === "plano") {
+                const refs = d.plano.refeicoes || [];
+                el.innerHTML = refs.length ? refs.map(r => {
+                    const opcoes = agruparOpcoes(r);
+                    return `
                     <div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5">
-                        <div class="flex items-start justify-between gap-4">
-                            <div>
-                                <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Última Anamnese</p>
-                                <p class="text-white font-medium mt-1">Não preenchida</p>
-                                <p class="text-sm text-slate-500 mt-2">Complete sua anamnese inicial</p>
-                            </div>
-                            <button onclick="abaPaciente('anamnese')" class="shrink-0 h-9 px-4 rounded-xl text-xs font-semibold text-white bg-slate-700 hover:bg-slate-600 transition flex items-center gap-1">
-                                <i class="fa-solid fa-plus text-xs"></i> Iniciar
-                            </button>
-                        </div>
-                    </div>`);
+                        <h3 class="font-bold text-white text-lg">${escaparHtml(r.nome)}
+                            <span class="text-sm font-semibold ml-2" style="color:#d8b4fe">${escaparHtml(r.horario)}</span></h3>
+                        ${r.observacoes ? `<p class="text-sm text-slate-400 mt-1 whitespace-pre-wrap">${escaparHtml(r.observacoes)}</p>` : ""}
+                        ${opcoes.map((o, idx) => `
+                            <p class="text-xs font-bold uppercase tracking-wider mt-4 mb-1" style="color:#d8b4fe">${opcoes.length > 1 ? `Opção ${idx + 1}` : "Refeição"}</p>
+                            ${o.itens.map(i => `
+                                <p class="text-sm text-white py-1">${alimento(i)}</p>
+                                ${i.substituicoes.map(s => `<p class="text-sm text-amber-300 ml-5 pb-1">↳ ou ${alimento(s)}</p>`).join("")}
+                            `).join("")}
+                        `).join("")}
+                    </div>`;
+                }).join("") : vazio("Seu plano alimentar ainda não foi cadastrado.", `abaPaciente('plano')`);
 
-        // Card Plano: erro > vazio > com dados
-        const cardPlano = planoErro
-            ? cardErro("Plano Atual", "Erro ao carregar", "Tentar novamente", `carregarDashboardPaciente(${pacienteId})`)
-            : (planoAtual
-                ? `
-                    <div class="bg-slate-800/50 border border-emerald-500/30 rounded-2xl p-5">
-                        <div class="flex items-start justify-between gap-4">
+            } else if (aba === "subs") {
+                const blocos = (d.plano.refeicoes || []).map(r => {
+                    const comSub = r.itens.filter(i => !i.substituiItemId)
+                        .map(i => ({ i, subs: r.itens.filter(s => s.substituiItemId === i.id) }))
+                        .filter(x => x.subs.length);
+                    if (!comSub.length) return "";
+                    return `
+                    <div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5 space-y-3">
+                        <h3 class="font-bold text-white">${escaparHtml(r.nome)}</h3>
+                        ${comSub.map(x => `
                             <div>
-                                <p class="text-xs font-semibold text-emerald-300 uppercase tracking-wider">Plano Atual</p>
-                                <p class="text-white font-medium mt-1">${planoAtual.refeicoes.length} refeições</p>
-                                <p class="text-sm text-slate-400 mt-2">${planoAtual.refeicoes.reduce((acc, r) => acc + (r.itens?.length || 0), 0)} alimentos no total</p>
-                            </div>
-                            <button onclick="abaPaciente('plano')" class="shrink-0 h-9 px-4 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 transition flex items-center gap-1">
-                                <i class="fa-solid fa-arrow-right text-xs"></i> Ver
-                            </button>
-                        </div>
-                    </div>`
-                : `
-                    <div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5">
-                        <div class="flex items-start justify-between gap-4">
-                            <div>
-                                <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Plano Atual</p>
-                                <p class="text-white font-medium mt-1">Sem plano alimentar</p>
-                                <p class="text-sm text-slate-500 mt-2">Aguardando nutricionista</p>
-                            </div>
-                            <button onclick="abaPaciente('plano')" class="shrink-0 h-9 px-4 rounded-xl text-xs font-semibold text-white bg-slate-700 hover:bg-slate-600 transition flex items-center gap-1">
-                                <i class="fa-solid fa-bowl-food text-xs"></i> Ver
-                            </button>
-                        </div>
-                    </div>`);
+                                <p class="text-sm text-white font-medium">${alimento(x.i)}</p>
+                                ${x.subs.map(s => `<p class="text-sm text-amber-300 ml-4">↳ pode trocar por: ${alimento(s)}</p>`).join("")}
+                            </div>`).join("")}
+                    </div>`;
+                }).join("");
+                el.innerHTML = blocos || vazio("Nenhuma substituição cadastrada.", `abaPaciente('subs')`);
 
-        // Card Consulta/Check-in: erro > vazio > com dados
-        const cardConsulta = checkinsErro
-            ? cardErro("Último Acompanhamento", "Erro ao carregar", "Tentar novamente", `carregarDashboardPaciente(${pacienteId})`, "amber")
-            : (proximaConsulta
-                ? `
-                    <div class="bg-slate-800/50 border border-amber-500/30 rounded-2xl p-5">
-                        <div class="flex items-start justify-between gap-4">
-                            <div>
-                                <p class="text-xs font-semibold text-amber-300 uppercase tracking-wider">Último Acompanhamento</p>
-                                <p class="text-white font-medium mt-1">${proximaConsulta.tipo}</p>
-                                <p class="text-sm text-slate-400 mt-2">${formatarDataBR(proximaConsulta.data)} • ${proximaConsulta.peso}kg • Aderência: ${proximaConsulta.adesao}%</p>
-                            </div>
-                            <div class="shrink-0 text-right">
-                                <p class="text-xs text-slate-400">Próximo agendado</p>
-                                <p class="text-white font-medium mt-1">—</p>
-                            </div>
-                        </div>
-                    </div>`
-                : `
-                    <div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5">
-                        <div class="flex items-start justify-between gap-4">
-                            <div>
-                                <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Próxima Consulta</p>
-                                <p class="text-white font-medium mt-1">Não agendada</p>
-                                <p class="text-sm text-slate-500 mt-2">Entre em contato com seu nutricionista</p>
-                            </div>
-                            <div class="shrink-0 text-right">
-                                <p class="text-xs text-slate-400">Agendar</p>
-                                <p class="text-white font-medium mt-1">—</p>
-                            </div>
-                        </div>
-                    </div>`);
+            } else if (aba === "orient") {
+                el.innerHTML = d.orientacoes
+                    ? `<div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5 text-sm text-slate-200 whitespace-pre-wrap">${escaparHtml(d.orientacoes)}</div>`
+                    : vazio("Nenhuma orientação cadastrada.", `abaPaciente('orient')`);
 
-        el.innerHTML = `
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                ${cardConsulta}
-                ${cardAnamnese}
-                ${cardPlano}
-            </div>
-            <div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5">
-                <h3 class="font-bold text-white mb-4">Ações Rápidas</h3>
-                <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                    <button onclick="abaPaciente('anamnese')" class="h-14 rounded-xl bg-purple-600/20 border border-purple-500/30 text-white hover:bg-purple-600/30 transition flex flex-col items-center justify-center gap-2">
-                        <i class="fa-solid fa-file-medical text-xl"></i>
-                        <span class="text-sm font-medium">Anamnese</span>
-                    </button>
-                    <button onclick="abaPaciente('plano')" class="h-14 rounded-xl bg-emerald-600/20 border border-emerald-500/30 text-white hover:bg-emerald-600/30 transition flex flex-col items-center justify-center gap-2">
-                        <i class="fa-solid fa-bowl-food text-xl"></i>
-                        <span class="text-sm font-medium">Plano Alimentar</span>
-                    </button>
-                    <button onclick="abaPaciente('metas')" class="h-14 rounded-xl bg-amber-500/20 border border-amber-500/30 text-white hover:bg-amber-500/30 transition flex flex-col items-center justify-center gap-2">
-                        <i class="fa-solid fa-bullseye text-xl"></i>
-                        <span class="text-sm font-medium">Metas</span>
-                    </button>
-                    <button onclick="abrirConfiguracoesPrivacidade()" class="h-14 rounded-xl bg-slate-600/20 border border-slate-500/30 text-white hover:bg-slate-600/30 transition flex flex-col items-center justify-center gap-2">
-                        <i class="fa-solid fa-shield-halved text-xl"></i>
-                        <span class="text-sm font-medium">Privacidade</span>
-                    </button>
-                </div>
-            </div>
-        `;
-    } catch (err) {
-        console.error("Erro ao carregar dashboard do paciente:", err);
-        el.innerHTML = `<div class="bg-slate-800/50 border border-rose-500/30 rounded-2xl p-5 text-center">
-            <p class="text-rose-400">Erro ao carregar dashboard. Tente novamente.</p>
-            <button onclick="carregarDashboardPaciente(${pacienteId})" class="mt-3 px-4 py-2 text-sm font-semibold rounded-xl bg-rose-600 hover:bg-rose-500 text-white transition">
-                Tentar novamente
-            </button>
-        </div>`;
-    }
+            } else if (aba === "metas") {
+                el.innerHTML = d.metas.length ? d.metas.map(m => {
+                    const t = TIPOS_META[m.tipo] || TIPOS_META.outro;
+                    const pontos = (m.acompanhamentos || []).slice(0, 8).reverse().map(a => {
+                        const r = RESULTADOS_META[a.resultado];
+                        return `<span title="${formatarData(a.data)} • ${r.rotulo}" class="w-3 h-3 rounded-full ${r.ponto}"></span>`;
+                    }).join("");
+                    return `
+                    <div class="bg-slate-800/50 border border-white/5 rounded-2xl p-5 ${m.status === "concluida" ? "opacity-70" : ""}">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl ${t.cor} flex items-center justify-center"><i class="fa-solid ${t.icone}"></i></div>
+                            <div>
+                                <h3 class="font-bold text-white">${escaparHtml(m.titulo)}${m.status === "concluida" ? " <span class='text-xs text-green-400'>(concluída)</span>" : ""}</h3>
+                                <p class="text-xs text-slate-400">${t.rotulo}${m.prazo ? ` • até ${formatarData(m.prazo)}` : ""}</p>
+                            </div>
+                        </div>
+                        ${m.descricao ? `<p class="text-sm text-slate-300 mt-3 whitespace-pre-wrap">${escaparHtml(m.descricao)}</p>` : ""}
+                        ${pontos ? `<div class="flex items-center gap-1.5 mt-3">${pontos}</div>` : ""}
+                    </div>`;
+                }).join("") : vazio("Nenhuma meta combinada ainda.", `abaPaciente('metas')`);
+
+            } else if (aba === "anamnese") {
+                renderAnamneseForm(d.pid);
+                carregarExamesPaciente();
+            }
+        } catch (err) {
+            console.error(`Erro ao carregar aba ${aba}:`, err);
+            el.innerHTML = erro("Erro ao carregar", "Ocorreu um erro inesperado.", `abaPaciente('${aba}')`);
+        }
+    }, 0);
 }
 
 // ===== ANAMNESE - Formulário de 8 seções =====

@@ -233,14 +233,13 @@ app.Use(async (ctx, next) =>
     var u = ctx.User;
         if (u.Identity?.IsAuthenticated != true) { await Negar(401, "Sessão expirada. Entre novamente."); return; }
     // Token de paciente: GET em /api/paciente/* + POST/DELETE em /api/paciente/exames + POST/GET em /api/paciente/consentimentos
-    // + GET/POST em /api/anamnese + GET em /api/planos, /api/checkins (próprios dados)
+    // + GET/POST em /api/anamnese + GET em /api/planos
     // metas/orientacoes carregados via /api/paciente/tudo; exames via /api/paciente/exames; evolucao não usado no portal
     if (u.FindFirst("tipo")?.Value == "paciente")
     {
         bool isPacientePath = path.StartsWith("/api/paciente/")
             || path.StartsWith("/api/anamnese")
-            || path.StartsWith("/api/planos/")
-            || path.StartsWith("/api/checkins/");
+            || path.StartsWith("/api/planos/");
         if (!isPacientePath)
         { await Negar(403, "Acesso não permitido."); return; }
         if (!HttpMethods.IsGet(m))
