@@ -4663,13 +4663,14 @@ function entrarComoPaciente(nome) {
 async function verificarConsentimento() {
     try {
         const res = await fetch(`${API_URL}/paciente/consentimentos`);
-        if (!res.ok) return false;
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const lista = await res.json();
         const tratamento = lista.find(c => c.tipo === 'tratamento_dados' && c.versao_texto === '1.0' && c.aceito);
         const saude = lista.find(c => c.tipo === 'dados_saude' && c.versao_texto === '1.0' && c.aceito);
         return !!(tratamento && saude);
-    } catch {
-        return false;
+    } catch (err) {
+        console.warn('Erro ao verificar consentimento:', err);
+        throw err; // Propagar erro para tratamento com "Tentar novamente"
     }
 }
 
@@ -4697,44 +4698,54 @@ async function revogarConsentimento(tipo) {
 }
 
 function mostrarModalConsentimento() {
-    const modal = document.createElement('div');
-    modal.id = 'modal-consentimento';
-    modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm';
-    modal.innerHTML = `
-        <div class="bg-slate-800 border border-white/10 rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-            <div class="flex items-center justify-between p-5 border-b border-white/10 shrink-0">
-                <h2 class="text-xl font-bold text-white">Termos de Uso e Privacidade</h2>
-            </div>
-            <div class="overflow-y-auto p-5 space-y-5" style="max-height: 60vh;">
-                <div class="text-sm text-slate-300 space-y-3">
-                    <p>Ao usar o AC Hub / ACNUTRI, processamos seus dados pessoais e de saúde para prestar o atendimento nutricional. Leia nossa <a href="#" onclick="abrirPoliticaPrivacidade(event)" class="text-purple-400 hover:underline">Política de Privacidade completa</a>.</p>
-                    <p class="font-medium">Marque as duas opções abaixo para continuar:</p>
+    return new Promise((resolve) => {
+        // Remover modal anterior se existir
+        const existente = document.getElementById('modal-consentimento');
+        if (existente) existente.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'modal-consentimento';
+        // z-60 para ficar acima do overlay da anamnese (z-50)
+        modal.className = 'fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm';
+        modal.innerHTML = `
+            <div class="bg-slate-800 border border-white/10 rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                <div class="flex items-center justify-between p-5 border-b border-white/10 shrink-0">
+                    <h2 class="text-xl font-bold text-white">Termos de Uso e Privacidade</h2>
                 </div>
-                <div class="space-y-3">
-                    <label class="flex items-start gap-3 cursor-pointer p-4 rounded-2xl bg-slate-700/50 border border-white/5 hover:border-purple-500/30 transition">
-                        <input type="checkbox" id="consent-tratamento" class="mt-1 w-5 h-5 accent-purple-600" onchange="atualizarBotaoConsentimento()">
-                        <div>
-                            <p class="font-medium text-white">Tratamento de dados pessoais</p>
-                            <p class="text-xs text-slate-400">Autorizo o tratamento dos meus dados de identificação (nome, CPF, e-mail, telefone, data de nascimento) para cadastro, comunicação e gestão do atendimento.</p>
-                        </div>
-                    </label>
-                    <label class="flex items-start gap-3 cursor-pointer p-4 rounded-2xl bg-slate-700/50 border border-white/5 hover:border-purple-500/30 transition">
-                        <input type="checkbox" id="consent-saude" class="mt-1 w-5 h-5 accent-purple-600" onchange="atualizarBotaoConsentimento()">
-                        <div>
-                            <p class="font-medium text-white">Tratamento de dados de saúde <span class="text-rose-400 text-xs">(sensíveis)</span></p>
-                            <p class="text-xs text-slate-400">Autorizo o tratamento dos meus dados de saúde (anamnese, exames, avaliações, evolução, planos alimentares) para fins de atendimento nutricional clínico.</p>
-                        </div>
-                    </label>
+                <div class="overflow-y-auto p-5 space-y-5" style="max-height: 60vh;">
+                    <div class="text-sm text-slate-300 space-y-3">
+                        <p>Ao usar o AC Hub / ACNUTRI, processamos seus dados pessoais e de saúde para prestar o atendimento nutricional. Leia nossa <a href="#" onclick="abrirPoliticaPrivacidade(event)" class="text-purple-400 hover:underline">Política de Privacidade completa</a>.</p>
+                        <p class="font-medium">Marque as duas opções abaixo para continuar:</p>
+                    </div>
+                    <div class="space-y-3">
+                        <label class="flex items-start gap-3 cursor-pointer p-4 rounded-2xl bg-slate-700/50 border border-white/5 hover:border-purple-500/30 transition">
+                            <input type="checkbox" id="consent-tratamento" class="mt-1 w-5 h-5 accent-purple-600" onchange="atualizarBotaoConsentimento()">
+                            <div>
+                                <p class="font-medium text-white">Tratamento de dados pessoais</p>
+                                <p class="text-xs text-slate-400">Autorizo o tratamento dos meus dados de identificação (nome, CPF, e-mail, telefone, data de nascimento) para cadastro, comunicação e gestão do atendimento.</p>
+                            </div>
+                        </label>
+                        <label class="flex items-start gap-3 cursor-pointer p-4 rounded-2xl bg-slate-700/50 border border-white/5 hover:border-purple-500/30 transition">
+                            <input type="checkbox" id="consent-saude" class="mt-1 w-5 h-5 accent-purple-600" onchange="atualizarBotaoConsentimento()">
+                            <div>
+                                <p class="font-medium text-white">Tratamento de dados de saúde <span class="text-rose-400 text-xs">(sensíveis)</span></p>
+                                <p class="text-xs text-slate-400">Autorizo o tratamento dos meus dados de saúde (anamnese, exames, avaliações, evolução, planos alimentares) para fins de atendimento nutricional clínico.</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+                <div class="p-5 border-t border-white/10 shrink-0 flex justify-end gap-3">
+                    <button id="btn-salvar-consentimento" onclick="salvarConsentimentos()" class="acnut-btn-primary px-6" disabled>
+                        <i class="fa-solid fa-check mr-2"></i> Aceitar e continuar
+                    </button>
                 </div>
             </div>
-            <div class="p-5 border-t border-white/10 shrink-0 flex justify-end gap-3">
-                <button id="btn-salvar-consentimento" onclick="salvarConsentimentos()" class="acnut-btn-primary px-6" disabled>
-                    <i class="fa-solid fa-check mr-2"></i> Aceitar e continuar
-                </button>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(modal);
+        `;
+        document.body.appendChild(modal);
+
+        // Guardar resolve para ser chamado após salvar
+        window._consentResolve = resolve;
+    });
 }
 
 function atualizarBotaoConsentimento() {
@@ -4757,9 +4768,19 @@ async function salvarConsentimentos() {
         ]);
         if (r1 && r2) {
             consentimentoAceito = true;
-            document.getElementById('modal-consentimento').remove();
+            const modal = document.getElementById('modal-consentimento');
+            if (modal) modal.remove();
             mostrarToast('Consentimentos registrados com sucesso!', 'sucesso');
-            abaPaciente('dashboard');
+            // Resolver a Promise e executar callback se houver
+            if (window._consentResolve) {
+                window._consentResolve();
+                window._consentResolve = null;
+            }
+            if (window._consentCallback) {
+                const cb = window._consentCallback;
+                window._consentCallback = null;
+                cb();
+            }
         } else {
             throw new Error('Falha ao salvar');
         }
@@ -5117,9 +5138,23 @@ async function carregarAreaPaciente() {
         document.getElementById("pac-nome").innerText = dadosPaciente.nome.split(" ")[0];
 
         // Verificar consentimento
-        consentimentoAceito = await verificarConsentimento();
+        try {
+            consentimentoAceito = await verificarConsentimento();
+        } catch {
+            // Erro na verificação - mostrar erro com "Tentar novamente"
+            el.innerHTML = `
+                <div class="bg-slate-800/50 border border-rose-500/30 rounded-2xl p-6 text-center">
+                    <p class="text-xs font-semibold text-rose-300 uppercase tracking-wider">Erro ao verificar consentimento</p>
+                    <p class="text-white font-medium mt-1">Não foi possível confirmar seus consentimentos.</p>
+                    <button onclick="carregarAreaPaciente()" class="mt-3 px-4 py-2 text-sm font-semibold rounded-xl bg-rose-600 hover:bg-rose-500 text-white transition">
+                        Tentar novamente
+                    </button>
+                </div>`;
+            return;
+        }
         if (!consentimentoAceito) {
-            mostrarModalConsentimento();
+            await mostrarModalConsentimento();
+            // Após aceitar, o callback já abre a aba "plano"
             return;
         }
 
@@ -5129,11 +5164,13 @@ async function carregarAreaPaciente() {
     }
 }
 
-function abaPaciente(aba) {
+async function abaPaciente(aba) {
     // Bloquear navegação se consentimento não foi dado
     if (!consentimentoAceito) {
-        mostrarModalConsentimento();
-        // Resetar aba ativa visualmente
+        // Guardar a aba solicitada para abrir após aceitar
+        window._consentCallback = () => abaPaciente(aba);
+        await mostrarModalConsentimento();
+        // Resetar aba ativa visualmente enquanto modal está aberto
         document.querySelectorAll(".pac-aba").forEach(b => {
             b.style.background = "#181430";
             b.style.color = "#a99bd0";
@@ -5246,9 +5283,16 @@ function abaPaciente(aba) {
 }
 
 // ===== ANAMNESE - Página separada (full-screen) =====
-function abrirAnamnese() {
+async function abrirAnamnese() {
     const d = dadosPaciente;
     if (!d || !d.pid) return;
+
+    // Verificar consentimento antes de abrir
+    if (!consentimentoAceito) {
+        window._consentCallback = abrirAnamnese;
+        await mostrarModalConsentimento();
+        return;
+    }
 
     // Criar overlay full-screen
     const overlay = document.createElement('div');
