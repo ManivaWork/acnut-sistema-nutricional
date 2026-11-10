@@ -6611,7 +6611,8 @@ function renderEmpresas(empresas) {
                 </button>
             </td>
         </tr>
-    `).join('');
+        `;
+    }).join('');
 }
 
 // Toggle bypass_limites para uma empresa
@@ -7390,4 +7391,5 @@ document.addEventListener("DOMContentLoaded", async () => {
     // 4. Caso padrão - mostrar login
     sessionStorage.removeItem(TOKEN_KEY);
     if (typeof mostrarLogin === "function") mostrarLogin();
-});
+}
+);
