@@ -1,4 +1,4 @@
-using Npgsql;
+﻿using Npgsql;
 using System.Text.Json;
 using System.Text;
 using System.Security.Claims;
@@ -9,6 +9,8 @@ using System.Linq;
 using System.Collections.Generic;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
 using ACNutri.Billing;
 using ACNutri.Email;
 
@@ -17,8 +19,8 @@ var builder = WebApplication.CreateBuilder(args);
 var asaasSection = builder.Configuration.GetSection("Asaas");
 var asaasCfg = new AsaasConfig(
     asaasSection["BaseUrl"] ?? "https://sandbox.asaas.com/api/v3",
-    asaasSection["ApiKey"] ?? throw new InvalidOperationException("Defina Asaas:ApiKey nos user-secrets ou variáveis de ambiente."),
-    asaasSection["WebhookSecret"] ?? throw new InvalidOperationException("Defina Asaas:WebhookSecret nos user-secrets ou variáveis de ambiente.")
+    asaasSection["ApiKey"] ?? throw new InvalidOperationException("Defina Asaas:ApiKey nos user-secrets ou variÃ¡veis de ambiente."),
+    asaasSection["WebhookSecret"] ?? throw new InvalidOperationException("Defina Asaas:WebhookSecret nos user-secrets ou variÃ¡veis de ambiente.")
 );
 
 builder.Services.AddSingleton(asaasCfg);
@@ -27,17 +29,17 @@ builder.Services.AddHttpClient<AsaasClient>();
     string connString = builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException("Defina ConnectionStrings:Default nos user-secrets.");
     string jwtKey = builder.Configuration["Jwt:Key"]
-    ?? throw new InvalidOperationException("Defina Jwt:Key nos user-secrets (mínimo 32 caracteres).");
+    ?? throw new InvalidOperationException("Defina Jwt:Key nos user-secrets (mÃ­nimo 32 caracteres).");
     string pythonBaseUrl = builder.Configuration["Python:BaseUrl"] ?? "http://127.0.0.1:5002";
 var origens = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? new[] { "null" };
-// "null" = página aberta direto do disco (file://). Com Live Server, adicione http://127.0.0.1:5500
-// Em produção (Render), defina Cors__AllowedOrigins como JSON array: ["https://achubhome.vercel.app","https://seu-outro-dominio.com"]
+// "null" = pÃ¡gina aberta direto do disco (file://). Com Live Server, adicione http://127.0.0.1:5500
+// Em produÃ§Ã£o (Render), defina Cors__AllowedOrigins como JSON array: ["https://achubhome.vercel.app","https://seu-outro-dominio.com"]
 
     builder.Services.AddCors(o => o.AddPolicy("Front", p =>
         p.WithOrigins(origens)
          .AllowAnyMethod()
          .AllowAnyHeader()
-         .AllowCredentials())); // necessário se frontend envia cookies/Authorization header
+         .AllowCredentials())); // necessÃ¡rio se frontend envia cookies/Authorization header
 
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
@@ -50,7 +52,7 @@ var origens = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
-        // Token via header Authorization obrigatório (não aceita ?t=)
+        // Token via header Authorization obrigatÃ³rio (nÃ£o aceita ?t=)
     });
 builder.Services.AddAuthorization();
 builder.Services.AddEndpointsApiExplorer();
@@ -59,7 +61,7 @@ builder.Services.AddHttpClient();
 builder.Services.Configure<EmailConfig>(builder.Configuration.GetSection("Email"));
 builder.Services.AddHttpClient<IEmailService, EmailService>(c => c.Timeout = TimeSpan.FromSeconds(10));
 
-// HttpClient dedicado para o microserviço Python com timeout de 60s
+// HttpClient dedicado para o microserviÃ§o Python com timeout de 60s
 builder.Services.AddHttpClient("Python", c =>
 {
     c.Timeout = TimeSpan.FromSeconds(60);
@@ -67,35 +69,69 @@ builder.Services.AddHttpClient("Python", c =>
 
 builder.Services.AddHttpContextAccessor();
 
-// Registrar NpgsqlDataSource para injeção de dependência (usado no BillingModule)
+// Registrar NpgsqlDataSource para injeÃ§Ã£o de dependÃªncia (usado no BillingModule)
 builder.Services.AddSingleton<NpgsqlDataSource>(_ => NpgsqlDataSource.Create(connString));
 
 // === Asaas / Billing ===
 builder.Services.Configure<AsaasConfig>(builder.Configuration.GetSection("Asaas"));
 builder.Services.AddHttpClient<AsaasClient>();
-builder.Services.AddSingleton(sp => 
+builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AsaasConfig>>().Value);
+
+// === Rate Limiting para endpoints de autenticaÃ§Ã£o ===
+// Fixed window: 5 tentativas falhas por 15 minutos
+builder.Services.AddRateLimiter(options =>
+{
+    // PolÃ­tica por IP
+    options.AddFixedWindowLimiter("ip-login", limiterOptions =>
+    {
+        limiterOptions.PermitLimit = 5;
+        limiterOptions.Window = TimeSpan.FromMinutes(15);
+        limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        limiterOptions.QueueLimit = 0;
+    });
+
+    // PolÃ­tica por identificador (email/CPF)
+    options.AddFixedWindowLimiter("identifier-login", limiterOptions =>
+    {
+        limiterOptions.PermitLimit = 5;
+        limiterOptions.Window = TimeSpan.FromMinutes(15);
+        limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        limiterOptions.QueueLimit = 0;
+    });
+
+    // Rejeição personalizada com Retry-After
+    options.OnRejected = async (context, token) =>
+    {
+        context.HttpContext.Response.StatusCode = 429;
+        context.HttpContext.Response.Headers["Retry-After"] = "900"; // 15 min = 900s
+        await context.HttpContext.Response.WriteAsJsonAsync(new { mensagem = "Muitas tentativas. Tente novamente em 15 minutos." }, token);
+    };
+});
 
 var app = builder.Build();
 
-// Log da configuração do Python Service na inicialização
-var pythonBaseUrlLog = builder.Configuration["Python:BaseUrl"] ?? "http://127.0.0.1:5002 (padrão)";
+// Log da configuraÃ§Ã£o do Python Service na inicializaÃ§Ã£o
+var pythonBaseUrlLog = builder.Configuration["Python:BaseUrl"] ?? "http://127.0.0.1:5002 (padrÃ£o)";
 var loggerFactory = app.Services.GetRequiredService<ILoggerFactory>();
 var startupLogger = loggerFactory.CreateLogger("Startup");
 startupLogger.LogInformation("Python Service BaseUrl: {BaseUrl}", pythonBaseUrlLog);
 if (app.Environment.IsProduction() && (pythonBaseUrlLog.Contains("127.0.0.1") || pythonBaseUrlLog.Contains("localhost")))
 {
-    startupLogger.LogWarning("Python:BaseUrl aponta para localhost/127.0.0.1 em ambiente Production. Configure a URL do serviço Python em produção (ex.: https://seu-servico.onrender.com).");
+    startupLogger.LogWarning("Python:BaseUrl aponta para localhost/127.0.0.1 em ambiente Production. Configure a URL do serviÃ§o Python em produÃ§Ã£o (ex.: https://seu-servico.onrender.com).");
 }
 
 // Forwarded headers DEVE ser o PRIMEIRO middleware (antes de qualquer leitura de IP)
 app.UseForwardedHeaders(new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
-    ForwardLimit = 1, // Pega apenas o último IP da cadeia (o do cliente real)
-    KnownNetworks = { }, // Confia em todos (ajustar em produção se necessário)
+    ForwardLimit = 1, // Pega apenas o Ãºltimo IP da cadeia (o do cliente real)
+    KnownNetworks = { }, // Confia em todos (ajustar em produÃ§Ã£o se necessÃ¡rio)
     KnownProxies = { }
 });
+
+// Rate Limiting middleware
+app.UseRateLimiter();
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
@@ -127,13 +163,13 @@ if (!string.IsNullOrEmpty(asaasCfg.ApiKey))
 
 await Seed.Garantir(connString, builder.Configuration);
 
-        // ===== HEADERS DE SEGURANÇA =====
+        // ===== HEADERS DE SEGURANÃ‡A =====
         app.Use(async (ctx, next) =>
         {
             ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
             ctx.Response.Headers["X-Frame-Options"] = "DENY";
             ctx.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
-            // HSTS só em HTTPS (produção)
+            // HSTS sÃ³ em HTTPS (produÃ§Ã£o)
             if (ctx.Request.IsHttps)
                 ctx.Response.Headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
             await next();
@@ -169,10 +205,10 @@ await Seed.Garantir(connString, builder.Configuration);
                 cmd.Parameters.AddWithValue("ua", string.IsNullOrEmpty(ua) ? DBNull.Value : (object)ua);
                 await cmd.ExecuteNonQueryAsync();
             }
-            catch { /* auditoria não deve quebrar a request */ }
+            catch { /* auditoria nÃ£o deve quebrar a request */ }
         }
 
-        // Versão para uso dentro de transação existente
+        // VersÃ£o para uso dentro de transaÃ§Ã£o existente
         async Task RegistrarAuditoriaDetalhada(NpgsqlConnection conn, NpgsqlTransaction tx, int emp, int uid, string acao, string rota, long? registroId, string detalhes)
         {
             try
@@ -188,7 +224,7 @@ await Seed.Garantir(connString, builder.Configuration);
                 cmd.Parameters.AddWithValue("detalhes", detalhes);
                 await cmd.ExecuteNonQueryAsync();
             }
-            catch { /* auditoria não deve quebrar a request */ }
+            catch { /* auditoria nÃ£o deve quebrar a request */ }
         }
 
         // Qualquer erro vira JSON { mensagem } (o front mostra no alert) - SEM DADOS PESSOAIS NOS LOGS
@@ -200,7 +236,7 @@ app.Use(async (context, next) =>
         }
         catch (Exception ex)
         {
-        // Log sem dados sensíveis: apenas método, rota, tipo de erro
+        // Log sem dados sensÃ­veis: apenas mÃ©todo, rota, tipo de erro
         Console.WriteLine($"=== ERRO em {context.Request.Method} {context.Request.Path}: {ex.GetType().Name} ===");
         if (!context.Response.HasStarted)
         {
@@ -210,7 +246,7 @@ app.Use(async (context, next) =>
         }
         }
         });
-        // PORTEIRO: toda rota /api exige token de equipe e nível no módulo nutrição
+        // PORTEIRO: toda rota /api exige token de equipe e nÃ­vel no mÃ³dulo nutriÃ§Ã£o
 app.Use(async (ctx, next) =>
 {
     var path = ctx.Request.Path.Value ?? "";
@@ -222,7 +258,7 @@ app.Use(async (ctx, next) =>
     || path.StartsWith("/api/convites/info/")
     || path == "/api/onboarding"
     || path.StartsWith("/api/definir-senha/")
-    || path == "/api/acesso/solicitar"   // POST público - solicitar acesso
+    || path == "/api/acesso/solicitar"   // POST pÃºblico - solicitar acesso
     || HttpMethods.IsOptions(m))
 { await next(); return; }
     async Task Negar(int status, string msg)
@@ -231,17 +267,17 @@ app.Use(async (ctx, next) =>
         await ctx.Response.WriteAsJsonAsync(new { mensagem = msg });
     }
     var u = ctx.User;
-        if (u.Identity?.IsAuthenticated != true) { await Negar(401, "Sessão expirada. Entre novamente."); return; }
+        if (u.Identity?.IsAuthenticated != true) { await Negar(401, "SessÃ£o expirada. Entre novamente."); return; }
     // Token de paciente: GET em /api/paciente/* + POST/DELETE em /api/paciente/exames + POST/GET em /api/paciente/consentimentos
     // + GET/POST em /api/anamnese + GET em /api/planos
-    // metas/orientacoes carregados via /api/paciente/tudo; exames via /api/paciente/exames; evolucao não usado no portal
+    // metas/orientacoes carregados via /api/paciente/tudo; exames via /api/paciente/exames; evolucao nÃ£o usado no portal
     if (u.FindFirst("tipo")?.Value == "paciente")
     {
         bool isPacientePath = path.StartsWith("/api/paciente/")
             || path.StartsWith("/api/anamnese")
             || path.StartsWith("/api/planos/");
         if (!isPacientePath)
-        { await Negar(403, "Acesso não permitido."); return; }
+        { await Negar(403, "Acesso nÃ£o permitido."); return; }
         if (!HttpMethods.IsGet(m))
         {
             bool permitido = (path == "/api/paciente/exames" && HttpMethods.IsPost(m))
@@ -249,12 +285,12 @@ app.Use(async (ctx, next) =>
                           || (path == "/api/paciente/consentimentos" && (HttpMethods.IsPost(m) || HttpMethods.IsGet(m)))
                           || (path == "/api/anamnese" && HttpMethods.IsPost(m))
                           || (path.StartsWith("/api/anamnese/") && HttpMethods.IsGet(m));
-            if (!permitido) { await Negar(403, "Acesso não permitido."); return; }
+            if (!permitido) { await Negar(403, "Acesso nÃ£o permitido."); return; }
         }
         await next(); return;
     }
     if (u.FindFirst("tipo")?.Value != "equipe" || path.StartsWith("/api/paciente/"))
-    { await Negar(403, "Acesso não permitido."); return; }
+    { await Negar(403, "Acesso nÃ£o permitido."); return; }
     if (path.StartsWith("/api/usuarios") && u.FindFirst("perfil")?.Value is not ("admin" or "super_admin"))
     { await Negar(403, "Apenas administradores."); return; }
 
@@ -263,7 +299,7 @@ app.Use(async (ctx, next) =>
     if (perfil != "super_admin")
     {
         bool isSuperAdminAcesso =
-            // GET /api/acessos (listar solicitações)
+            // GET /api/acessos (listar solicitaÃ§Ãµes)
             (HttpMethods.IsGet(m) && path == "/api/acessos")
             // POST /api/acessos/{id}/aprovar
             || (HttpMethods.IsPost(m) && System.Text.RegularExpressions.Regex.IsMatch(path, @"^/api/acessos/\d+/aprovar$"))
@@ -289,14 +325,14 @@ app.Use(async (ctx, next) =>
     int exigido = HttpMethods.IsGet(m) ? 1
                 : (HttpMethods.IsDelete(m) && path.StartsWith("/api/pacientes")) ? 3
                 : 2;
-    if (nivel < exigido) { await Negar(403, "Seu perfil não tem permissão para esta ação."); return; }
+    if (nivel < exigido) { await Negar(403, "Seu perfil nÃ£o tem permissÃ£o para esta aÃ§Ã£o."); return; }
 
-    // VALIDAÇÃO: usuário pertence à empresa do token (exceto super_admin)
+    // VALIDAÃ‡ÃƒO: usuÃ¡rio pertence Ã  empresa do token (exceto super_admin)
 
-    // Bloquear perfil "profissional" no módulo LGPD (redundante, mas mantido para clareza)
+    // Bloquear perfil "profissional" no mÃ³dulo LGPD (redundante, mas mantido para clareza)
     if (perfil == "profissional" && path.StartsWith("/api/lgpd"))
     {
-        await Negar(403, "Perfil profissional não tem acesso ao módulo LGPD.");
+        await Negar(403, "Perfil profissional nÃ£o tem acesso ao mÃ³dulo LGPD.");
         return;
     }
 
@@ -315,16 +351,16 @@ app.Use(async (ctx, next) =>
         }
         if (userEmpresa != tokenEmpresa)
         {
-            await Negar(403, "Usuário não pertence à empresa do token.");
+            await Negar(403, "UsuÃ¡rio nÃ£o pertence Ã  empresa do token.");
             return;
         }
     }
 
-    // ISOLAMENTO POR EMPRESA: o registro precisa pertencer à empresa do token
+    // ISOLAMENTO POR EMPRESA: o registro precisa pertencer Ã  empresa do token
     var alvos = await Escopo.Alvos(ctx);
 
     if (alvos.Count > 0 && !await Escopo.Pertence(connString, alvos, Auth.Empresa(u)))
-    { await Negar(404, "Registro não encontrado."); return; }
+    { await Negar(404, "Registro nÃ£o encontrado."); return; }
     await next();
 });
 // ==================================================== PACIENTES  ========================================
@@ -365,7 +401,7 @@ app.MapGet("/api/pacientes/{id:int}", async (int id, ClaimsPrincipal user) =>
     cmd.Parameters.AddWithValue("emp", empresaId);
     using var reader = await cmd.ExecuteReaderAsync();
     if (!await reader.ReadAsync())
-        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+        return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
 
     return Results.Ok(new
     {
@@ -390,7 +426,7 @@ app.MapGet("/api/pacientes/{id:int}", async (int id, ClaimsPrincipal user) =>
         var resultados = new List<object>();
         using var conn = new NpgsqlConnection(connString);
         await conn.OpenAsync();
-        // unaccent + ILIKE para busca sem acento (requer extensão unaccent no Postgres)
+        // unaccent + ILIKE para busca sem acento (requer extensÃ£o unaccent no Postgres)
         using var cmd = new NpgsqlCommand(@"
             SELECT id, nome, data_nascimento
             FROM pacientes
@@ -413,7 +449,7 @@ app.MapGet("/api/pacientes/{id:int}", async (int id, ClaimsPrincipal user) =>
         }
         return Results.Ok(resultados);
     })
-    .RequireAuthorization(); // garante que só usuários autenticados acessem
+    .RequireAuthorization(); // garante que sÃ³ usuÃ¡rios autenticados acessem
 
 // 2. CADASTRAR PACIENTE
 app.MapPost("/api/pacientes", async (HttpRequest request, ClaimsPrincipal user, NpgsqlDataSource db, ILogger<Program> logger) =>
@@ -433,7 +469,7 @@ app.MapPost("/api/pacientes", async (HttpRequest request, ClaimsPrincipal user, 
         string sexo = data.GetProperty("sexo").GetString()!;
         string status = data.TryGetProperty("status", out var st) ? st.GetString() ?? "ativo" : "ativo";
         var cpf = Cpf.Limpar(data.TryGetProperty("cpf", out var cp) ? cp.GetString() : "");
-        if (cpf != "" && !Cpf.Valido(cpf)) return Results.BadRequest(new { mensagem = "CPF inválido." });
+        if (cpf != "" && !Cpf.Valido(cpf)) return Results.BadRequest(new { mensagem = "CPF invÃ¡lido." });
 
         int empresaId = Auth.Empresa(user);
         empresaIdLog = empresaId;
@@ -458,7 +494,7 @@ app.MapPost("/api/pacientes", async (HttpRequest request, ClaimsPrincipal user, 
         }
         catch
         {
-            return Results.BadRequest(new { mensagem = "Data de nascimento inválida. Use formato ISO (YYYY-MM-DD)." });
+            return Results.BadRequest(new { mensagem = "Data de nascimento invÃ¡lida. Use formato ISO (YYYY-MM-DD)." });
         }
 
         await using var conn = await db.OpenConnectionAsync();
@@ -481,12 +517,12 @@ app.MapPost("/api/pacientes", async (HttpRequest request, ClaimsPrincipal user, 
     catch (PostgresException ex) when (ex.SqlState == "23505")
     {
         logger.LogWarning(ex, "Conflito de unicidade ao cadastrar paciente: traceId={TraceId} empresa={EmpresaId}", traceId, empresaIdLog);
-        return Results.Conflict(new { mensagem = "Já existe um paciente com esse e-mail ou CPF nesta empresa.", codigo = "duplicado", codigo_erro = traceId });
+        return Results.Conflict(new { mensagem = "JÃ¡ existe um paciente com esse e-mail ou CPF nesta empresa.", codigo = "duplicado", codigo_erro = traceId });
     }
     catch (Exception ex)
     {
         logger.LogError(ex, "Erro inesperado ao cadastrar paciente: traceId={TraceId} empresa={EmpresaId}", traceId, empresaIdLog);
-        return Results.Json(new { title = "Erro interno ao cadastrar paciente.", detail = "Ocorreu um erro inesperado. Contate o suporte informando o código: " + traceId, codigo_erro = traceId }, statusCode: 500);
+        return Results.Json(new { title = "Erro interno ao cadastrar paciente.", detail = "Ocorreu um erro inesperado. Contate o suporte informando o cÃ³digo: " + traceId, codigo_erro = traceId }, statusCode: 500);
     }
 });// 3. ATUALIZAR PACIENTE
 app.MapPut("/api/pacientes/{id}", async (int id, HttpRequest request, ClaimsPrincipal user) =>
@@ -500,7 +536,7 @@ app.MapPut("/api/pacientes/{id}", async (int id, HttpRequest request, ClaimsPrin
     string sexo = data.GetProperty("sexo").GetString()!;
     string status = data.TryGetProperty("status", out var st) ? st.GetString() ?? "ativo" : "ativo";
     var cpf = Cpf.Limpar(data.TryGetProperty("cpf", out var cp) ? cp.GetString() : "");
-    if (cpf != "" && !Cpf.Valido(cpf)) return Results.BadRequest(new { mensagem = "CPF inválido." });
+    if (cpf != "" && !Cpf.Valido(cpf)) return Results.BadRequest(new { mensagem = "CPF invÃ¡lido." });
 
     int empresaId = Auth.Empresa(user);
 
@@ -527,11 +563,11 @@ app.MapPut("/api/pacientes/{id}", async (int id, HttpRequest request, ClaimsPrin
         var rowsAffected = await cmd.ExecuteNonQueryAsync();
         return rowsAffected > 0
             ? Results.Ok(new { mensagem = "Paciente atualizado com sucesso!" })
-            : Results.NotFound(new { mensagem = "Paciente não encontrado." });
+            : Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
     }
     catch (PostgresException ex) when (ex.SqlState == "23505")
     {
-        return Results.Conflict(new { mensagem = "Já existe um paciente com esse e-mail ou CPF." });
+        return Results.Conflict(new { mensagem = "JÃ¡ existe um paciente com esse e-mail ou CPF." });
     }
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 
@@ -546,8 +582,8 @@ app.MapDelete("/api/pacientes/{id}", async (int id, ClaimsPrincipal user) =>
 
     var rowsAffected = await cmd.ExecuteNonQueryAsync();
     return rowsAffected > 0
-        ? Results.Ok(new { mensagem = "Paciente excluído com sucesso!" })
-        : Results.NotFound(new { mensagem = "Paciente não encontrado." });
+        ? Results.Ok(new { mensagem = "Paciente excluÃ­do com sucesso!" })
+        : Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 // 5. ANONIMIZAR PACIENTE (LGPD) - apenas admin e super_admin
@@ -560,17 +596,17 @@ app.MapPost("/api/pacientes/{id}/anonimizar", async (int id, ClaimsPrincipal use
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
-    // Verifica se o paciente existe e pertence à empresa
+    // Verifica se o paciente existe e pertence Ã  empresa
     using (var cmd = new NpgsqlCommand("SELECT id, nome FROM pacientes WHERE id = @id AND empresa_id = @emp", conn))
     {
         cmd.Parameters.AddWithValue("id", id);
         cmd.Parameters.AddWithValue("emp", Auth.Empresa(user));
         using var reader = await cmd.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
-            return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+            return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
     }
 
-    // Usar transação para garantir atomicidade
+    // Usar transaÃ§Ã£o para garantir atomicidade
     using var tx = await conn.BeginTransactionAsync();
     try
     {
@@ -610,7 +646,7 @@ app.MapPost("/api/pacientes/{id}/anonimizar", async (int id, ClaimsPrincipal use
             await cmd.ExecuteNonQueryAsync();
         }
 
-        // Evolução (inclui fotos)
+        // EvoluÃ§Ã£o (inclui fotos)
         using (var cmd = new NpgsqlCommand(@"
             DELETE FROM evolucao WHERE paciente_id = @id AND empresa_id = @emp", conn, tx))
         {
@@ -628,7 +664,7 @@ app.MapPost("/api/pacientes/{id}/anonimizar", async (int id, ClaimsPrincipal use
             await cmd.ExecuteNonQueryAsync();
         }
 
-        // Avaliações físicas
+        // AvaliaÃ§Ãµes fÃ­sicas
         using (var cmd = new NpgsqlCommand(@"
             DELETE FROM avaliacoes_fisicas WHERE paciente_id = @id AND empresa_id = @emp", conn, tx))
         {
@@ -637,7 +673,7 @@ app.MapPost("/api/pacientes/{id}/anonimizar", async (int id, ClaimsPrincipal use
             await cmd.ExecuteNonQueryAsync();
         }
 
-        // Planos alimentares e versões
+        // Planos alimentares e versÃµes
         using (var cmd = new NpgsqlCommand(@"
             DELETE FROM planos_versoes WHERE paciente_id = @id AND empresa_id = @emp", conn, tx))
         {
@@ -654,7 +690,7 @@ app.MapPost("/api/pacientes/{id}/anonimizar", async (int id, ClaimsPrincipal use
             await cmd.ExecuteNonQueryAsync();
         }
 
-        // Orientações nutricionais
+        // OrientaÃ§Ãµes nutricionais
         using (var cmd = new NpgsqlCommand(@"
             DELETE FROM orientacoes_nutricionais WHERE paciente_id = @id AND empresa_id = @emp", conn, tx))
         {
@@ -698,10 +734,10 @@ app.MapPost("/api/pacientes/{id}/anonimizar", async (int id, ClaimsPrincipal use
         // 3. Registrar na auditoria
         await RegistrarAuditoriaDetalhada(conn, tx, Auth.Empresa(user), Auth.UsuarioId(user),
             "anonimizacao", $"/api/pacientes/{id}/anonimizar", id,
-            $"Paciente anonimizado por {Auth.Nome(user) ?? "usuário"}. Dados clínicos removidos, PII substituída por valores anônimos.");
+            $"Paciente anonimizado por {Auth.Nome(user) ?? "usuÃ¡rio"}. Dados clÃ­nicos removidos, PII substituÃ­da por valores anÃ´nimos.");
 
         await tx.CommitAsync();
-        return Results.Ok(new { mensagem = "Paciente anonimizado com sucesso. Dados clínicos removidos e PII substituída.", anonimizado_em = agora });
+        return Results.Ok(new { mensagem = "Paciente anonimizado com sucesso. Dados clÃ­nicos removidos e PII substituÃ­da.", anonimizado_em = agora });
     }
     catch
     {
@@ -710,7 +746,7 @@ app.MapPost("/api/pacientes/{id}/anonimizar", async (int id, ClaimsPrincipal use
     }
 });
 
-//==================================== AVALIAÇÃO FÍSICA (integra com o microserviço Python)======================================
+//==================================== AVALIAÃ‡ÃƒO FÃSICA (integra com o microserviÃ§o Python)======================================
 app.MapPost("/api/avaliacoes", async (AvaliacaoInput input, IHttpClientFactory clientFactory, ILogger<Program> logger) =>
 {
     var httpClient = clientFactory.CreateClient("Python");
@@ -733,13 +769,13 @@ app.MapPost("/api/avaliacoes", async (AvaliacaoInput input, IHttpClientFactory c
     }
     catch (HttpRequestException ex)
     {
-        logger.LogError(ex, "Falha de rede/ligação ao chamar Python Service /calcular-plano");
-        return Results.Json(new { mensagem = "O serviço de cálculos nutricionais está temporariamente indisponível. Tente novamente em alguns instantes." }, statusCode: 503);
+        logger.LogError(ex, "Falha de rede/ligaÃ§Ã£o ao chamar Python Service /calcular-plano");
+        return Results.Json(new { mensagem = "O serviÃ§o de cÃ¡lculos nutricionais estÃ¡ temporariamente indisponÃ­vel. Tente novamente em alguns instantes." }, statusCode: 503);
     }
     catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException || ex.CancellationToken.IsCancellationRequested)
     {
         logger.LogError(ex, "Timeout ao chamar Python Service /calcular-plano (60s)");
-        return Results.Json(new { mensagem = "O serviço de cálculos nutricionais está temporariamente indisponível. Tente novamente em alguns instantes." }, statusCode: 503);
+        return Results.Json(new { mensagem = "O serviÃ§o de cÃ¡lculos nutricionais estÃ¡ temporariamente indisponÃ­vel. Tente novamente em alguns instantes." }, statusCode: 503);
     }
 
     if (!responsePython.IsSuccessStatusCode)
@@ -750,17 +786,17 @@ app.MapPost("/api/avaliacoes", async (AvaliacaoInput input, IHttpClientFactory c
         if ((int)responsePython.StatusCode >= 500 || responsePython.StatusCode == System.Net.HttpStatusCode.BadGateway || responsePython.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable || responsePython.StatusCode == System.Net.HttpStatusCode.GatewayTimeout || responsePython.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             logger.LogWarning("Python Service /calcular-plano retornou {StatusCode}: {Body}", responsePython.StatusCode, logBody);
-            return Results.Json(new { mensagem = "O serviço de cálculos nutricionais está temporariamente indisponível. Tente novamente em alguns instantes." }, statusCode: 503);
+            return Results.Json(new { mensagem = "O serviÃ§o de cÃ¡lculos nutricionais estÃ¡ temporariamente indisponÃ­vel. Tente novamente em alguns instantes." }, statusCode: 503);
         }
         else if ((int)responsePython.StatusCode >= 400)
         {
             logger.LogWarning("Python Service /calcular-plano retornou erro 4xx {StatusCode}: {Body}", responsePython.StatusCode, logBody);
-            return Results.Json(new { mensagem = "Dados inválidos para cálculo nutricional. Verifique os campos informados." }, statusCode: 400);
+            return Results.Json(new { mensagem = "Dados invÃ¡lidos para cÃ¡lculo nutricional. Verifique os campos informados." }, statusCode: 400);
         }
         else
         {
             logger.LogWarning("Python Service /calcular-plano retornou {StatusCode}: {Body}", responsePython.StatusCode, logBody);
-            return Results.Json(new { mensagem = "Erro inesperado no serviço de cálculos nutricionais." }, statusCode: 502);
+            return Results.Json(new { mensagem = "Erro inesperado no serviÃ§o de cÃ¡lculos nutricionais." }, statusCode: 502);
         }
     }
 
@@ -790,7 +826,7 @@ app.MapPost("/api/avaliacoes", async (AvaliacaoInput input, IHttpClientFactory c
     return Results.Ok(new
     {
         avaliacao_id = avaliacaoId,
-        mensagem = "Avaliação registrada com sucesso!",
+        mensagem = "AvaliaÃ§Ã£o registrada com sucesso!",
         calculos_python = JsonSerializer.Deserialize<object>(jsonResp)
     });
 });
@@ -819,7 +855,7 @@ app.MapGet("/api/alimentos", async () =>
     return Results.Ok(alimentos);
 });
 
-// Busca alimentos por nome (para autocomplete/preenchimento automático)
+// Busca alimentos por nome (para autocomplete/preenchimento automÃ¡tico)
 app.MapGet("/api/alimentos/buscar", async (string q, int limite = 20) =>
 {
     if (string.IsNullOrWhiteSpace(q) || q.Length < 2)
@@ -858,7 +894,7 @@ app.MapGet("/api/alimentos/buscar", async (string q, int limite = 20) =>
     return Results.Ok(alimentos);
 });
 
-// Busca alimento exato por ID (para preencher formulário ao selecionar)
+// Busca alimento exato por ID (para preencher formulÃ¡rio ao selecionar)
 app.MapGet("/api/alimentos/{id:int}", async (int id) =>
 {
     using var conn = new NpgsqlConnection(connString);
@@ -867,7 +903,7 @@ app.MapGet("/api/alimentos/{id:int}", async (int id) =>
     cmd.Parameters.AddWithValue("id", id);
     using var reader = await cmd.ExecuteReaderAsync();
     if (!await reader.ReadAsync())
-        return Results.NotFound(new { mensagem = "Alimento não encontrado." });
+        return Results.NotFound(new { mensagem = "Alimento nÃ£o encontrado." });
 
     return Results.Ok(new
     {
@@ -912,7 +948,7 @@ app.MapPost("/api/alimentos/{alimentoId:int}/medidas", async (int alimentoId, Me
         return Results.Forbid();
 
     int emp = Auth.Empresa(user);
-    // Verificar se alimento pertence à empresa (alimentos globais não têm empresa_id, ou verificar se é da empresa)
+    // Verificar se alimento pertence Ã  empresa (alimentos globais nÃ£o tÃªm empresa_id, ou verificar se Ã© da empresa)
     // Para simplificar, permitimos adicionar medidas a qualquer alimento
 
     using var conn = new NpgsqlConnection(connString);
@@ -948,7 +984,7 @@ app.MapPut("/api/alimentos/{alimentoId:int}/medidas/{medidaId:int}", async (int 
     cmd.Parameters.AddWithValue("gramas", input.GramasPorUnidade);
     cmd.Parameters.AddWithValue("obs", (object?)input.Observacao ?? DBNull.Value);
     int rows = await cmd.ExecuteNonQueryAsync();
-    if (rows == 0) return Results.NotFound(new { mensagem = "Medida não encontrada." });
+    if (rows == 0) return Results.NotFound(new { mensagem = "Medida nÃ£o encontrada." });
     return Results.Ok(new { mensagem = "Medida caseira atualizada!" });
 })
 .RequireAuthorization();
@@ -966,8 +1002,8 @@ app.MapDelete("/api/alimentos/{alimentoId:int}/medidas/{medidaId:int}", async (i
     cmd.Parameters.AddWithValue("id", medidaId);
     cmd.Parameters.AddWithValue("alimento_id", alimentoId);
     int rows = await cmd.ExecuteNonQueryAsync();
-    if (rows == 0) return Results.NotFound(new { mensagem = "Medida não encontrada." });
-    return Results.Ok(new { mensagem = "Medida caseira excluída!" });
+    if (rows == 0) return Results.NotFound(new { mensagem = "Medida nÃ£o encontrada." });
+    return Results.Ok(new { mensagem = "Medida caseira excluÃ­da!" });
 })
 .RequireAuthorization();
 
@@ -975,9 +1011,9 @@ app.MapDelete("/api/alimentos/{alimentoId:int}/medidas/{medidaId:int}", async (i
 app.MapPost("/api/checkins", async (CheckinInput input, ClaimsPrincipal user) =>
 {
     int emp = Auth.Empresa(user);
-    // Validar se paciente pertence à empresa
+    // Validar se paciente pertence Ã  empresa
     if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, input.PacienteId, emp))
-        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+        return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
@@ -997,9 +1033,9 @@ app.MapPost("/api/checkins", async (CheckinInput input, ClaimsPrincipal user) =>
 app.MapGet("/api/checkins/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
     int emp = Auth.Empresa(user);
-    // Validar se paciente pertence à empresa
+    // Validar se paciente pertence Ã  empresa
     if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
-        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+        return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
 
     var checkins = new List<object>();
     using var conn = new NpgsqlConnection(connString);
@@ -1021,7 +1057,7 @@ app.MapGet("/api/checkins/{pacienteId}", async (int pacienteId, ClaimsPrincipal 
     return Results.Ok(checkins);
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 
-// Helper: busca últimos valores de peso/altura/%gordura de 3 fontes para um paciente
+// Helper: busca Ãºltimos valores de peso/altura/%gordura de 3 fontes para um paciente
 async Task<object> BuscarUltimosValoresPaciente(int pacienteId)
 {
     using var conn = new NpgsqlConnection(connString);
@@ -1029,7 +1065,7 @@ async Task<object> BuscarUltimosValoresPaciente(int pacienteId)
 
     var result = new Dictionary<string, object?>();
 
-    // 1. Avaliações físicas (tem peso, altura, % gordura)
+    // 1. AvaliaÃ§Ãµes fÃ­sicas (tem peso, altura, % gordura)
     using (var cmd = new NpgsqlCommand(@"
         SELECT peso_kg, altura_cm, percentual_gordura, criado_em
         FROM avaliacoes_fisicas
@@ -1052,7 +1088,7 @@ async Task<object> BuscarUltimosValoresPaciente(int pacienteId)
         }
     }
 
-    // 2. Evolução (tem peso, % gordura, medidas)
+    // 2. EvoluÃ§Ã£o (tem peso, % gordura, medidas)
     using (var cmd = new NpgsqlCommand(@"
         SELECT peso_kg, percentual_gordura, cintura_cm, quadril_cm, abdomen_cm, braco_cm, coxa_cm, data_registro
         FROM evolucao_registros
@@ -1100,7 +1136,7 @@ async Task<object> BuscarUltimosValoresPaciente(int pacienteId)
         }
     }
 
-    // Determinar o valor mais recente geral (para sugestão rápida)
+    // Determinar o valor mais recente geral (para sugestÃ£o rÃ¡pida)
     var todasFontes = new List<dynamic>();
     if (result.ContainsKey("avaliacao_fisica")) todasFontes.Add(result["avaliacao_fisica"]);
     if (result.ContainsKey("evolucao")) todasFontes.Add(result["evolucao"]);
@@ -1127,13 +1163,13 @@ async Task<object> BuscarUltimosValoresPaciente(int pacienteId)
     };
 }
 
-// ==================================================== HISTÓRICO DE VALORES (Equipe) ==========================================
-// GET /api/historico-valores/{pacienteId} - Último peso, altura, % gordura e data de avaliacoes_fisicas, evolucao_registros e checkins_semanais
+// ==================================================== HISTÃ“RICO DE VALORES (Equipe) ==========================================
+// GET /api/historico-valores/{pacienteId} - Ãšltimo peso, altura, % gordura e data de avaliacoes_fisicas, evolucao_registros e checkins_semanais
 app.MapGet("/api/historico-valores/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
     int emp = Auth.Empresa(user);
 
-    // Validar se paciente pertence à empresa do token
+    // Validar se paciente pertence Ã  empresa do token
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
     using (var cmd = new NpgsqlCommand("SELECT 1 FROM pacientes WHERE id = @id AND empresa_id = @emp", conn))
@@ -1141,7 +1177,7 @@ app.MapGet("/api/historico-valores/{pacienteId}", async (int pacienteId, ClaimsP
         cmd.Parameters.AddWithValue("id", pacienteId);
         cmd.Parameters.AddWithValue("emp", emp);
         if (await cmd.ExecuteScalarAsync() == null)
-            return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+            return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
     }
 
     var dados = await BuscarUltimosValoresPaciente(pacienteId);
@@ -1149,7 +1185,7 @@ app.MapGet("/api/historico-valores/{pacienteId}", async (int pacienteId, ClaimsP
 });
 
 // ========================================================== ANAMNESE ===========================================================
-// POST /api/anamnese - Salva/atualiza anamnese (nutricionista/admin da empresa, ou paciente próprio)
+// POST /api/anamnese - Salva/atualiza anamnese (nutricionista/admin da empresa, ou paciente prÃ³prio)
 app.MapPost("/api/anamnese", async (AnamneseInput input, ClaimsPrincipal user) =>
 {
     int emp = Auth.Empresa(user);
@@ -1157,11 +1193,11 @@ app.MapPost("/api/anamnese", async (AnamneseInput input, ClaimsPrincipal user) =
     int? pid = user.FindFirst("pid")?.Value != null ? int.Parse(user.FindFirst("pid")!.Value) : null;
     string? perfil = user.FindFirst("perfil")?.Value;
 
-    // Validar ownership: paciente só pode gravar a própria anamnese
+    // Validar ownership: paciente sÃ³ pode gravar a prÃ³pria anamnese
     if (tipo == "paciente" && pid.HasValue && pid.Value != input.PacienteId)
-        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+        return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
 
-    // Validar se paciente pertence à empresa do token
+    // Validar se paciente pertence Ã  empresa do token
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
     using (var cmdVal = new NpgsqlCommand("SELECT 1 FROM pacientes WHERE id = @id AND empresa_id = @emp", conn))
@@ -1169,10 +1205,10 @@ app.MapPost("/api/anamnese", async (AnamneseInput input, ClaimsPrincipal user) =
         cmdVal.Parameters.AddWithValue("id", input.PacienteId);
         cmdVal.Parameters.AddWithValue("emp", emp);
         if (await cmdVal.ExecuteScalarAsync() == null)
-            return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+            return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
     }
 
-    // Perfil: nutricionista/admin/profissional (equipe) podem gravar; paciente (próprio) também por enquanto
+    // Perfil: nutricionista/admin/profissional (equipe) podem gravar; paciente (prÃ³prio) tambÃ©m por enquanto
     if (tipo == "equipe" && !(perfil == "nutricionista" || perfil == "admin" || perfil == "profissional"))
         return Results.Forbid();
 
@@ -1203,7 +1239,7 @@ app.MapPost("/api/anamnese", async (AnamneseInput input, ClaimsPrincipal user) =
     return Results.Ok(new { id, mensagem = "Anamnese salva com sucesso!" });
 }).RequireAuthorization();
 
-// GET /api/anamnese/{pacienteId} - Lê anamnese (nutricionista/admin da empresa, ou paciente próprio)
+// GET /api/anamnese/{pacienteId} - LÃª anamnese (nutricionista/admin da empresa, ou paciente prÃ³prio)
 app.MapGet("/api/anamnese/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
     int emp = Auth.Empresa(user);
@@ -1211,11 +1247,11 @@ app.MapGet("/api/anamnese/{pacienteId}", async (int pacienteId, ClaimsPrincipal 
     int? pid = user.FindFirst("pid")?.Value != null ? int.Parse(user.FindFirst("pid")!.Value) : null;
     string? perfil = user.FindFirst("perfil")?.Value;
 
-    // Validar ownership: paciente só pode ler a própria anamnese
+    // Validar ownership: paciente sÃ³ pode ler a prÃ³pria anamnese
     if (tipo == "paciente" && pid.HasValue && pid.Value != pacienteId)
-        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+        return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
 
-    // Validar se paciente pertence à empresa do token
+    // Validar se paciente pertence Ã  empresa do token
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
     using (var cmdVal = new NpgsqlCommand("SELECT 1 FROM pacientes WHERE id = @id AND empresa_id = @emp", conn))
@@ -1223,10 +1259,10 @@ app.MapGet("/api/anamnese/{pacienteId}", async (int pacienteId, ClaimsPrincipal 
         cmdVal.Parameters.AddWithValue("id", pacienteId);
         cmdVal.Parameters.AddWithValue("emp", emp);
         if (await cmdVal.ExecuteScalarAsync() == null)
-            return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+            return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
     }
 
-    // Perfil: nutricionista/admin/profissional (equipe) podem ler; paciente (próprio) também
+    // Perfil: nutricionista/admin/profissional (equipe) podem ler; paciente (prÃ³prio) tambÃ©m
     if (tipo == "equipe" && !(perfil == "nutricionista" || perfil == "admin" || perfil == "profissional"))
         return Results.Forbid();
 
@@ -1259,15 +1295,15 @@ app.MapGet("/api/anamnese/{pacienteId}", async (int pacienteId, ClaimsPrincipal 
     });
 }).RequireAuthorization();
 
-// =============================================== PLANO ALIMENTAR: REFEIÇÕES =====================================================
+// =============================================== PLANO ALIMENTAR: REFEIÃ‡Ã•ES =====================================================
 app.MapPost("/api/planos/refeicao", async (RefeicaoInput input, ClaimsPrincipal user) =>
 {
     if (string.IsNullOrWhiteSpace(input.NomeRefeicao))
-        return Results.BadRequest(new { mensagem = "Informe o nome da refeição." });
+        return Results.BadRequest(new { mensagem = "Informe o nome da refeiÃ§Ã£o." });
 
     int emp = Auth.Empresa(user);
 
-    // Validar se paciente pertence à empresa do token
+    // Validar se paciente pertence Ã  empresa do token
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
     using (var cmdVal = new NpgsqlCommand("SELECT 1 FROM pacientes WHERE id = @id AND empresa_id = @emp", conn))
@@ -1275,10 +1311,10 @@ app.MapPost("/api/planos/refeicao", async (RefeicaoInput input, ClaimsPrincipal 
         cmdVal.Parameters.AddWithValue("id", input.PacienteId);
         cmdVal.Parameters.AddWithValue("emp", emp);
         if (await cmdVal.ExecuteScalarAsync() == null)
-            return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+            return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
     }
 
-    // Um plano por paciente (cria só se não existir)
+    // Um plano por paciente (cria sÃ³ se nÃ£o existir)
     using var cmdPlano = new NpgsqlCommand(@"
         INSERT INTO planos_alimentares (paciente_id, empresa_id, nome_plano, meta_calorica_kcal)
         VALUES (@paciente_id, @emp, 'Plano Personalizado', 2000)
@@ -1301,15 +1337,15 @@ app.MapPost("/api/planos/refeicao", async (RefeicaoInput input, ClaimsPrincipal 
 
     var id = await cmdRef.ExecuteScalarAsync();
     if (id is null)
-        return Results.Conflict(new { mensagem = "Já existe uma refeição com esse nome neste plano." });
+        return Results.Conflict(new { mensagem = "JÃ¡ existe uma refeiÃ§Ã£o com esse nome neste plano." });
 
-    return Results.Created($"/api/planos/refeicao/{id}", new { id, mensagem = "Refeição criada!" });
+    return Results.Created($"/api/planos/refeicao/{id}", new { id, mensagem = "RefeiÃ§Ã£o criada!" });
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 app.MapPut("/api/planos/refeicao/{id}", async (int id, RefeicaoInput input, ClaimsPrincipal user) =>
 {
     if (string.IsNullOrWhiteSpace(input.NomeRefeicao))
-        return Results.BadRequest(new { mensagem = "Informe o nome da refeição." });
+        return Results.BadRequest(new { mensagem = "Informe o nome da refeiÃ§Ã£o." });
 
     int emp = Auth.Empresa(user);
 
@@ -1329,12 +1365,12 @@ app.MapPut("/api/planos/refeicao/{id}", async (int id, RefeicaoInput input, Clai
     {
         var rows = await cmd.ExecuteNonQueryAsync();
         return rows > 0
-            ? Results.Ok(new { mensagem = "Refeição atualizada!" })
-            : Results.NotFound(new { mensagem = "Refeição não encontrada." });
+            ? Results.Ok(new { mensagem = "RefeiÃ§Ã£o atualizada!" })
+            : Results.NotFound(new { mensagem = "RefeiÃ§Ã£o nÃ£o encontrada." });
     }
     catch (PostgresException ex) when (ex.SqlState == "23505")
     {
-        return Results.Conflict(new { mensagem = "Já existe uma refeição com esse nome neste plano." });
+        return Results.Conflict(new { mensagem = "JÃ¡ existe uma refeiÃ§Ã£o com esse nome neste plano." });
     }
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 
@@ -1348,31 +1384,31 @@ app.MapDelete("/api/planos/refeicao/{id}", async (int id, ClaimsPrincipal user) 
     cmd.Parameters.AddWithValue("emp", emp);
     var rows = await cmd.ExecuteNonQueryAsync();
     return rows > 0
-        ? Results.Ok(new { mensagem = "Refeição excluída!" })
-        : Results.NotFound(new { mensagem = "Refeição não encontrada." });
+        ? Results.Ok(new { mensagem = "RefeiÃ§Ã£o excluÃ­da!" })
+        : Results.NotFound(new { mensagem = "RefeiÃ§Ã£o nÃ£o encontrada." });
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
-// Exclui uma opção inteira (todos os itens e substituições dela)
+// Exclui uma opÃ§Ã£o inteira (todos os itens e substituiÃ§Ãµes dela)
 app.MapDelete("/api/planos/refeicao/{refeicaoId}/opcao/{opcao}", async (int refeicaoId, int opcao, ClaimsPrincipal user) =>
 {
     int emp = Auth.Empresa(user);
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
-    // Valida que a refeição pertence à empresa do token
+    // Valida que a refeiÃ§Ã£o pertence Ã  empresa do token
     using (var cmdCheck = new NpgsqlCommand("SELECT 1 FROM refeicoes WHERE id = @r AND empresa_id = @emp", conn))
     {
         cmdCheck.Parameters.AddWithValue("r", refeicaoId);
         cmdCheck.Parameters.AddWithValue("emp", emp);
         if (await cmdCheck.ExecuteScalarAsync() == null)
-            return Results.NotFound(new { mensagem = "Refeição não encontrada." });
+            return Results.NotFound(new { mensagem = "RefeiÃ§Ã£o nÃ£o encontrada." });
     }
     using var cmd = new NpgsqlCommand(
         "DELETE FROM itens_refeicao WHERE refeicao_id = @r AND opcao = @o", conn);
     cmd.Parameters.AddWithValue("r", refeicaoId);
     cmd.Parameters.AddWithValue("o", opcao);
     await cmd.ExecuteNonQueryAsync();
-    return Results.Ok(new { mensagem = "Opção excluída!" });
+    return Results.Ok(new { mensagem = "OpÃ§Ã£o excluÃ­da!" });
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
-//===================================PLANO ALIMENTAR: ITENS (alimentos, opções e substituições)========================================================
+//===================================PLANO ALIMENTAR: ITENS (alimentos, opÃ§Ãµes e substituiÃ§Ãµes)========================================================
 app.MapPost("/api/planos/item", async (ItemInput input, ClaimsPrincipal user) =>
 {
     int emp = Auth.Empresa(user);
@@ -1383,7 +1419,7 @@ app.MapPost("/api/planos/item", async (ItemInput input, ClaimsPrincipal user) =>
     int refeicaoId = input.RefeicaoId;
     int opcao = input.Opcao > 0 ? input.Opcao : 1;
 
-    // Substituição herda refeição e opção do item original
+    // SubstituiÃ§Ã£o herda refeiÃ§Ã£o e opÃ§Ã£o do item original
     if (input.SubstituiItemId.HasValue)
     {
         using var cmdPai = new NpgsqlCommand(
@@ -1391,19 +1427,19 @@ app.MapPost("/api/planos/item", async (ItemInput input, ClaimsPrincipal user) =>
         cmdPai.Parameters.AddWithValue("id", input.SubstituiItemId.Value);
         using var rd = await cmdPai.ExecuteReaderAsync();
         if (!await rd.ReadAsync())
-            return Results.BadRequest(new { mensagem = "Item original não encontrado." });
+            return Results.BadRequest(new { mensagem = "Item original nÃ£o encontrado." });
         refeicaoId = rd.GetInt32(0);
         opcao = rd.GetInt32(1);
     }
 
-    // Valida que a refeição pertence à empresa do token
+    // Valida que a refeiÃ§Ã£o pertence Ã  empresa do token
     using (var cmdCheck = new NpgsqlCommand(
         "SELECT 1 FROM refeicoes r JOIN planos_alimentares p ON p.id = r.plano_id WHERE r.id = @r AND p.empresa_id = @emp", conn))
     {
         cmdCheck.Parameters.AddWithValue("r", refeicaoId);
         cmdCheck.Parameters.AddWithValue("emp", emp);
         if (await cmdCheck.ExecuteScalarAsync() == null)
-            return Results.NotFound(new { mensagem = "Refeição não encontrada." });
+            return Results.NotFound(new { mensagem = "RefeiÃ§Ã£o nÃ£o encontrada." });
     }
 
     using var cmd = new NpgsqlCommand(@"
@@ -1445,7 +1481,7 @@ app.MapPost("/api/planos/item/calcular", async (ItemCalcularInput input, ClaimsP
     int refeicaoId = input.RefeicaoId;
     int opcao = input.Opcao > 0 ? input.Opcao : 1;
 
-    // Substituição herda refeição e opção do item original
+    // SubstituiÃ§Ã£o herda refeiÃ§Ã£o e opÃ§Ã£o do item original
     if (input.SubstituiItemId.HasValue)
     {
         using var cmdPai = new NpgsqlCommand(
@@ -1453,22 +1489,22 @@ app.MapPost("/api/planos/item/calcular", async (ItemCalcularInput input, ClaimsP
         cmdPai.Parameters.AddWithValue("id", input.SubstituiItemId.Value);
         using var rd = await cmdPai.ExecuteReaderAsync();
         if (!await rd.ReadAsync())
-            return Results.BadRequest(new { mensagem = "Item original não encontrado." });
+            return Results.BadRequest(new { mensagem = "Item original nÃ£o encontrado." });
         refeicaoId = rd.GetInt32(0);
         opcao = rd.GetInt32(1);
     }
 
-    // Valida que a refeição pertence à empresa do token
+    // Valida que a refeiÃ§Ã£o pertence Ã  empresa do token
     using (var cmdCheck = new NpgsqlCommand(
         "SELECT 1 FROM refeicoes r JOIN planos_alimentares p ON p.id = r.plano_id WHERE r.id = @r AND p.empresa_id = @emp", conn))
     {
         cmdCheck.Parameters.AddWithValue("r", refeicaoId);
         cmdCheck.Parameters.AddWithValue("emp", emp);
         if (await cmdCheck.ExecuteScalarAsync() == null)
-            return Results.NotFound(new { mensagem = "Refeição não encontrada." });
+            return Results.NotFound(new { mensagem = "RefeiÃ§Ã£o nÃ£o encontrada." });
     }
 
-    // Chama o microserviço Python para calcular
+    // Chama o microserviÃ§o Python para calcular
     var httpClient = clientFactory.CreateClient("Python");
     var payloadPython = new
     {
@@ -1494,13 +1530,13 @@ app.MapPost("/api/planos/item/calcular", async (ItemCalcularInput input, ClaimsP
     }
     catch (HttpRequestException ex)
     {
-        logger.LogError(ex, "Falha de rede/ligação ao chamar Python Service /calcular-item");
-        return Results.Json(new { mensagem = "O serviço de cálculos nutricionais está temporariamente indisponível. Tente novamente em alguns instantes." }, statusCode: 503);
+        logger.LogError(ex, "Falha de rede/ligaÃ§Ã£o ao chamar Python Service /calcular-item");
+        return Results.Json(new { mensagem = "O serviÃ§o de cÃ¡lculos nutricionais estÃ¡ temporariamente indisponÃ­vel. Tente novamente em alguns instantes." }, statusCode: 503);
     }
     catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException || ex.CancellationToken.IsCancellationRequested)
     {
         logger.LogError(ex, "Timeout ao chamar Python Service /calcular-item (60s)");
-        return Results.Json(new { mensagem = "O serviço de cálculos nutricionais está temporariamente indisponível. Tente novamente em alguns instantes." }, statusCode: 503);
+        return Results.Json(new { mensagem = "O serviÃ§o de cÃ¡lculos nutricionais estÃ¡ temporariamente indisponÃ­vel. Tente novamente em alguns instantes." }, statusCode: 503);
     }
 
     if (!responsePython.IsSuccessStatusCode)
@@ -1511,17 +1547,17 @@ app.MapPost("/api/planos/item/calcular", async (ItemCalcularInput input, ClaimsP
         if ((int)responsePython.StatusCode >= 500 || responsePython.StatusCode == System.Net.HttpStatusCode.BadGateway || responsePython.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable || responsePython.StatusCode == System.Net.HttpStatusCode.GatewayTimeout || responsePython.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             logger.LogWarning("Python Service /calcular-item retornou {StatusCode}: {Body}", responsePython.StatusCode, logBody);
-            return Results.Json(new { mensagem = "O serviço de cálculos nutricionais está temporariamente indisponível. Tente novamente em alguns instantes." }, statusCode: 503);
+            return Results.Json(new { mensagem = "O serviÃ§o de cÃ¡lculos nutricionais estÃ¡ temporariamente indisponÃ­vel. Tente novamente em alguns instantes." }, statusCode: 503);
         }
         else if ((int)responsePython.StatusCode >= 400)
         {
             logger.LogWarning("Python Service /calcular-item retornou erro 4xx {StatusCode}: {Body}", responsePython.StatusCode, logBody);
-            return Results.Json(new { mensagem = "Dados inválidos para cálculo nutricional. Verifique os campos informados." }, statusCode: 400);
+            return Results.Json(new { mensagem = "Dados invÃ¡lidos para cÃ¡lculo nutricional. Verifique os campos informados." }, statusCode: 400);
         }
         else
         {
             logger.LogWarning("Python Service /calcular-item retornou {StatusCode}: {Body}", responsePython.StatusCode, logBody);
-            return Results.Json(new { mensagem = "Erro inesperado no serviço de cálculos nutricionais." }, statusCode: 502);
+            return Results.Json(new { mensagem = "Erro inesperado no serviÃ§o de cÃ¡lculos nutricionais." }, statusCode: 502);
         }
     }
 
@@ -1529,7 +1565,7 @@ app.MapPost("/api/planos/item/calcular", async (ItemCalcularInput input, ClaimsP
     using var doc = JsonDocument.Parse(jsonResp);
     var root = doc.RootElement;
 
-    // Extrai valores calculados (podem ser null se dado não disponível na TACO)
+    // Extrai valores calculados (podem ser null se dado nÃ£o disponÃ­vel na TACO)
     string alimentoNome = root.GetProperty("alimento_nome").GetString()!;
     double gramas = root.GetProperty("gramas").GetDouble();
 
@@ -1551,11 +1587,11 @@ app.MapPost("/api/planos/item/calcular", async (ItemCalcularInput input, ClaimsP
     {
         return Results.BadRequest(new
         {
-            mensagem = $"Alimento '{alimentoNome}' não possui dados nutricionais disponíveis na TACO para cálculo automático. Use entrada manual."
+            mensagem = $"Alimento '{alimentoNome}' nÃ£o possui dados nutricionais disponÃ­veis na TACO para cÃ¡lculo automÃ¡tico. Use entrada manual."
         });
     }
 
-    // Insere o item com valores calculados (usa DBNull.Value para macros não disponíveis)
+    // Insere o item com valores calculados (usa DBNull.Value para macros nÃ£o disponÃ­veis)
     using var cmd = new NpgsqlCommand(@"
         INSERT INTO itens_refeicao
             (refeicao_id, empresa_id, opcao, substitui_item_id, alimento_nome_livre, quantidade_g, medida_caseira,
@@ -1584,7 +1620,7 @@ app.MapPost("/api/planos/item/calcular", async (ItemCalcularInput input, ClaimsP
     return Results.Created($"/api/planos/item/{newId}", new
     {
         id = newId,
-        mensagem = "Item adicionado com cálculo automático!",
+        mensagem = "Item adicionado com cÃ¡lculo automÃ¡tico!",
         calculo = new { baseCalculo = baseCalculo, gramas, kcal, proteina, carbo, gordura }
     });
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
@@ -1596,14 +1632,14 @@ app.MapPut("/api/planos/item/{id}", async (int id, ItemInput input, ClaimsPrinci
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
-    // Valida que o item pertence à empresa do token
+    // Valida que o item pertence Ã  empresa do token
     using (var cmdCheck = new NpgsqlCommand(
         "SELECT 1 FROM itens_refeicao ir JOIN refeicoes r ON r.id = ir.refeicao_id JOIN planos_alimentares p ON p.id = r.plano_id WHERE ir.id = @id AND p.empresa_id = @emp", conn))
     {
         cmdCheck.Parameters.AddWithValue("id", id);
         cmdCheck.Parameters.AddWithValue("emp", emp);
         if (await cmdCheck.ExecuteScalarAsync() == null)
-            return Results.NotFound(new { mensagem = "Item não encontrado." });
+            return Results.NotFound(new { mensagem = "Item nÃ£o encontrado." });
     }
 
     using var cmd = new NpgsqlCommand(@"
@@ -1624,7 +1660,7 @@ app.MapPut("/api/planos/item/{id}", async (int id, ItemInput input, ClaimsPrinci
     var rows = await cmd.ExecuteNonQueryAsync();
     return rows > 0
         ? Results.Ok(new { mensagem = "Item atualizado!" })
-        : Results.NotFound(new { mensagem = "Item não encontrado." });
+        : Results.NotFound(new { mensagem = "Item nÃ£o encontrado." });
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 app.MapDelete("/api/planos/item/{id}", async (int id, ClaimsPrincipal user) =>
@@ -1634,14 +1670,14 @@ app.MapDelete("/api/planos/item/{id}", async (int id, ClaimsPrincipal user) =>
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
-    // Valida que o item pertence à empresa do token
+    // Valida que o item pertence Ã  empresa do token
     using (var cmdCheck = new NpgsqlCommand(
         "SELECT 1 FROM itens_refeicao ir JOIN refeicoes r ON r.id = ir.refeicao_id JOIN planos_alimentares p ON p.id = r.plano_id WHERE ir.id = @id AND p.empresa_id = @emp", conn))
     {
         cmdCheck.Parameters.AddWithValue("id", id);
         cmdCheck.Parameters.AddWithValue("emp", emp);
         if (await cmdCheck.ExecuteScalarAsync() == null)
-            return Results.NotFound(new { mensagem = "Item não encontrado." });
+            return Results.NotFound(new { mensagem = "Item nÃ£o encontrado." });
     }
 
     using var cmd = new NpgsqlCommand("DELETE FROM itens_refeicao WHERE id = @id", conn);
@@ -1649,23 +1685,23 @@ app.MapDelete("/api/planos/item/{id}", async (int id, ClaimsPrincipal user) =>
 
     var rowsAffected = await cmd.ExecuteNonQueryAsync();
     return rowsAffected > 0
-        ? Results.Ok(new { mensagem = "Item excluído com sucesso!" })
-        : Results.NotFound(new { mensagem = "Item não encontrado." });
+        ? Results.Ok(new { mensagem = "Item excluÃ­do com sucesso!" })
+        : Results.NotFound(new { mensagem = "Item nÃ£o encontrado." });
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 
-// ============================================PLANO ALIMENTAR: LEITURA E VERSÕES===========================================
-// Plano completo (refeições → itens, com opção e substituição)
+// ============================================PLANO ALIMENTAR: LEITURA E VERSÃ•ES===========================================
+// Plano completo (refeiÃ§Ãµes â†’ itens, com opÃ§Ã£o e substituiÃ§Ã£o)
 app.MapGet("/api/planos/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
     return Results.Ok(await PlanoHelper.Montar(connString, pacienteId, Auth.Empresa(user)));
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
-// Salvar versão (snapshot do plano + orientações)
+// Salvar versÃ£o (snapshot do plano + orientaÃ§Ãµes)
 app.MapPost("/api/planos/{pacienteId}/versoes", async (int pacienteId, VersaoInput input, ClaimsPrincipal user) =>
 {
     var plano = await PlanoHelper.Montar(connString, pacienteId, Auth.Empresa(user));
     var refeicoes = (List<Dictionary<string, object?>>)plano["refeicoes"]!;
     if (refeicoes.Count == 0)
-        return Results.BadRequest(new { mensagem = "O plano está vazio. Adicione refeições antes de salvar uma versão." });
+        return Results.BadRequest(new { mensagem = "O plano estÃ¡ vazio. Adicione refeiÃ§Ãµes antes de salvar uma versÃ£o." });
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
@@ -1696,15 +1732,15 @@ app.MapPost("/api/planos/{pacienteId}/versoes", async (int pacienteId, VersaoInp
     cmd.Parameters.Add(new NpgsqlParameter("s", NpgsqlTypes.NpgsqlDbType.Jsonb) { Value = snapshot });
 
     var id = await cmd.ExecuteScalarAsync();
-    return Results.Ok(new { id, numero, mensagem = $"Versão {numero} salva!" });
+    return Results.Ok(new { id, numero, mensagem = $"VersÃ£o {numero} salva!" });
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 app.MapGet("/api/planos/{pacienteId}/versoes", async (int pacienteId, ClaimsPrincipal user) =>
 {
     int emp = Auth.Empresa(user);
-    // Validar se paciente pertence à empresa
+    // Validar se paciente pertence Ã  empresa
     if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
-        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+        return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
 
     var lista = new List<object>();
     using var conn = new NpgsqlConnection(connString);
@@ -1735,12 +1771,12 @@ app.MapGet("/api/planos/versao/{id}", async (int id, ClaimsPrincipal user) =>
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
-    // Para token de paciente: validar que a versão pertence ao próprio paciente
+    // Para token de paciente: validar que a versÃ£o pertence ao prÃ³prio paciente
     if (tipoClaim == "paciente")
     {
         var pidClaim = user.FindFirst("pid");
         if (pidClaim == null || !int.TryParse(pidClaim.Value, out var tokenPacienteId))
-            return Results.NotFound(new { mensagem = "Versão não encontrada." });
+            return Results.NotFound(new { mensagem = "VersÃ£o nÃ£o encontrada." });
 
         using var cmd = new NpgsqlCommand(@"
             SELECT numero, COALESCE(descricao, ''), criado_em, snapshot::text
@@ -1750,7 +1786,7 @@ app.MapGet("/api/planos/versao/{id}", async (int id, ClaimsPrincipal user) =>
         cmd.Parameters.AddWithValue("pid", tokenPacienteId);
         using var rd = await cmd.ExecuteReaderAsync();
         if (!await rd.ReadAsync())
-            return Results.NotFound(new { mensagem = "Versão não encontrada." });
+            return Results.NotFound(new { mensagem = "VersÃ£o nÃ£o encontrada." });
 
         return Results.Ok(new
         {
@@ -1769,7 +1805,7 @@ app.MapGet("/api/planos/versao/{id}", async (int id, ClaimsPrincipal user) =>
     cmdEquipe.Parameters.AddWithValue("emp", emp);
     using var rdEquipe = await cmdEquipe.ExecuteReaderAsync();
     if (!await rdEquipe.ReadAsync())
-        return Results.NotFound(new { mensagem = "Versão não encontrada." });
+        return Results.NotFound(new { mensagem = "VersÃ£o nÃ£o encontrada." });
 
     return Results.Ok(new
     {
@@ -1780,13 +1816,13 @@ app.MapGet("/api/planos/versao/{id}", async (int id, ClaimsPrincipal user) =>
     });
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 
-// ======================================ORIENTAÇÕES NUTRICIONAIS===============================================================
+// ======================================ORIENTAÃ‡Ã•ES NUTRICIONAIS===============================================================
 app.MapPost("/api/orientacoes", async (OrientacaoDto dto, ClaimsPrincipal user) =>
 {
     int emp = Auth.Empresa(user);
-    // Validar se paciente pertence à empresa
+    // Validar se paciente pertence Ã  empresa
     if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, dto.PacienteId, emp))
-        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+        return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
@@ -1799,15 +1835,15 @@ app.MapPost("/api/orientacoes", async (OrientacaoDto dto, ClaimsPrincipal user) 
     cmd.Parameters.AddWithValue("emp", emp);
     cmd.Parameters.AddWithValue("texto", dto.Texto ?? "");
     await cmd.ExecuteNonQueryAsync();
-    return Results.Ok(new { mensagem = "Orientações salvas com sucesso!" });
+    return Results.Ok(new { mensagem = "OrientaÃ§Ãµes salvas com sucesso!" });
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 app.MapGet("/api/orientacoes/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
     int emp = Auth.Empresa(user);
-    // Validar se paciente pertence à empresa
+    // Validar se paciente pertence Ã  empresa
     if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
-        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+        return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
@@ -1822,13 +1858,13 @@ var tiposMeta = new HashSet<string> { "agua", "frutas", "refeicoes", "atividade"
 var resultadosMeta = new HashSet<string> { "mantida", "parcial", "nao_mantida" };
 var statusMeta = new HashSet<string> { "ativa", "concluida", "arquivada" };
 
-// Lista as metas do paciente já com o histórico de acompanhamento
+// Lista as metas do paciente jÃ¡ com o histÃ³rico de acompanhamento
 app.MapGet("/api/metas/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
     int emp = Auth.Empresa(user);
-    // Validar se paciente pertence à empresa
+    // Validar se paciente pertence Ã  empresa
     if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
-        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+        return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
@@ -1892,12 +1928,12 @@ app.MapGet("/api/metas/{pacienteId}", async (int pacienteId, ClaimsPrincipal use
 app.MapPost("/api/metas", async (MetaInput input, ClaimsPrincipal user) =>
 {
     if (string.IsNullOrWhiteSpace(input.Titulo))
-        return Results.BadRequest(new { mensagem = "Informe o título da meta." });
+        return Results.BadRequest(new { mensagem = "Informe o tÃ­tulo da meta." });
 
     int emp = Auth.Empresa(user);
-    // Validar se paciente pertence à empresa
+    // Validar se paciente pertence Ã  empresa
     if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, input.PacienteId, emp))
-        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+        return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
 
     var tipo = tiposMeta.Contains(input.Tipo ?? "") ? input.Tipo! : "outro";
 
@@ -1923,7 +1959,7 @@ app.MapPost("/api/metas", async (MetaInput input, ClaimsPrincipal user) =>
 app.MapPut("/api/metas/{id}", async (int id, MetaInput input, ClaimsPrincipal user) =>
 {
     if (string.IsNullOrWhiteSpace(input.Titulo))
-        return Results.BadRequest(new { mensagem = "Informe o título da meta." });
+        return Results.BadRequest(new { mensagem = "Informe o tÃ­tulo da meta." });
 
     int emp = Auth.Empresa(user);
 
@@ -1950,7 +1986,7 @@ app.MapPut("/api/metas/{id}", async (int id, MetaInput input, ClaimsPrincipal us
     var rows = await cmd.ExecuteNonQueryAsync();
     return rows > 0
         ? Results.Ok(new { mensagem = "Meta atualizada!" })
-        : Results.NotFound(new { mensagem = "Meta não encontrada." });
+        : Results.NotFound(new { mensagem = "Meta nÃ£o encontrada." });
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 app.MapDelete("/api/metas/{id}", async (int id, ClaimsPrincipal user) =>
@@ -1964,22 +2000,22 @@ app.MapDelete("/api/metas/{id}", async (int id, ClaimsPrincipal user) =>
     cmd.Parameters.AddWithValue("emp", emp);
     var rows = await cmd.ExecuteNonQueryAsync();
     return rows > 0
-        ? Results.Ok(new { mensagem = "Meta excluída!" })
-        : Results.NotFound(new { mensagem = "Meta não encontrada." });
+        ? Results.Ok(new { mensagem = "Meta excluÃ­da!" })
+        : Results.NotFound(new { mensagem = "Meta nÃ£o encontrada." });
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 
-// Registra como a meta foi no check-in (mantida / parcial / não mantida)
+// Registra como a meta foi no check-in (mantida / parcial / nÃ£o mantida)
 app.MapPost("/api/metas/acompanhamento", async (AcompanhamentoInput input, ClaimsPrincipal user) =>
 {
     if (!resultadosMeta.Contains(input.Resultado ?? ""))
-        return Results.BadRequest(new { mensagem = "Resultado inválido." });
+        return Results.BadRequest(new { mensagem = "Resultado invÃ¡lido." });
 
     int emp = Auth.Empresa(user);
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
-    // Buscar empresa_id via meta -> paciente e validar que pertence à empresa do usuário
+    // Buscar empresa_id via meta -> paciente e validar que pertence Ã  empresa do usuÃ¡rio
     int empresaId;
     using (var cmdEmp = new NpgsqlCommand(@"
         SELECT p.empresa_id
@@ -1990,7 +2026,7 @@ app.MapPost("/api/metas/acompanhamento", async (AcompanhamentoInput input, Claim
         cmdEmp.Parameters.AddWithValue("metaId", input.MetaId);
         cmdEmp.Parameters.AddWithValue("emp", emp);
         var result = await cmdEmp.ExecuteScalarAsync();
-        if (result == null) return Results.NotFound(new { mensagem = "Meta não encontrada." });
+        if (result == null) return Results.NotFound(new { mensagem = "Meta nÃ£o encontrada." });
         empresaId = Convert.ToInt32(result);
     }
 
@@ -2021,12 +2057,12 @@ app.MapDelete("/api/metas/acompanhamento/{id}", async (int id, ClaimsPrincipal u
     cmd.Parameters.AddWithValue("emp", emp);
     var rows = await cmd.ExecuteNonQueryAsync();
     return rows > 0
-        ? Results.Ok(new { mensagem = "Acompanhamento excluído!" })
-        : Results.NotFound(new { mensagem = "Acompanhamento não encontrado." });
+        ? Results.Ok(new { mensagem = "Acompanhamento excluÃ­do!" })
+        : Results.NotFound(new { mensagem = "Acompanhamento nÃ£o encontrado." });
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 // =====================================================================
-// ARQUIVOS (fotos de evolução e exames)
+// ARQUIVOS (fotos de evoluÃ§Ã£o e exames)
 // =====================================================================
 app.MapGet("/api/arquivos/{id}", async (int id, ClaimsPrincipal user, HttpContext http) =>
 {
@@ -2035,7 +2071,7 @@ app.MapGet("/api/arquivos/{id}", async (int id, ClaimsPrincipal user, HttpContex
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
-    // Verificar se arquivo pertence à empresa do usuário
+    // Verificar se arquivo pertence Ã  empresa do usuÃ¡rio
     using var cmdCheck = new NpgsqlCommand(@"
         SELECT a.mime, a.dados, a.paciente_id
         FROM arquivos_paciente a
@@ -2046,7 +2082,7 @@ app.MapGet("/api/arquivos/{id}", async (int id, ClaimsPrincipal user, HttpContex
 
     using var rd = await cmdCheck.ExecuteReaderAsync();
     if (!await rd.ReadAsync())
-        return Results.NotFound(new { mensagem = "Arquivo não encontrado." });
+        return Results.NotFound(new { mensagem = "Arquivo nÃ£o encontrado." });
 
     var mime = rd.GetString(0);
     var dados = rd.GetFieldValue<byte[]>(1);
@@ -2062,13 +2098,13 @@ app.MapDelete("/api/arquivos/{id}", async (int id, ClaimsPrincipal user, HttpCon
 {
     int emp = int.Parse(user.FindFirst("empresa")!.Value);
 
-    // Validar token de paciente: só pode excluir arquivos do próprio paciente
+    // Validar token de paciente: sÃ³ pode excluir arquivos do prÃ³prio paciente
     var tipoClaim = user.FindFirst("tipo")?.Value;
     if (tipoClaim == "paciente")
     {
         var pidClaim = user.FindFirst("pid");
         if (pidClaim == null || !int.TryParse(pidClaim.Value, out var tokenPacienteId))
-            return Results.NotFound(new { mensagem = "Arquivo não encontrado." });
+            return Results.NotFound(new { mensagem = "Arquivo nÃ£o encontrado." });
 
         using var connCheck = new NpgsqlConnection(connString);
         await connCheck.OpenAsync();
@@ -2076,13 +2112,13 @@ app.MapDelete("/api/arquivos/{id}", async (int id, ClaimsPrincipal user, HttpCon
         cmdPid.Parameters.AddWithValue("id", id);
         var arquivoPacienteId = await cmdPid.ExecuteScalarAsync();
         if (arquivoPacienteId == null || Convert.ToInt32(arquivoPacienteId) != tokenPacienteId)
-            return Results.NotFound(new { mensagem = "Arquivo não encontrado." });
+            return Results.NotFound(new { mensagem = "Arquivo nÃ£o encontrado." });
     }
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
-    // Verificar se arquivo pertence à empresa do usuário
+    // Verificar se arquivo pertence Ã  empresa do usuÃ¡rio
     using var cmdCheck = new NpgsqlCommand(@"
         SELECT a.id FROM arquivos_paciente a
         JOIN pacientes p ON p.id = a.paciente_id
@@ -2092,7 +2128,7 @@ app.MapDelete("/api/arquivos/{id}", async (int id, ClaimsPrincipal user, HttpCon
 
     var exists = await cmdCheck.ExecuteScalarAsync();
     if (exists == null)
-        return Results.NotFound(new { mensagem = "Arquivo não encontrado." });
+        return Results.NotFound(new { mensagem = "Arquivo nÃ£o encontrado." });
 
     using var cmd = new NpgsqlCommand("DELETE FROM arquivos_paciente WHERE id = @id", conn);
     cmd.Parameters.AddWithValue("id", id);
@@ -2101,20 +2137,20 @@ app.MapDelete("/api/arquivos/{id}", async (int id, ClaimsPrincipal user, HttpCon
     if (rows > 0)
     {
         await RegistrarAuditoria(http, "exclusao", id);
-        return Results.Ok(new { mensagem = "Arquivo excluído!" });
+        return Results.Ok(new { mensagem = "Arquivo excluÃ­do!" });
     }
-    return Results.NotFound(new { mensagem = "Arquivo não encontrado." });
+    return Results.NotFound(new { mensagem = "Arquivo nÃ£o encontrado." });
 });
 
 // =====================================================================
-// EVOLUÇÃO (peso, medidas, fotos, observações)
+// EVOLUÃ‡ÃƒO (peso, medidas, fotos, observaÃ§Ãµes)
 // =====================================================================
 app.MapGet("/api/evolucao/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
     int emp = Auth.Empresa(user);
-    // Validar se paciente pertence à empresa
+    // Validar se paciente pertence Ã  empresa
     if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
-        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+        return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
@@ -2157,11 +2193,11 @@ app.MapPost("/api/evolucao", async (HttpRequest request, ClaimsPrincipal user) =
     int emp = Auth.Empresa(user);
     var form = await request.ReadFormAsync();
     if (!int.TryParse(form["pacienteId"], out var pacienteId))
-        return Results.BadRequest(new { mensagem = "Paciente inválido." });
+        return Results.BadRequest(new { mensagem = "Paciente invÃ¡lido." });
 
-    // Validar se paciente pertence à empresa
+    // Validar se paciente pertence Ã  empresa
     if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
-        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+        return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
 
     var c = EvolucaoCampos.Ler(form);
     if (c.Vazio && form.Files.Count == 0)
@@ -2196,7 +2232,7 @@ app.MapPost("/api/evolucao", async (HttpRequest request, ClaimsPrincipal user) =
     await ArquivoHelper.Salvar(conn, tx, pacienteId, "evolucao", id, form.Files);
     await tx.CommitAsync();
 
-    return Results.Created($"/api/evolucao/{id}", new { id, mensagem = "Registro de evolução salvo!" });
+    return Results.Created($"/api/evolucao/{id}", new { id, mensagem = "Registro de evoluÃ§Ã£o salvo!" });
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 app.MapPut("/api/evolucao/{id}", async (int id, HttpRequest request, ClaimsPrincipal user) =>
@@ -2232,7 +2268,7 @@ app.MapPut("/api/evolucao/{id}", async (int id, HttpRequest request, ClaimsPrinc
 
     var pid = await cmd.ExecuteScalarAsync();
     if (pid is null)
-        return Results.NotFound(new { mensagem = "Registro não encontrado." });
+        return Results.NotFound(new { mensagem = "Registro nÃ£o encontrado." });
 
     await ArquivoHelper.Salvar(conn, tx, Convert.ToInt32(pid), "evolucao", id, form.Files);
     await tx.CommitAsync();
@@ -2260,17 +2296,17 @@ app.MapDelete("/api/evolucao/{id}", async (int id, ClaimsPrincipal user) =>
     await tx.CommitAsync();
 
     return rows > 0
-        ? Results.Ok(new { mensagem = "Registro excluído!" })
-        : Results.NotFound(new { mensagem = "Registro não encontrado." });
+        ? Results.Ok(new { mensagem = "Registro excluÃ­do!" })
+        : Results.NotFound(new { mensagem = "Registro nÃ£o encontrado." });
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 // ================================================ EXAMES=====================================================================
 app.MapGet("/api/exames/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
     int emp = Auth.Empresa(user);
-    // Validar se paciente pertence à empresa
+    // Validar se paciente pertence Ã  empresa
     if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
-        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+        return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
@@ -2307,11 +2343,11 @@ app.MapPost("/api/exames", async (HttpRequest request, ClaimsPrincipal user) =>
     int emp = Auth.Empresa(user);
     var form = await request.ReadFormAsync();
     if (!int.TryParse(form["pacienteId"], out var pacienteId))
-        return Results.BadRequest(new { mensagem = "Paciente inválido." });
+        return Results.BadRequest(new { mensagem = "Paciente invÃ¡lido." });
 
-    // Validar se paciente pertence à empresa
+    // Validar se paciente pertence Ã  empresa
     if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
-        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+        return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
 
     string titulo = form["titulo"].ToString().Trim();
     if (titulo == "")
@@ -2364,7 +2400,7 @@ app.MapPut("/api/exames/{id}", async (int id, HttpRequest request, ClaimsPrincip
     cmd.Parameters.AddWithValue("obs", form["observacao"].ToString());
     var pid = await cmd.ExecuteScalarAsync();
     if (pid is null)
-        return Results.NotFound(new { mensagem = "Exame não encontrado." });
+        return Results.NotFound(new { mensagem = "Exame nÃ£o encontrado." });
     await ArquivoHelper.Salvar(conn, tx, Convert.ToInt32(pid), "exame", id, form.Files);
     await tx.CommitAsync();
     return Results.Ok(new { mensagem = "Exame atualizado!" });
@@ -2388,16 +2424,16 @@ app.MapDelete("/api/exames/{id}", async (int id, ClaimsPrincipal user) =>
     var rows = await cmd.ExecuteNonQueryAsync();
     await tx.CommitAsync();
     return rows > 0
-    ? Results.Ok(new { mensagem = "Exame excluído!" })
-    : Results.NotFound(new { mensagem = "Exame não encontrado." });
+    ? Results.Ok(new { mensagem = "Exame excluÃ­do!" })
+    : Results.NotFound(new { mensagem = "Exame nÃ£o encontrado." });
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
-// ======================================= OBSERVAÇÕES (semana do check-in e gerais)============================================
+// ======================================= OBSERVAÃ‡Ã•ES (semana do check-in e gerais)============================================
 app.MapGet("/api/observacoes/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
     int emp = Auth.Empresa(user);
-    // Validar se paciente pertence à empresa
+    // Validar se paciente pertence Ã  empresa
     if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
-        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+        return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
 
     var lista = new List<object>();
     using var conn = new NpgsqlConnection(connString);
@@ -2426,12 +2462,12 @@ app.MapGet("/api/observacoes/{pacienteId}", async (int pacienteId, ClaimsPrincip
 app.MapPost("/api/observacoes", async (ObservacaoInput input, ClaimsPrincipal user) =>
 {
     if (string.IsNullOrWhiteSpace(input.Texto))
-        return Results.BadRequest(new { mensagem = "Escreva a observação." });
+        return Results.BadRequest(new { mensagem = "Escreva a observaÃ§Ã£o." });
 
     int emp = Auth.Empresa(user);
-    // Validar se paciente pertence à empresa
+    // Validar se paciente pertence Ã  empresa
     if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, input.PacienteId, emp))
-        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+        return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
 
     var tipo = input.Tipo == "geral" ? "geral" : "semana";
     using var conn = new NpgsqlConnection(connString);
@@ -2448,13 +2484,13 @@ app.MapPost("/api/observacoes", async (ObservacaoInput input, ClaimsPrincipal us
     });
     cmd.Parameters.AddWithValue("texto", input.Texto.Trim());
     var id = await cmd.ExecuteScalarAsync();
-    return Results.Created($"/api/observacoes/{id}", new { id, mensagem = "Observação salva!" });
+    return Results.Created($"/api/observacoes/{id}", new { id, mensagem = "ObservaÃ§Ã£o salva!" });
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 app.MapPut("/api/observacoes/{id}", async (int id, ObservacaoInput input, ClaimsPrincipal user) =>
 {
     if (string.IsNullOrWhiteSpace(input.Texto))
-        return Results.BadRequest(new { mensagem = "Escreva a observação." });
+        return Results.BadRequest(new { mensagem = "Escreva a observaÃ§Ã£o." });
 
     int emp = Auth.Empresa(user);
     using var conn = new NpgsqlConnection(connString);
@@ -2470,8 +2506,8 @@ app.MapPut("/api/observacoes/{id}", async (int id, ObservacaoInput input, Claims
     cmd.Parameters.AddWithValue("texto", input.Texto.Trim());
     var rows = await cmd.ExecuteNonQueryAsync();
     return rows > 0
-        ? Results.Ok(new { mensagem = "Observação atualizada!" })
-        : Results.NotFound(new { mensagem = "Observação não encontrada." });
+        ? Results.Ok(new { mensagem = "ObservaÃ§Ã£o atualizada!" })
+        : Results.NotFound(new { mensagem = "ObservaÃ§Ã£o nÃ£o encontrada." });
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 app.MapDelete("/api/observacoes/{id}", async (int id, ClaimsPrincipal user) =>
@@ -2484,10 +2520,10 @@ app.MapDelete("/api/observacoes/{id}", async (int id, ClaimsPrincipal user) =>
     cmd.Parameters.AddWithValue("emp", emp);
     var rows = await cmd.ExecuteNonQueryAsync();
     return rows > 0
-        ? Results.Ok(new { mensagem = "Observação excluída!" })
-        : Results.NotFound(new { mensagem = "Observação não encontrada." });
+        ? Results.Ok(new { mensagem = "ObservaÃ§Ã£o excluÃ­da!" })
+        : Results.NotFound(new { mensagem = "ObservaÃ§Ã£o nÃ£o encontrada." });
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
-// Duplica uma opção (itens + substituições) para uma nova opção da mesma refeição
+// Duplica uma opÃ§Ã£o (itens + substituiÃ§Ãµes) para uma nova opÃ§Ã£o da mesma refeiÃ§Ã£o
 app.MapPost("/api/planos/refeicao/{refeicaoId}/opcao/{opcao}/duplicar", async (int refeicaoId, int opcao, ClaimsPrincipal user) =>
 {
     int emp = Auth.Empresa(user);
@@ -2495,14 +2531,14 @@ app.MapPost("/api/planos/refeicao/{refeicaoId}/opcao/{opcao}/duplicar", async (i
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
-    // Valida que a refeição pertence à empresa do token
+    // Valida que a refeiÃ§Ã£o pertence Ã  empresa do token
     using (var cmdCheck = new NpgsqlCommand(
         "SELECT 1 FROM refeicoes r JOIN planos_alimentares p ON p.id = r.plano_id WHERE r.id = @r AND p.empresa_id = @emp", conn))
     {
         cmdCheck.Parameters.AddWithValue("r", refeicaoId);
         cmdCheck.Parameters.AddWithValue("emp", emp);
         if (await cmdCheck.ExecuteScalarAsync() == null)
-            return Results.NotFound(new { mensagem = "Refeição não encontrada." });
+            return Results.NotFound(new { mensagem = "RefeiÃ§Ã£o nÃ£o encontrada." });
     }
 
     using var tx = await conn.BeginTransactionAsync();
@@ -2531,9 +2567,9 @@ app.MapPost("/api/planos/refeicao/{refeicaoId}/opcao/{opcao}/duplicar", async (i
     Convert.ToDouble(rd.GetValue(6)), Convert.ToDouble(rd.GetValue(7)), Convert.ToDouble(rd.GetValue(8))));
     }
     if (origem.Count == 0)
-    return Results.NotFound(new { mensagem = "Opção não encontrada." });
+    return Results.NotFound(new { mensagem = "OpÃ§Ã£o nÃ£o encontrada." });
     var mapa = new Dictionary<int, int>();
-// primeiro os itens principais, depois as substituições (precisam do novo id do pai)
+// primeiro os itens principais, depois as substituiÃ§Ãµes (precisam do novo id do pai)
     foreach (var it in origem.OrderBy(x => x.pai.HasValue ? 1 : 0).ThenBy(x => x.id))
     {
     using var cmd = new NpgsqlCommand(@"
@@ -2560,10 +2596,10 @@ app.MapPost("/api/planos/refeicao/{refeicaoId}/opcao/{opcao}/duplicar", async (i
     mapa[it.id] = Convert.ToInt32(await cmd.ExecuteScalarAsync());
     }
     await tx.CommitAsync();
-    return Results.Ok(new { opcao = novaOpcao, mensagem = "Opção duplicada!" });
+    return Results.Ok(new { opcao = novaOpcao, mensagem = "OpÃ§Ã£o duplicada!" });
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 
-// Restaura uma versão (antes, guarda o plano atual como nova versão de segurança)
+// Restaura uma versÃ£o (antes, guarda o plano atual como nova versÃ£o de seguranÃ§a)
 app.MapPost("/api/planos/versao/{id}/restaurar", async (int id, ClaimsPrincipal user) =>
 {
     int emp = Auth.Empresa(user);
@@ -2579,7 +2615,7 @@ app.MapPost("/api/planos/versao/{id}/restaurar", async (int id, ClaimsPrincipal 
         cmd0.Parameters.AddWithValue("emp", emp);
         using var rd0 = await cmd0.ExecuteReaderAsync();
         if (!await rd0.ReadAsync())
-            return Results.NotFound(new { mensagem = "Versão não encontrada." });
+            return Results.NotFound(new { mensagem = "VersÃ£o nÃ£o encontrada." });
         pacienteId = rd0.GetInt32(0);
         numeroOrigem = rd0.GetInt32(1);
         snapJson = rd0.GetString(2);
@@ -2612,7 +2648,7 @@ app.MapPost("/api/planos/versao/{id}/restaurar", async (int id, ClaimsPrincipal 
             VALUES (@p, (SELECT empresa_id FROM pacientes WHERE id = @p), @n, @d, @s);", conn, tx);
         cmdB.Parameters.AddWithValue("p", pacienteId);
         cmdB.Parameters.AddWithValue("n", numeroBackup.Value);
-        cmdB.Parameters.AddWithValue("d", $"Backup automático antes de restaurar a versão {numeroOrigem}");
+        cmdB.Parameters.AddWithValue("d", $"Backup automÃ¡tico antes de restaurar a versÃ£o {numeroOrigem}");
         cmdB.Parameters.Add(new NpgsqlParameter("s", NpgsqlTypes.NpgsqlDbType.Jsonb)
         {
             Value = JsonSerializer.Serialize(new { plano = atual, orientacoes = orientacoesAtuais })
@@ -2648,7 +2684,7 @@ app.MapPost("/api/planos/versao/{id}/restaurar", async (int id, ClaimsPrincipal 
             VALUES (@pl, (SELECT empresa_id FROM planos_alimentares WHERE id = @pl), @nome, @h::time, @obs) RETURNING id;", conn, tx))
         {
             cmdR.Parameters.AddWithValue("pl", planoId);
-            cmdR.Parameters.AddWithValue("nome", r.GetProperty("nome").GetString() ?? "Refeição");
+            cmdR.Parameters.AddWithValue("nome", r.GetProperty("nome").GetString() ?? "RefeiÃ§Ã£o");
             cmdR.Parameters.AddWithValue("h", r.GetProperty("horario").GetString() ?? "08:00");
             cmdR.Parameters.AddWithValue("obs", r.GetProperty("observacoes").GetString() ?? "");
             novaRefeicaoId = Convert.ToInt32(await cmdR.ExecuteScalarAsync());
@@ -2700,15 +2736,15 @@ app.MapPost("/api/planos/versao/{id}/restaurar", async (int id, ClaimsPrincipal 
     await tx.CommitAsync();
 
     var msg = numeroBackup.HasValue
-        ? $"Versão {numeroOrigem} restaurada! O plano anterior foi guardado como versão {numeroBackup}."
-        : $"Versão {numeroOrigem} restaurada!";
+        ? $"VersÃ£o {numeroOrigem} restaurada! O plano anterior foi guardado como versÃ£o {numeroBackup}."
+        : $"VersÃ£o {numeroOrigem} restaurada!";
     return Results.Ok(new { mensagem = msg });
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 // =====================================================================
-// AUTENTICAÇÃO E USUÁRIOS
+// AUTENTICAÃ‡ÃƒO E USUÃRIOS
 // =====================================================================
-app.MapPost("/api/auth/login", async (LoginInput input, ILogger<Program> logger) =>
+app.MapPost("/api/auth/login", async (LoginInput input, ILogger<Program> logger, HttpContext http) =>
 {
     var email = (input.Email ?? "").Trim().ToLowerInvariant();
     if (email == "" || string.IsNullOrEmpty(input.Senha))
@@ -2717,7 +2753,7 @@ app.MapPost("/api/auth/login", async (LoginInput input, ILogger<Program> logger)
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
-    // Buscar TODOS os usuários ativos com esse e-mail (exceto 'cliente'), ordenados por id DESC (mais novo primeiro)
+    // Buscar TODOS os usuÃ¡rios ativos com esse e-mail (exceto 'cliente'), ordenados por id DESC (mais novo primeiro)
     var candidatos = new List<(int id, int empresaId, string nome, string hash, string perfil, bool bloqueado)>();
     using (var cmd = new NpgsqlCommand(@"
         SELECT id, empresa_id, nome, senha_hash, perfil,
@@ -2743,11 +2779,11 @@ app.MapPost("/api/auth/login", async (LoginInput input, ILogger<Program> logger)
 
     if (candidatos.Count == 0)
     {
-        logger.LogWarning("Login falhou: nenhum usuário ativo com e-mail={Email}", email);
+        logger.LogWarning("Login falhou: nenhum usuÃ¡rio ativo com e-mail={Email}", email);
         return Results.Json(new { mensagem = "E-mail ou senha incorretos." }, statusCode: 401);
     }
 
-    // Percorrer candidatos: se bloqueado -> 429; se senha confere -> usa esse usuário
+    // Percorrer candidatos: se bloqueado -> 429; se senha confere -> usa esse usuÃ¡rio
     int id = 0, empresaId = 0; string nome = "", perfil = "";
     bool loginOk = false;
 
@@ -2755,7 +2791,7 @@ app.MapPost("/api/auth/login", async (LoginInput input, ILogger<Program> logger)
     {
         if (c.bloqueado)
         {
-            logger.LogWarning("Login bloqueado: usuário id={UserId} e-mail={Email} bloqueado até", c.id, email);
+            logger.LogWarning("Login bloqueado: usuÃ¡rio id={UserId} e-mail={Email} bloqueado atÃ©", c.id, email);
             return Results.Json(new { mensagem = "Muitas tentativas. Tente novamente em alguns minutos." }, statusCode: 429);
         }
 
@@ -2772,8 +2808,8 @@ app.MapPost("/api/auth/login", async (LoginInput input, ILogger<Program> logger)
 
     if (!loginOk)
     {
-        // Incrementar tentativas_falhas de TODOS os candidatos quando houver múltiplos usuários ativos com o mesmo e-mail
-        // Isso mantém o bloqueio por tentativas funcionando mesmo com e-mail compartilhado entre empresas
+        // Incrementar tentativas_falhas de TODOS os candidatos quando houver mÃºltiplos usuÃ¡rios ativos com o mesmo e-mail
+        // Isso mantÃ©m o bloqueio por tentativas funcionando mesmo com e-mail compartilhado entre empresas
         if (candidatos.Count > 1)
         {
             foreach (var c in candidatos)
@@ -2790,7 +2826,7 @@ app.MapPost("/api/auth/login", async (LoginInput input, ILogger<Program> logger)
         }
         else if (candidatos.Count == 1)
         {
-            // Caso de um único candidato: manter comportamento original
+            // Caso de um Ãºnico candidato: manter comportamento original
             using var f = new NpgsqlCommand(@"
                 UPDATE usuarios SET
                     tentativas_falhas = CASE WHEN tentativas_falhas + 1 >= 5 THEN 0 ELSE tentativas_falhas + 1 END,
@@ -2805,7 +2841,7 @@ app.MapPost("/api/auth/login", async (LoginInput input, ILogger<Program> logger)
         return Results.Json(new { mensagem = "E-mail ou senha incorretos." }, statusCode: 401);
     }
 
-    // Resetar tentativas do usuário que logou
+    // Resetar tentativas do usuÃ¡rio que logou
     using (var ok = new NpgsqlCommand(
         "UPDATE usuarios SET tentativas_falhas = 0, bloqueado_ate = NULL WHERE id = @id;", conn))
     {
@@ -2813,7 +2849,7 @@ app.MapPost("/api/auth/login", async (LoginInput input, ILogger<Program> logger)
         await ok.ExecuteNonQueryAsync();
     }
 
-    // Módulos ligados na empresa + nível do usuário (admin = total em tudo)
+    // MÃ³dulos ligados na empresa + nÃ­vel do usuÃ¡rio (admin = total em tudo)
     var modulos = new Dictionary<string, string>();
     using (var cm = new NpgsqlCommand(@"
         SELECT em.modulo, COALESCE(um.nivel, 'nenhum')
@@ -2830,7 +2866,7 @@ app.MapPost("/api/auth/login", async (LoginInput input, ILogger<Program> logger)
 
     var token = Auth.Gerar(jwtKey, id, empresaId, perfil, modulos);
     return Results.Ok(new { token, nome, perfil, modulos });
-});
+}).RequireRateLimiting("ip-login");
 
 var perfisEquipe = new HashSet<string> { "super_admin", "admin", "profissional", "atendente" };
 var niveisAcesso = new HashSet<string> { "nenhum", "leitura", "edicao", "total" };
@@ -2838,7 +2874,7 @@ var niveisAcesso = new HashSet<string> { "nenhum", "leitura", "edicao", "total" 
 // =====================================================================
 // EMPRESAS E CONVITES (super_admin / admin)
 // =====================================================================
-// Helper para verificar se é super_admin
+// Helper para verificar se Ã© super_admin
 bool IsSuperAdmin(ClaimsPrincipal u) => u.FindFirst("perfil")?.Value == "super_admin";
 
 // POST /api/empresas - Criar nova empresa (apenas super_admin)
@@ -2859,7 +2895,7 @@ app.MapPost("/api/empresas", async (EmpresaInput input, ClaimsPrincipal user) =>
     cmd.Parameters.AddWithValue("nome", nome);
     int empresaId = Convert.ToInt32(await cmd.ExecuteScalarAsync());
 
-    // Ativar módulo nutricao por padrão
+    // Ativar mÃ³dulo nutricao por padrÃ£o
     using var cm = new NpgsqlCommand(
         "INSERT INTO empresa_modulos (empresa_id, modulo) VALUES (@emp, 'nutricao') ON CONFLICT DO NOTHING;", conn);
     cm.Parameters.AddWithValue("emp", empresaId);
@@ -2905,7 +2941,7 @@ app.MapGet("/api/empresas", async (ClaimsPrincipal user) =>
 })
 .RequireAuthorization();
 
-// GET /api/empresas/count - Contar empresas (público, para verificar se precisa onboarding)
+// GET /api/empresas/count - Contar empresas (pÃºblico, para verificar se precisa onboarding)
 app.MapGet("/api/empresas/count", async () =>
 {
     using var conn = new NpgsqlConnection(connString);
@@ -2921,10 +2957,10 @@ app.MapDelete("/api/admin/empresas/{empresaId:int}", async (int empresaId, Claim
     if (!IsSuperAdmin(user))
         return Results.Forbid();
 
-    // Não permitir excluir a própria empresa do super_admin logado
+    // NÃ£o permitir excluir a prÃ³pria empresa do super_admin logado
     int currentEmpresaId = Auth.Empresa(user);
     if (empresaId == currentEmpresaId)
-        return Results.BadRequest(new { mensagem = "Não é possível excluir a própria empresa." });
+        return Results.BadRequest(new { mensagem = "NÃ£o Ã© possÃ­vel excluir a prÃ³pria empresa." });
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
@@ -2934,17 +2970,17 @@ app.MapDelete("/api/admin/empresas/{empresaId:int}", async (int empresaId, Claim
     checkCmd.Parameters.AddWithValue("id", empresaId);
     using var checkRd = await checkCmd.ExecuteReaderAsync();
     if (!await checkRd.ReadAsync())
-        return Results.NotFound(new { mensagem = "Empresa não encontrada." });
+        return Results.NotFound(new { mensagem = "Empresa nÃ£o encontrada." });
 
     string empresaNome = checkRd.GetString(1);
     await checkRd.CloseAsync();
 
-    // Exclusão física (cascata via FK ON DELETE CASCADE)
-    // Ordem: tabelas filhas antes das pais (assinaturas, pacientes, etc. já têm FK com cascade)
+    // ExclusÃ£o fÃ­sica (cascata via FK ON DELETE CASCADE)
+    // Ordem: tabelas filhas antes das pais (assinaturas, pacientes, etc. jÃ¡ tÃªm FK com cascade)
     using var tx = await conn.BeginTransactionAsync();
     try
     {
-        // Excluir assinaturas (tem FK para empresas com ON DELETE CASCADE, mas vamos ser explícitos)
+        // Excluir assinaturas (tem FK para empresas com ON DELETE CASCADE, mas vamos ser explÃ­citos)
         using (var cmd = new NpgsqlCommand("DELETE FROM assinaturas WHERE empresa_id = @emp", conn, tx))
         {
             cmd.Parameters.AddWithValue("emp", empresaId);
@@ -2973,11 +3009,11 @@ app.MapDelete("/api/admin/empresas/{empresaId:int}", async (int empresaId, Claim
         return Results.Problem($"Erro ao excluir empresa: {ex.Message}");
     }
 
-    return Results.Ok(new { mensagem = $"Empresa '{empresaNome}' excluída com sucesso." });
+    return Results.Ok(new { mensagem = $"Empresa '{empresaNome}' excluÃ­da com sucesso." });
 })
 .RequireAuthorization();
 
-// GET /api/convites/info/{token} - Info do convite (público, para tela de aceite)
+// GET /api/convites/info/{token} - Info do convite (pÃºblico, para tela de aceite)
 app.MapGet("/api/convites/info/{token}", async (string token) =>
 {
     using var conn = new NpgsqlConnection(connString);
@@ -2999,11 +3035,11 @@ app.MapGet("/api/convites/info/{token}", async (string token) =>
             empresa = rd.GetString(3)
         });
     }
-    return Results.NotFound(new { mensagem = "Convite não encontrado ou expirado." });
+    return Results.NotFound(new { mensagem = "Convite nÃ£o encontrado ou expirado." });
 });
 
 // ============================================================
-// CONVITES PACIENTE (Nutricionista → Paciente)
+// CONVITES PACIENTE (Nutricionista â†’ Paciente)
 // ============================================================
 
 // Helper para obter URL do frontend
@@ -3018,25 +3054,25 @@ app.MapPost("/api/convites-paciente", async (ConvitePacienteInput input, ClaimsP
 
     var emailPaciente = (input.EmailPaciente ?? "").Trim().ToLowerInvariant();
     if (string.IsNullOrWhiteSpace(emailPaciente) || !emailPaciente.Contains("@"))
-        return Results.BadRequest(new { mensagem = "E-mail do paciente inválido." });
+        return Results.BadRequest(new { mensagem = "E-mail do paciente invÃ¡lido." });
 
-    // Gerar token único (UUID v4 sem hífens = 32 chars)
+    // Gerar token Ãºnico (UUID v4 sem hÃ­fens = 32 chars)
     var token = Guid.NewGuid().ToString("N");
     var expiraEm = DateTime.UtcNow.AddDays(7);
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
-    // Verificar se já existe convite ativo para este email por este nutricionista
+    // Verificar se jÃ¡ existe convite ativo para este email por este nutricionista
     using var check = new NpgsqlCommand(@"
         SELECT 1 FROM convites_paciente
         WHERE nutricionista_id = @nutri AND email_paciente = @email AND status = 'pendente' AND expira_em > CURRENT_TIMESTAMP", conn);
     check.Parameters.AddWithValue("nutri", nutricionistaId);
     check.Parameters.AddWithValue("email", emailPaciente);
     if (await check.ExecuteScalarAsync() != null)
-        return Results.BadRequest(new { mensagem = "Já existe um convite pendente para este e-mail." });
+        return Results.BadRequest(new { mensagem = "JÃ¡ existe um convite pendente para este e-mail." });
 
-    // Verificar se paciente já está vinculado a este nutricionista
+    // Verificar se paciente jÃ¡ estÃ¡ vinculado a este nutricionista
     using var checkVinculo = new NpgsqlCommand(@"
         SELECT 1 FROM acessos_paciente_nutri apn
         JOIN pacientes p ON p.id = apn.paciente_id
@@ -3045,7 +3081,7 @@ app.MapPost("/api/convites-paciente", async (ConvitePacienteInput input, ClaimsP
     checkVinculo.Parameters.AddWithValue("email", emailPaciente);
     checkVinculo.Parameters.AddWithValue("emp", empresaId);
     if (await checkVinculo.ExecuteScalarAsync() != null)
-        return Results.BadRequest(new { mensagem = "Este paciente já está vinculado a você." });
+        return Results.BadRequest(new { mensagem = "Este paciente jÃ¡ estÃ¡ vinculado a vocÃª." });
 
     // Inserir convite
     int conviteId;
@@ -3067,9 +3103,9 @@ app.MapPost("/api/convites-paciente", async (ConvitePacienteInput input, ClaimsP
     var htmlBody = $@"
         <div style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;'>
             <h2 style='color:#6c34eb;'>Convite para acompanhamento nutricional</h2>
-            <p>Olá,</p>
+            <p>OlÃ¡,</p>
             <p><strong>{nutricionistaNome}</strong> te convidou para ser seu paciente no <strong>ACNUTRI</strong>.</p>
-            <p>Clique no botão abaixo para aceitar o convite (válido por 7 dias):</p>
+            <p>Clique no botÃ£o abaixo para aceitar o convite (vÃ¡lido por 7 dias):</p>
             <p style='text-align:center;margin:30px 0;'>
                 <a href='{linkAceite}' style='background:#6c34eb;color:white;padding:14px 28px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;'>
                     Aceitar Convite
@@ -3077,7 +3113,7 @@ app.MapPost("/api/convites-paciente", async (ConvitePacienteInput input, ClaimsP
             </p>
             <p>Ou copie este link no navegador:<br><small>{linkAceite}</small></p>
             <hr style='border:none;border-top:1px solid #eee;margin:20px 0;'>
-            <p style='color:#888;font-size:12px;'>Se não foi você, ignore este e-mail.<br>— Equipe ACNUTRI</p>
+            <p style='color:#888;font-size:12px;'>Se nÃ£o foi vocÃª, ignore este e-mail.<br>â€” Equipe ACNUTRI</p>
         </div>";
 
     var emailEnviado = await emailService.EnviarEmailAsync(emailPaciente, assunto, htmlBody);
@@ -3096,7 +3132,7 @@ app.MapPost("/api/convites-paciente", async (ConvitePacienteInput input, ClaimsP
 })
 .RequireAuthorization();
 
-// GET /api/convites-paciente/{token} - Valida token (página de aceite pública)
+// GET /api/convites-paciente/{token} - Valida token (pÃ¡gina de aceite pÃºblica)
 app.MapGet("/api/convites-paciente/{token}", async (string token) =>
 {
     using var conn = new NpgsqlConnection(connString);
@@ -3129,18 +3165,18 @@ app.MapGet("/api/convites-paciente/{token}", async (string token) =>
             valido = status == "pendente" && !expirado
         });
     }
-    return Results.NotFound(new { mensagem = "Convite não encontrado." });
+    return Results.NotFound(new { mensagem = "Convite nÃ£o encontrado." });
 })
 .AllowAnonymous();
 
-// POST /api/convites-paciente/{token}/aceitar - Paciente JÁ CADASTRADO aceita
+// POST /api/convites-paciente/{token}/aceitar - Paciente JÃ CADASTRADO aceita
 app.MapPost("/api/convites-paciente/{token}/aceitar", async (string token, AceitarConvitePacienteInput input, ClaimsPrincipal user) =>
 {
     var pacienteId = Auth.UsuarioId(user); // assumindo que paciente logado tem claim de usuario_id = paciente_id
     var empresaId = Auth.Empresa(user);
 
     // Para paciente, o ID pode vir de forma diferente. Vamos buscar pelo email do token.
-    // Se paciente já logado, usar o ID do claim.
+    // Se paciente jÃ¡ logado, usar o ID do claim.
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
@@ -3148,7 +3184,7 @@ app.MapPost("/api/convites-paciente/{token}/aceitar", async (string token, Aceit
 
     try
     {
-        // Buscar convite válido
+        // Buscar convite vÃ¡lido
         int conviteId, nutricionistaId;
         string emailConvite;
         using (var cmd = new NpgsqlCommand(@"
@@ -3159,7 +3195,7 @@ app.MapPost("/api/convites-paciente/{token}/aceitar", async (string token, Aceit
             cmd.Parameters.AddWithValue("t", token);
             using var rd = await cmd.ExecuteReaderAsync();
             if (!await rd.ReadAsync())
-                return Results.BadRequest(new { mensagem = "Convite inválido ou expirado." });
+                return Results.BadRequest(new { mensagem = "Convite invÃ¡lido ou expirado." });
 
             conviteId = rd.GetInt32(0);
             nutricionistaId = rd.GetInt32(1);
@@ -3167,7 +3203,7 @@ app.MapPost("/api/convites-paciente/{token}/aceitar", async (string token, Aceit
         }
 
         // Se paciente logado, verificar se email bate
-        // Se não logado, este endpoint não deve ser chamado (usar aceitar-com-cadastro)
+        // Se nÃ£o logado, este endpoint nÃ£o deve ser chamado (usar aceitar-com-cadastro)
 
         // Buscar ou criar paciente
         int pacienteIdFinal;
@@ -3182,11 +3218,11 @@ app.MapPost("/api/convites-paciente/{token}/aceitar", async (string token, Aceit
             }
             else
             {
-                return Results.BadRequest(new { mensagem = "Paciente não encontrado. Use o endpoint de cadastro." });
+                return Results.BadRequest(new { mensagem = "Paciente nÃ£o encontrado. Use o endpoint de cadastro." });
             }
         }
 
-        // Criar vínculo
+        // Criar vÃ­nculo
         using (var cmd = new NpgsqlCommand(@"
             INSERT INTO acessos_paciente_nutri (empresa_id, nutricionista_id, paciente_id)
             VALUES (@emp, @nutri, @pac)
@@ -3209,7 +3245,7 @@ app.MapPost("/api/convites-paciente/{token}/aceitar", async (string token, Aceit
         }
 
         await tx.CommitAsync();
-        return Results.Ok(new { mensagem = "Convite aceito com sucesso! Vínculo criado." });
+        return Results.Ok(new { mensagem = "Convite aceito com sucesso! VÃ­nculo criado." });
     }
     catch (Exception ex)
     {
@@ -3229,7 +3265,7 @@ app.MapPost("/api/convites-paciente/{token}/aceitar-com-cadastro", async (string
     var telefone = (input.Telefone ?? "").Trim();
 
     if (string.IsNullOrWhiteSpace(nome) || senha.Length < 8 || cpf.Length != 11 || dataNascimento == null)
-        return Results.BadRequest(new { mensagem = "Todos os campos são obrigatórios. Senha mínima 8 caracteres. CPF com 11 dígitos." });
+        return Results.BadRequest(new { mensagem = "Todos os campos sÃ£o obrigatÃ³rios. Senha mÃ­nima 8 caracteres. CPF com 11 dÃ­gitos." });
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
@@ -3237,7 +3273,7 @@ app.MapPost("/api/convites-paciente/{token}/aceitar-com-cadastro", async (string
 
     try
     {
-        // Buscar convite válido
+        // Buscar convite vÃ¡lido
         int conviteId, nutricionistaId, empresaId;
         string emailConvite;
         using (var cmd = new NpgsqlCommand(@"
@@ -3248,7 +3284,7 @@ app.MapPost("/api/convites-paciente/{token}/aceitar-com-cadastro", async (string
             cmd.Parameters.AddWithValue("t", token);
             using var rd = await cmd.ExecuteReaderAsync();
             if (!await rd.ReadAsync())
-                return Results.BadRequest(new { mensagem = "Convite inválido ou expirado." });
+                return Results.BadRequest(new { mensagem = "Convite invÃ¡lido ou expirado." });
 
             conviteId = rd.GetInt32(0);
             nutricionistaId = rd.GetInt32(1);
@@ -3257,18 +3293,18 @@ app.MapPost("/api/convites-paciente/{token}/aceitar-com-cadastro", async (string
         }
 
         // Verificar se email do cadastro bate com o do convite
-        if (emailConvite != input.Nome?.Trim().ToLowerInvariant().Split('@').LastOrDefault()) // simplificação
+        if (emailConvite != input.Nome?.Trim().ToLowerInvariant().Split('@').LastOrDefault()) // simplificaÃ§Ã£o
         {
-            // Melhor: o input não tem email, usar o do convite
+            // Melhor: o input nÃ£o tem email, usar o do convite
         }
 
-        // Verificar se CPF já existe
+        // Verificar se CPF jÃ¡ existe
         using (var cmd = new NpgsqlCommand("SELECT 1 FROM pacientes WHERE cpf = @cpf AND empresa_id = @emp", conn, tx))
         {
             cmd.Parameters.AddWithValue("cpf", cpf);
             cmd.Parameters.AddWithValue("emp", empresaId);
             if (await cmd.ExecuteScalarAsync() != null)
-                return Results.BadRequest(new { mensagem = "CPF já cadastrado." });
+                return Results.BadRequest(new { mensagem = "CPF jÃ¡ cadastrado." });
         }
 
         // Criar paciente
@@ -3286,7 +3322,7 @@ app.MapPost("/api/convites-paciente/{token}/aceitar-com-cadastro", async (string
             pacienteId = Convert.ToInt32(await cmd.ExecuteScalarAsync());
         }
 
-        // Criar usuário (login) para o paciente
+        // Criar usuÃ¡rio (login) para o paciente
         var hash = BCrypt.Net.BCrypt.HashPassword(senha);
         using (var cmd = new NpgsqlCommand(@"
             INSERT INTO usuarios (empresa_id, nome, email, senha_hash, perfil)
@@ -3299,7 +3335,7 @@ app.MapPost("/api/convites-paciente/{token}/aceitar-com-cadastro", async (string
             await cmd.ExecuteNonQueryAsync();
         }
 
-        // Criar vínculo nutricionista ↔ paciente
+        // Criar vÃ­nculo nutricionista â†” paciente
         using (var cmd = new NpgsqlCommand(@"
             INSERT INTO acessos_paciente_nutri (empresa_id, nutricionista_id, paciente_id)
             VALUES (@emp, @nutri, @pac)
@@ -3390,15 +3426,15 @@ app.MapPost("/api/nutricionista/convites-paciente/{token}/reenviar", async (stri
         cmd.Parameters.AddWithValue("emp", empresaId);
         using var rd = await cmd.ExecuteReaderAsync();
         if (!await rd.ReadAsync())
-            return Results.NotFound(new { mensagem = "Convite não encontrado ou não pode ser reenviado." });
+            return Results.NotFound(new { mensagem = "Convite nÃ£o encontrado ou nÃ£o pode ser reenviado." });
 
         emailPaciente = rd.GetString(0);
         expiraEm = rd.GetDateTime(1);
     }
 
-    // Verificar se não expirou
+    // Verificar se nÃ£o expirou
     if (expiraEm < DateTime.UtcNow)
-        return Results.BadRequest(new { mensagem = "Convite expirado. Não é possível reenviar." });
+        return Results.BadRequest(new { mensagem = "Convite expirado. NÃ£o Ã© possÃ­vel reenviar." });
 
     // Buscar empresa
     string empresaNome;
@@ -3414,9 +3450,9 @@ app.MapPost("/api/nutricionista/convites-paciente/{token}/reenviar", async (stri
     var htmlBody = $@"
         <div style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;'>
             <h2 style='color:#6c34eb;'>Convite para acompanhamento nutricional (Reenviado)</h2>
-            <p>Olá,</p>
+            <p>OlÃ¡,</p>
             <p><strong>{nutricionistaNome}</strong> reenviou o convite para ser seu paciente no <strong>ACNUTRI</strong>.</p>
-            <p>Clique no botão abaixo para aceitar o convite (válido por 7 dias):</p>
+            <p>Clique no botÃ£o abaixo para aceitar o convite (vÃ¡lido por 7 dias):</p>
             <p style='text-align:center;margin:30px 0;'>
                 <a href='{linkAceite}' style='background:#6c34eb;color:white;padding:14px 28px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;'>
                     Aceitar Convite
@@ -3424,7 +3460,7 @@ app.MapPost("/api/nutricionista/convites-paciente/{token}/reenviar", async (stri
             </p>
             <p>Ou copie este link no navegador:<br><small>{linkAceite}</small></p>
             <hr style='border:none;border-top:1px solid #eee;margin:20px 0;'>
-            <p style='color:#888;font-size:12px;'>Se não foi você, ignore este e-mail.<br>— Equipe ACNUTRI</p>
+            <p style='color:#888;font-size:12px;'>Se nÃ£o foi vocÃª, ignore este e-mail.<br>â€” Equipe ACNUTRI</p>
         </div>";
 
     var emailEnviado = await emailService.EnviarEmailAsync(emailPaciente, assunto, htmlBody);
@@ -3459,16 +3495,16 @@ app.MapPost("/api/nutricionista/convites-paciente/{token}/cancelar", async (stri
     var affected = await cmd.ExecuteNonQueryAsync();
 
     if (affected == 0)
-        return Results.NotFound(new { mensagem = "Convite não encontrado ou não pode ser cancelado." });
+        return Results.NotFound(new { mensagem = "Convite nÃ£o encontrado ou nÃ£o pode ser cancelado." });
 
     return Results.Ok(new { mensagem = "Convite cancelado com sucesso." });
 })
 .RequireAuthorization();
 
-// POST /api/onboarding - Criar primeira empresa + super-admin (sem auth, só se 0 usuários e 0 empresas)
+// POST /api/onboarding - Criar primeira empresa + super-admin (sem auth, sÃ³ se 0 usuÃ¡rios e 0 empresas)
 app.MapPost("/api/onboarding", async (OnboardingInput input) =>
 {
-    // Verificar se já existem usuários OU empresas
+    // Verificar se jÃ¡ existem usuÃ¡rios OU empresas
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
     using (var checkUsers = new NpgsqlCommand("SELECT COUNT(*) FROM usuarios", conn))
@@ -3486,14 +3522,14 @@ app.MapPost("/api/onboarding", async (OnboardingInput input) =>
 
     if (string.IsNullOrWhiteSpace(empresaNome) || string.IsNullOrWhiteSpace(adminNome) ||
         string.IsNullOrWhiteSpace(adminEmail) || senha.Length < 8)
-        return Results.BadRequest(new { mensagem = "Todos os campos são obrigatórios. Senha mínima 8 caracteres." });
+        return Results.BadRequest(new { mensagem = "Todos os campos sÃ£o obrigatÃ³rios. Senha mÃ­nima 8 caracteres." });
 
     // Criar empresa
     using var cmdEmp = new NpgsqlCommand("INSERT INTO empresas (nome) VALUES (@n) RETURNING id;", conn);
     cmdEmp.Parameters.AddWithValue("n", empresaNome);
     int empresaId = Convert.ToInt32(await cmdEmp.ExecuteScalarAsync());
 
-    // Ativar módulo nutrição
+    // Ativar mÃ³dulo nutriÃ§Ã£o
     using var cmdMod = new NpgsqlCommand("INSERT INTO empresa_modulos (empresa_id, modulo) VALUES (@e, 'nutricao') ON CONFLICT DO NOTHING;", conn);
     cmdMod.Parameters.AddWithValue("e", empresaId);
     await cmdMod.ExecuteNonQueryAsync();
@@ -3508,7 +3544,7 @@ app.MapPost("/api/onboarding", async (OnboardingInput input) =>
     cmdUser.Parameters.AddWithValue("hash", BCrypt.Net.BCrypt.HashPassword(senha));
     int userId = Convert.ToInt32(await cmdUser.ExecuteScalarAsync());
 
-    // Módulo para o usuário
+    // MÃ³dulo para o usuÃ¡rio
     using var cmdUM = new NpgsqlCommand(
         "INSERT INTO usuario_modulos (usuario_id, modulo, nivel) VALUES (@u, 'nutricao', 'total');", conn);
     cmdUM.Parameters.AddWithValue("u", userId);
@@ -3517,14 +3553,14 @@ app.MapPost("/api/onboarding", async (OnboardingInput input) =>
     return Results.Ok(new { mensagem = "Empresa e super-admin criados com sucesso!", empresaId, userId });
 });
 
-// POST /api/empresas/{id}/convite - Convidar usuário para empresa (admin/super_admin)
+// POST /api/empresas/{id}/convite - Convidar usuÃ¡rio para empresa (admin/super_admin)
 app.MapPost("/api/empresas/{empresaId:int}/convite", async (int empresaId, ConviteInput input, ClaimsPrincipal user, IEmailService emailService) =>
 {
     var perfilToken = user.FindFirst("perfil")?.Value;
     if (perfilToken != "super_admin" && perfilToken != "admin")
         return Results.Forbid();
 
-    // Se não for super_admin, só pode convidar para sua própria empresa
+    // Se nÃ£o for super_admin, sÃ³ pode convidar para sua prÃ³pria empresa
     if (perfilToken != "super_admin" && Auth.Empresa(user) != empresaId)
         return Results.Forbid();
 
@@ -3545,16 +3581,16 @@ app.MapPost("/api/empresas/{empresaId:int}/convite", async (int empresaId, Convi
         check.Parameters.AddWithValue("id", empresaId);
         var result = await check.ExecuteScalarAsync();
         if (result == null)
-            return Results.NotFound(new { mensagem = "Empresa não encontrada." });
+            return Results.NotFound(new { mensagem = "Empresa nÃ£o encontrada." });
         empresaNome = result.ToString()!;
     }
 
-    // Verificar se já existe usuário com esse email na empresa
+    // Verificar se jÃ¡ existe usuÃ¡rio com esse email na empresa
     using var exist = new NpgsqlCommand("SELECT 1 FROM usuarios WHERE email = @e AND empresa_id = @emp", conn);
     exist.Parameters.AddWithValue("e", email);
     exist.Parameters.AddWithValue("emp", empresaId);
     if (await exist.ExecuteScalarAsync() != null)
-        return Results.Conflict(new { mensagem = "Já existe um usuário com esse e-mail nesta empresa." });
+        return Results.Conflict(new { mensagem = "JÃ¡ existe um usuÃ¡rio com esse e-mail nesta empresa." });
 
     // Gerar token de convite (expira em 7 dias)
     var conviteToken = Guid.NewGuid().ToString("N");
@@ -3593,7 +3629,7 @@ app.MapPost("/api/auth/aceitar-convite", async (AceitarConviteInput input) =>
     var token = (input.Token ?? "").Trim();
     var senha = input.Senha ?? "";
     if (string.IsNullOrWhiteSpace(token) || senha.Length < 8)
-        return Results.BadRequest(new { mensagem = "Token e senha (mín. 8 caracteres) são obrigatórios." });
+        return Results.BadRequest(new { mensagem = "Token e senha (mÃ­n. 8 caracteres) sÃ£o obrigatÃ³rios." });
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
@@ -3619,18 +3655,18 @@ app.MapPost("/api/auth/aceitar-convite", async (AceitarConviteInput input) =>
     }
 
     if (!achou)
-        return Results.Json(new { mensagem = "Convite inválido ou expirado." }, statusCode: 400);
+        return Results.Json(new { mensagem = "Convite invÃ¡lido ou expirado." }, statusCode: 400);
 
-    // Verificar se usuário já existe
+    // Verificar se usuÃ¡rio jÃ¡ existe
     using (var check = new NpgsqlCommand("SELECT 1 FROM usuarios WHERE email = @e AND empresa_id = @emp", conn))
     {
         check.Parameters.AddWithValue("e", email);
         check.Parameters.AddWithValue("emp", empresaId);
         if (await check.ExecuteScalarAsync() != null)
-            return Results.Conflict(new { mensagem = "Usuário já cadastrado." });
+            return Results.Conflict(new { mensagem = "UsuÃ¡rio jÃ¡ cadastrado." });
     }
 
-    // Criar usuário
+    // Criar usuÃ¡rio
     using var tx = await conn.BeginTransactionAsync();
     try
     {
@@ -3672,21 +3708,16 @@ app.MapPost("/api/auth/aceitar-convite", async (AceitarConviteInput input) =>
 });
 
 // =====================================================================
-// INPUT RECORDS PARA SOLICITAÇÕES DE ACESSO
+// INPUT RECORDS PARA SOLICITAÃ‡Ã•ES DE ACESSO
 // =====================================================================
 
 // =====================================================================
-// SOLICITAÇÕES DE ACESSO (Público + Super Admin)
+// SOLICITAÃ‡Ã•ES DE ACESSO (PÃºblico + Super Admin)
 // =====================================================================
 
-// POST /api/acesso/solicitar - Visitante solicita acesso (público)
+// POST /api/acesso/solicitar - Visitante solicita acesso (pÃºblico)
 app.MapPost("/api/acesso/solicitar", async (SolicitarAcessoInput input, HttpContext http) =>
 {
-    // Rate limiting por IP
-    var clientIp = RateLimiter.GetClientIp(http);
-    if (!RateLimiter.TryConsume("solicitar:" + clientIp))
-        return Results.Json(new { mensagem = "Muitas solicitações. Tente novamente em uma hora." }, statusCode: 429);
-
     var nome = (input.Nome ?? "").Trim();
     var email = (input.Email ?? "").Trim().ToLowerInvariant();
     var telefone = (input.Telefone ?? "").Trim();
@@ -3695,22 +3726,23 @@ app.MapPost("/api/acesso/solicitar", async (SolicitarAcessoInput input, HttpCont
     var mensagem = (input.Mensagem ?? "").Trim();
 
     if (string.IsNullOrWhiteSpace(nome) || string.IsNullOrWhiteSpace(email) || !email.Contains("@"))
-        return Results.BadRequest(new { mensagem = "Nome e e-mail válido são obrigatórios." });
+        return Results.BadRequest(new { mensagem = "Nome e e-mail vÃ¡lido sÃ£o obrigatÃ³rios." });
 
     if (string.IsNullOrWhiteSpace(registroProfissional))
-        return Results.BadRequest(new { mensagem = "Registro profissional (CRN/CRM) é obrigatório." });
+        return Results.BadRequest(new { mensagem = "Registro profissional (CRN/CRM) Ã© obrigatÃ³rio." });
 
     if (string.IsNullOrWhiteSpace(clinicaNome))
-        return Results.BadRequest(new { mensagem = "Nome da clínica/empresa é obrigatório." });
+        return Results.BadRequest(new { mensagem = "Nome da clÃ­nica/empresa Ã© obrigatÃ³rio." });
 
     var userAgent = http.Request.Headers["User-Agent"].ToString();
+    var ip = http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
     try
     {
-        // Inserir solicitação (constraint única por email pendente impede duplicatas)
+        // Inserir solicitaÃ§Ã£o (constraint Ãºnica por email pendente impede duplicatas)
         using var cmd = new NpgsqlCommand(@"
             INSERT INTO solicitacoes_acesso (nome, email, telefone, registro_profissional, clinica_nome, mensagem, ip, user_agent)
             VALUES (@nome, @email, @tel, @reg, @clinica, @msg, @ip::inet, @ua) RETURNING id;", conn);
@@ -3720,22 +3752,23 @@ app.MapPost("/api/acesso/solicitar", async (SolicitarAcessoInput input, HttpCont
         cmd.Parameters.AddWithValue("reg", registroProfissional);
         cmd.Parameters.AddWithValue("clinica", clinicaNome);
         cmd.Parameters.AddWithValue("msg", string.IsNullOrEmpty(mensagem) ? DBNull.Value : (object)mensagem);
-        cmd.Parameters.AddWithValue("ip", clientIp);
+        cmd.Parameters.AddWithValue("ip", ip);
         cmd.Parameters.AddWithValue("ua", string.IsNullOrEmpty(userAgent) ? DBNull.Value : (object)userAgent);
 
         await cmd.ExecuteNonQueryAsync();
     }
     catch (PostgresException ex) when (ex.SqlState == "23505") // unique_violation
     {
-        // Silenciosamente ignorar - não revelar se email já tem solicitação pendente
+        // Silenciosamente ignorar - nÃ£o revelar se email jÃ¡ tem solicitaÃ§Ã£o pendente
     }
 
-    // Sempre retornar sucesso genérico (anti-enumeração de email)
-    return Results.Ok(new { mensagem = "Se os dados estiverem corretos, sua solicitação será analisada em até 2 dias úteis." });
+    // Sempre retornar sucesso genÃ©rico (anti-enumeraÃ§Ã£o de email)
+    return Results.Ok(new { mensagem = "Se os dados estiverem corretos, sua solicitaÃ§Ã£o serÃ¡ analisada em atÃ© 2 dias Ãºteis." });
 })
+.RequireRateLimiting("ip-login")
 .AllowAnonymous();
 
-// GET /api/acessos - Lista solicitações (super_admin)
+// GET /api/acessos - Lista solicitaÃ§Ãµes (super_admin)
 app.MapGet("/api/acessos", async (ClaimsPrincipal user, string? status = null, int page = 1, int pageSize = 20) =>
 {
     if (user.FindFirst("perfil")?.Value != "super_admin")
@@ -3823,7 +3856,7 @@ app.MapGet("/api/acessos", async (ClaimsPrincipal user, string? status = null, i
 })
 .RequireAuthorization();
 
-// POST /api/acessos/{id}/aprovar - Super admin aprova solicitação
+// POST /api/acessos/{id}/aprovar - Super admin aprova solicitaÃ§Ã£o
 app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput input, ClaimsPrincipal user, IEmailService emailService, ILogger<Program> logger) =>
 {
     if (user.FindFirst("perfil")?.Value != "super_admin")
@@ -3838,7 +3871,7 @@ app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput
 
     try
     {
-        // Buscar solicitação pendente
+        // Buscar solicitaÃ§Ã£o pendente
         long solicitacaoId = 0;
         string nome = "", email = "", telefone = "", registroProfissional = "", clinicaNome = "", mensagem = "";
         using (var cmd = new NpgsqlCommand(@"
@@ -3849,7 +3882,7 @@ app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput
             cmd.Parameters.AddWithValue("@id", id);
             using var rd = await cmd.ExecuteReaderAsync();
             if (!await rd.ReadAsync())
-                return Results.NotFound(new { mensagem = "Solicitação não encontrada ou já processada." });
+                return Results.NotFound(new { mensagem = "SolicitaÃ§Ã£o nÃ£o encontrada ou jÃ¡ processada." });
 
             solicitacaoId = rd.GetInt64(0);
             nome = rd.GetString(1);
@@ -3869,15 +3902,15 @@ app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput
             empresaId = Convert.ToInt32(await cmd.ExecuteScalarAsync());
         }
 
-        // Ativar módulo nutricao
+        // Ativar mÃ³dulo nutricao
         using (var cmd = new NpgsqlCommand("INSERT INTO empresa_modulos (empresa_id, modulo) VALUES (@e, 'nutricao') ON CONFLICT DO NOTHING;", conn, tx))
         {
             cmd.Parameters.AddWithValue("@e", empresaId);
             await cmd.ExecuteNonQueryAsync();
         }
 
-        // Criar usuário profissional
-        var senhaTemporaria = Guid.NewGuid().ToString("N")[..12]; // senha aleatória temporária
+        // Criar usuÃ¡rio profissional
+        var senhaTemporaria = Guid.NewGuid().ToString("N")[..12]; // senha aleatÃ³ria temporÃ¡ria
         var hash = BCrypt.Net.BCrypt.HashPassword(senhaTemporaria);
         int usuarioId;
         using (var cmd = new NpgsqlCommand(@"
@@ -3891,7 +3924,7 @@ app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput
             usuarioId = Convert.ToInt32(await cmd.ExecuteScalarAsync());
         }
 
-        // Nível de acesso nutricao = total (profissional dono da clínica)
+        // NÃ­vel de acesso nutricao = total (profissional dono da clÃ­nica)
         using (var cmd = new NpgsqlCommand(
             "INSERT INTO usuario_modulos (usuario_id, modulo, nivel) VALUES (@u, 'nutricao', 'total');", conn, tx))
         {
@@ -3913,8 +3946,8 @@ app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput
             await cmd.ExecuteNonQueryAsync();
         }
 
-        // Gerar token de definição de senha (expira em 48h, SHA-256 no banco, uso único)
-        // Token: 32 bytes aleatórios, base64url
+        // Gerar token de definiÃ§Ã£o de senha (expira em 48h, SHA-256 no banco, uso Ãºnico)
+        // Token: 32 bytes aleatÃ³rios, base64url
         var tokenBytes = new byte[32];
         using (var rng = System.Security.Cryptography.RandomNumberGenerator.Create())
         {
@@ -3928,7 +3961,7 @@ app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput
         ).ToLowerInvariant();
         var expiraEm = DateTime.UtcNow.AddHours(48);
 
-        // Invalidar tokens pendentes anteriores do mesmo usuário
+        // Invalidar tokens pendentes anteriores do mesmo usuÃ¡rio
         using (var cmd = new NpgsqlCommand(@"
             UPDATE tokens_redefinicao_senha
             SET usado_em = CURRENT_TIMESTAMP
@@ -3948,7 +3981,7 @@ app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput
             await cmd.ExecuteNonQueryAsync();
         }
 
-        // Atualizar solicitação como aprovada
+        // Atualizar solicitaÃ§Ã£o como aprovada
         using (var cmd = new NpgsqlCommand(@"
             UPDATE solicitacoes_acesso
             SET status = 'aprovado', empresa_id = @emp, usuario_id = @u, atualizado_em = CURRENT_TIMESTAMP
@@ -3962,14 +3995,14 @@ app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput
 
         // Auditoria
         await RegistrarAuditoriaDetalhada(conn, tx, empresaId, adminId, "aprovacao_acesso", $"/api/acessos/{id}/aprovar", solicitacaoId,
-            $"Solicitação de {nome} ({email}) aprovada. Empresa criada: {empresaNome} (ID: {empresaId}), Usuário: {usuarioId}");
+            $"SolicitaÃ§Ã£o de {nome} ({email}) aprovada. Empresa criada: {empresaNome} (ID: {empresaId}), UsuÃ¡rio: {usuarioId}");
 
         await tx.CommitAsync();
 
-        // Enviar e-mail com link para definir senha (token raw, não hash)
+        // Enviar e-mail com link para definir senha (token raw, nÃ£o hash)
         var frontendUrl = GetFrontendUrl();
         var linkDefinirSenha = $"{frontendUrl.TrimEnd('/')}/definir-senha/{tokenRaw}";
-        var assunto = $"Sua solicitação de acesso foi aprovada - {empresaNome}";
+        var assunto = $"Sua solicitaÃ§Ã£o de acesso foi aprovada - {empresaNome}";
         var htmlBody = $@"
 <!DOCTYPE html>
 <html>
@@ -3989,21 +4022,21 @@ app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput
 <body>
     <div class='container'>
         <div class='header'>
-            <h1>🍎 ACNUTRI</h1>
-            <p>Sistema de Nutrição Inteligente</p>
+            <h1>ðŸŽ ACNUTRI</h1>
+            <p>Sistema de NutriÃ§Ã£o Inteligente</p>
         </div>
         <div class='content'>
-            <h2>Solicitação Aprovada! ✅</h2>
-            <p>Olá <strong>{nome}</strong>,</p>
-            <p>Sua solicitação de acesso ao <strong>ACNUTRI</strong> foi <strong>aprovada</strong>.</p>
+            <h2>SolicitaÃ§Ã£o Aprovada! âœ…</h2>
+            <p>OlÃ¡ <strong>{nome}</strong>,</p>
+            <p>Sua solicitaÃ§Ã£o de acesso ao <strong>ACNUTRI</strong> foi <strong>aprovada</strong>.</p>
 
             <div class='info'>
-                <p><strong>Empresa/Clínica:</strong> {empresaNome}</p>
-                <p><strong>Perfil:</strong> Profissional de Nutrição</p>
+                <p><strong>Empresa/ClÃ­nica:</strong> {empresaNome}</p>
+                <p><strong>Perfil:</strong> Profissional de NutriÃ§Ã£o</p>
                 <p><strong>Validade do link:</strong> 48 horas</p>
             </div>
 
-            <p>Clique no botão abaixo para definir sua senha e acessar o sistema:</p>
+            <p>Clique no botÃ£o abaixo para definir sua senha e acessar o sistema:</p>
 
             <p style='text-align: center;'>
                 <a href='{linkDefinirSenha}' class='btn' style='color:#ffffff !important; text-decoration:none;'>Definir Minha Senha e Acessar</a>
@@ -4015,12 +4048,12 @@ app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput
             </p>
 
             <p style='font-size: 14px; color: #ef4444;'>
-                ⚠️ Este link expira em 48 horas e pode ser usado apenas uma vez.
+                âš ï¸ Este link expira em 48 horas e pode ser usado apenas uma vez.
             </p>
         </div>
         <div class='footer'>
             <p>Este e-mail foi enviado automaticamente pelo ACNUTRI.<br>
-            Se você não solicitou este acesso, pode ignorar este e-mail.</p>
+            Se vocÃª nÃ£o solicitou este acesso, pode ignorar este e-mail.</p>
         </div>
     </div>
 </body>
@@ -4031,15 +4064,15 @@ app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput
         // Log apenas metadados, NUNCA o link, token ou senha
         if (!emailEnviado)
         {
-            logger.LogWarning("Falha ao enviar e-mail de definição de senha para solicitação aprovada id={SolicitacaoId}, usuario={UsuarioId}, empresa={EmpresaId}",
+            logger.LogWarning("Falha ao enviar e-mail de definiÃ§Ã£o de senha para solicitaÃ§Ã£o aprovada id={SolicitacaoId}, usuario={UsuarioId}, empresa={EmpresaId}",
                 solicitacaoId, usuarioId, empresaId);
         }
 
         return Results.Ok(new
         {
-            mensagem = "Solicitação aprovada! Empresa, usuário e assinatura 'sem_plano' criados.",
+            mensagem = "SolicitaÃ§Ã£o aprovada! Empresa, usuÃ¡rio e assinatura 'sem_plano' criados.",
             emailEnviado,
-            avisoEmail = emailEnviado ? null : "⚠️ Aprovação concluída, mas houve falha no envio do e-mail de definição de senha. Use o botão 'Reenviar e-mail' na tela Acessos.",
+            avisoEmail = emailEnviado ? null : "âš ï¸ AprovaÃ§Ã£o concluÃ­da, mas houve falha no envio do e-mail de definiÃ§Ã£o de senha. Use o botÃ£o 'Reenviar e-mail' na tela Acessos.",
             empresaId,
             usuarioId
         });
@@ -4052,7 +4085,7 @@ app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput
 })
 .RequireAuthorization();
 
-// POST /api/acessos/{id}/reenviar-email - Super admin reenvia e-mail de definição de senha para solicitação aprovada
+// POST /api/acessos/{id}/reenviar-email - Super admin reenvia e-mail de definiÃ§Ã£o de senha para solicitaÃ§Ã£o aprovada
 app.MapPost("/api/acessos/{id:long}/reenviar-email", async (long id, ClaimsPrincipal user, IEmailService emailService, ILogger<Program> logger) =>
 {
     if (user.FindFirst("perfil")?.Value != "super_admin")
@@ -4066,7 +4099,7 @@ app.MapPost("/api/acessos/{id:long}/reenviar-email", async (long id, ClaimsPrinc
 
     try
     {
-        // Buscar solicitação aprovada com usuario_id
+        // Buscar solicitaÃ§Ã£o aprovada com usuario_id
         long solicitacaoId = 0;
         string nome = "", email = "";
         int usuarioId = 0;
@@ -4080,7 +4113,7 @@ app.MapPost("/api/acessos/{id:long}/reenviar-email", async (long id, ClaimsPrinc
             cmd.Parameters.AddWithValue("@id", id);
             using var rd = await cmd.ExecuteReaderAsync();
             if (!await rd.ReadAsync())
-                return Results.NotFound(new { mensagem = "Solicitação não encontrada ou não está aprovada." });
+                return Results.NotFound(new { mensagem = "SolicitaÃ§Ã£o nÃ£o encontrada ou nÃ£o estÃ¡ aprovada." });
 
             solicitacaoId = rd.GetInt64(0);
             nome = rd.GetString(1);
@@ -4090,9 +4123,9 @@ app.MapPost("/api/acessos/{id:long}/reenviar-email", async (long id, ClaimsPrinc
         }
 
         if (usuarioId == 0)
-            return Results.BadRequest(new { mensagem = "Solicitação aprovada não possui usuário associado." });
+            return Results.BadRequest(new { mensagem = "SolicitaÃ§Ã£o aprovada nÃ£o possui usuÃ¡rio associado." });
 
-        // Invalidar tokens pendentes anteriores do mesmo usuário
+        // Invalidar tokens pendentes anteriores do mesmo usuÃ¡rio
         using (var cmd = new NpgsqlCommand(@"
             UPDATE tokens_redefinicao_senha
             SET usado_em = CURRENT_TIMESTAMP
@@ -4102,7 +4135,7 @@ app.MapPost("/api/acessos/{id:long}/reenviar-email", async (long id, ClaimsPrinc
             await cmd.ExecuteNonQueryAsync();
         }
 
-        // Gerar novo token de definição de senha (expira em 48h, SHA-256 no banco, uso único)
+        // Gerar novo token de definiÃ§Ã£o de senha (expira em 48h, SHA-256 no banco, uso Ãºnico)
         var tokenBytes = new byte[32];
         using (var rng = System.Security.Cryptography.RandomNumberGenerator.Create())
         {
@@ -4127,11 +4160,11 @@ app.MapPost("/api/acessos/{id:long}/reenviar-email", async (long id, ClaimsPrinc
 
         // Auditoria
         await RegistrarAuditoriaDetalhada(conn, tx, 0, adminId, "reenviar_email_definicao_senha", $"/api/acessos/{id}/reenviar-email", solicitacaoId,
-            $"Reenvio de e-mail de definição de senha para {nome} ({email}) - solicitação {solicitacaoId}");
+            $"Reenvio de e-mail de definiÃ§Ã£o de senha para {nome} ({email}) - solicitaÃ§Ã£o {solicitacaoId}");
 
         await tx.CommitAsync();
 
-        // Enviar e-mail com novo link (token raw, não hash)
+        // Enviar e-mail com novo link (token raw, nÃ£o hash)
         var frontendUrl = GetFrontendUrl();
         var linkDefinirSenha = $"{frontendUrl.TrimEnd('/')}/definir-senha/{tokenRaw}";
         var assunto = $"Defina sua senha no ACNUTRI - {empresaNome} (Reenviado)";
@@ -4154,21 +4187,21 @@ app.MapPost("/api/acessos/{id:long}/reenviar-email", async (long id, ClaimsPrinc
 <body>
     <div class='container'>
         <div class='header'>
-            <h1>🍎 ACNUTRI</h1>
-            <p>Sistema de Nutrição Inteligente</p>
+            <h1>ðŸŽ ACNUTRI</h1>
+            <p>Sistema de NutriÃ§Ã£o Inteligente</p>
         </div>
         <div class='content'>
-            <h2>Defina sua senha para acessar o ACNUTRI ✅</h2>
-            <p>Olá <strong>{nome}</strong>,</p>
-            <p>Este e-mail foi reenviado pelo administrador para que você possa definir sua senha e acessar o <strong>ACNUTRI</strong>.</p>
+            <h2>Defina sua senha para acessar o ACNUTRI âœ…</h2>
+            <p>OlÃ¡ <strong>{nome}</strong>,</p>
+            <p>Este e-mail foi reenviado pelo administrador para que vocÃª possa definir sua senha e acessar o <strong>ACNUTRI</strong>.</p>
 
             <div class='info'>
-                <p><strong>Empresa/Clínica:</strong> {empresaNome}</p>
-                <p><strong>Perfil:</strong> Profissional de Nutrição</p>
+                <p><strong>Empresa/ClÃ­nica:</strong> {empresaNome}</p>
+                <p><strong>Perfil:</strong> Profissional de NutriÃ§Ã£o</p>
                 <p><strong>Validade do link:</strong> 48 horas</p>
             </div>
 
-            <p>Clique no botão abaixo para definir sua senha e acessar o sistema:</p>
+            <p>Clique no botÃ£o abaixo para definir sua senha e acessar o sistema:</p>
 
             <p style='text-align: center;'>
                 <a href='{linkDefinirSenha}' class='btn' style='color:#ffffff !important; text-decoration:none;'>Definir Minha Senha e Acessar</a>
@@ -4180,12 +4213,12 @@ app.MapPost("/api/acessos/{id:long}/reenviar-email", async (long id, ClaimsPrinc
             </p>
 
             <p style='font-size: 14px; color: #ef4444;'>
-                ⚠️ Este link expira em 48 horas e pode ser usado apenas uma vez.
+                âš ï¸ Este link expira em 48 horas e pode ser usado apenas uma vez.
             </p>
         </div>
         <div class='footer'>
             <p>Este e-mail foi enviado automaticamente pelo ACNUTRI.<br>
-            Se você não solicitou este acesso, pode ignorar este e-mail.</p>
+            Se vocÃª nÃ£o solicitou este acesso, pode ignorar este e-mail.</p>
         </div>
     </div>
 </body>
@@ -4196,7 +4229,7 @@ app.MapPost("/api/acessos/{id:long}/reenviar-email", async (long id, ClaimsPrinc
         // Log apenas metadados, NUNCA o link, token ou senha
         if (!emailEnviado)
         {
-            logger.LogWarning("Falha ao reenviar e-mail de definição de senha para solicitação id={SolicitacaoId}, usuario={UsuarioId}",
+            logger.LogWarning("Falha ao reenviar e-mail de definiÃ§Ã£o de senha para solicitaÃ§Ã£o id={SolicitacaoId}, usuario={UsuarioId}",
                 solicitacaoId, usuarioId);
         }
 
@@ -4204,8 +4237,8 @@ app.MapPost("/api/acessos/{id:long}/reenviar-email", async (long id, ClaimsPrinc
         {
             emailEnviado,
             mensagem = emailEnviado
-                ? "E-mail de definição de senha reenviado com sucesso!"
-                : "Houve falha no envio do e-mail. Verifique a configuração SMTP e tente novamente."
+                ? "E-mail de definiÃ§Ã£o de senha reenviado com sucesso!"
+                : "Houve falha no envio do e-mail. Verifique a configuraÃ§Ã£o SMTP e tente novamente."
         });
     }
     catch (Exception ex)
@@ -4216,7 +4249,7 @@ app.MapPost("/api/acessos/{id:long}/reenviar-email", async (long id, ClaimsPrinc
 })
 .RequireAuthorization();
 
-// POST /api/acessos/{id}/recusar - Super admin recusa solicitação
+// POST /api/acessos/{id}/recusar - Super admin recusa solicitaÃ§Ã£o
 app.MapPost("/api/acessos/{id:long}/recusar", async (long id, ClaimsPrincipal user) =>
 {
     if (user.FindFirst("perfil")?.Value != "super_admin")
@@ -4230,7 +4263,7 @@ app.MapPost("/api/acessos/{id:long}/recusar", async (long id, ClaimsPrincipal us
 
     try
     {
-        // Buscar solicitação pendente
+        // Buscar solicitaÃ§Ã£o pendente
         string nome = "", email = "";
         using (var cmd = new NpgsqlCommand(@"
             SELECT nome, email FROM solicitacoes_acesso
@@ -4239,7 +4272,7 @@ app.MapPost("/api/acessos/{id:long}/recusar", async (long id, ClaimsPrincipal us
             cmd.Parameters.AddWithValue("@id", id);
             using var rd = await cmd.ExecuteReaderAsync();
             if (!await rd.ReadAsync())
-                return Results.NotFound(new { mensagem = "Solicitação não encontrada ou já processada." });
+                return Results.NotFound(new { mensagem = "SolicitaÃ§Ã£o nÃ£o encontrada ou jÃ¡ processada." });
 
             nome = rd.GetString(0);
             email = rd.GetString(1);
@@ -4257,11 +4290,11 @@ app.MapPost("/api/acessos/{id:long}/recusar", async (long id, ClaimsPrincipal us
 
         // Auditoria
         await RegistrarAuditoriaDetalhada(conn, tx, 0, adminId, "recusa_acesso", $"/api/acessos/{id}/recusar", id,
-            $"Solicitação de {nome} ({email}) recusada.");
+            $"SolicitaÃ§Ã£o de {nome} ({email}) recusada.");
 
         await tx.CommitAsync();
 
-        return Results.Ok(new { mensagem = "Solicitação recusada." });
+        return Results.Ok(new { mensagem = "SolicitaÃ§Ã£o recusada." });
     }
     catch (Exception ex)
     {
@@ -4271,7 +4304,7 @@ app.MapPost("/api/acessos/{id:long}/recusar", async (long id, ClaimsPrincipal us
 })
 .RequireAuthorization();
 
-// DELETE /api/acessos/{id} - Super admin exclui solicitação
+// DELETE /api/acessos/{id} - Super admin exclui solicitaÃ§Ã£o
 app.MapDelete("/api/acessos/{id:long}", async (long id, ClaimsPrincipal user) =>
 {
     if (user.FindFirst("perfil")?.Value != "super_admin")
@@ -4285,7 +4318,7 @@ app.MapDelete("/api/acessos/{id:long}", async (long id, ClaimsPrincipal user) =>
 
     try
     {
-        // Buscar solicitação
+        // Buscar solicitaÃ§Ã£o
         string status = "", nome = "", email = "";
         long? empresaId = null, usuarioId = null;
         using (var cmd = new NpgsqlCommand(@"
@@ -4295,7 +4328,7 @@ app.MapDelete("/api/acessos/{id:long}", async (long id, ClaimsPrincipal user) =>
             cmd.Parameters.AddWithValue("@id", id);
             using var rd = await cmd.ExecuteReaderAsync();
             if (!await rd.ReadAsync())
-                return Results.NotFound(new { mensagem = "Solicitação não encontrada." });
+                return Results.NotFound(new { mensagem = "SolicitaÃ§Ã£o nÃ£o encontrada." });
 
             status = rd.GetString(0);
             nome = rd.GetString(1);
@@ -4306,14 +4339,14 @@ app.MapDelete("/api/acessos/{id:long}", async (long id, ClaimsPrincipal user) =>
 
         if (status == "aprovado" && empresaId.HasValue && usuarioId.HasValue)
         {
-            // Soft delete: desativar usuário (não excluir empresa nem dados)
+            // Soft delete: desativar usuÃ¡rio (nÃ£o excluir empresa nem dados)
             using (var cmd = new NpgsqlCommand("UPDATE usuarios SET ativo = false WHERE id = @id;", conn, tx))
             {
                 cmd.Parameters.AddWithValue("@id", usuarioId.Value);
                 await cmd.ExecuteNonQueryAsync();
             }
 
-            // Atualizar solicitação para excluido
+            // Atualizar solicitaÃ§Ã£o para excluido
             using (var cmd = new NpgsqlCommand(@"
                 UPDATE solicitacoes_acesso
                 SET status = 'excluido', atualizado_em = CURRENT_TIMESTAMP
@@ -4325,7 +4358,7 @@ app.MapDelete("/api/acessos/{id:long}", async (long id, ClaimsPrincipal user) =>
 
             // Auditoria
             await RegistrarAuditoriaDetalhada(conn, tx, (int)empresaId.Value, adminId, "exclusao_acesso", $"/api/acessos/{id}", id,
-                $"Acesso aprovado de {nome} ({email}) excluído (soft delete). Usuário {usuarioId} desativado, empresa {empresaId} mantida.");
+                $"Acesso aprovado de {nome} ({email}) excluÃ­do (soft delete). UsuÃ¡rio {usuarioId} desativado, empresa {empresaId} mantida.");
         }
         else
         {
@@ -4336,14 +4369,14 @@ app.MapDelete("/api/acessos/{id:long}", async (long id, ClaimsPrincipal user) =>
                 await cmd.ExecuteNonQueryAsync();
             }
 
-            // Auditoria (empresa_id = 0 pois não há empresa associada)
+            // Auditoria (empresa_id = 0 pois nÃ£o hÃ¡ empresa associada)
             await RegistrarAuditoriaDetalhada(conn, tx, 0, adminId, "exclusao_acesso", $"/api/acessos/{id}", id,
-                $"Solicitação {status} de {nome} ({email}) excluída permanentemente.");
+                $"SolicitaÃ§Ã£o {status} de {nome} ({email}) excluÃ­da permanentemente.");
         }
 
         await tx.CommitAsync();
 
-        return Results.Ok(new { mensagem = status == "aprovado" ? "Acesso desativado (usuário desativado, empresa mantida)." : "Solicitação excluída permanentemente." });
+        return Results.Ok(new { mensagem = status == "aprovado" ? "Acesso desativado (usuÃ¡rio desativado, empresa mantida)." : "SolicitaÃ§Ã£o excluÃ­da permanentemente." });
     }
     catch (Exception ex)
     {
@@ -4354,14 +4387,14 @@ app.MapDelete("/api/acessos/{id:long}", async (long id, ClaimsPrincipal user) =>
 .RequireAuthorization();
 
 // =====================================================================
-// DEFINIR SENHA (token de 48h, uso único, hash no banco)
+// DEFINIR SENHA (token de 48h, uso Ãºnico, hash no banco)
 // =====================================================================
 
-// GET /api/definir-senha/{token} - Valida token (para página frontend)
+// GET /api/definir-senha/{token} - Valida token (para pÃ¡gina frontend)
 app.MapGet("/api/definir-senha/{token}", async (string token) =>
 {
     if (string.IsNullOrWhiteSpace(token) || token.Length < 32)
-        return Results.NotFound(new { mensagem = "Token inválido.", valido = false });
+        return Results.NotFound(new { mensagem = "Token invÃ¡lido.", valido = false });
 
     // Calcular SHA-256 do token recebido
     var tokenHash = System.Convert.ToHexString(
@@ -4371,7 +4404,7 @@ app.MapGet("/api/definir-senha/{token}", async (string token) =>
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
-    // Buscar token válido por hash (não usado, não expirado)
+    // Buscar token vÃ¡lido por hash (nÃ£o usado, nÃ£o expirado)
     int usuarioId = 0;
     string email = "", nome = "";
     using (var cmd = new NpgsqlCommand(@"
@@ -4391,7 +4424,7 @@ app.MapGet("/api/definir-senha/{token}", async (string token) =>
     }
 
     if (usuarioId == 0)
-        return Results.NotFound(new { mensagem = "Token inválido ou expirado.", valido = false });
+        return Results.NotFound(new { mensagem = "Token invÃ¡lido ou expirado.", valido = false });
 
     return Results.Ok(new { valido = true, email, nome });
 })
@@ -4404,18 +4437,13 @@ app.MapPost("/api/definir-senha/{token}", async (string token, DefinirSenhaInput
     var confirmar = input.ConfirmarSenha ?? "";
 
     if (string.IsNullOrWhiteSpace(token) || token.Length < 32)
-        return Results.BadRequest(new { mensagem = "Token inválido." });
+        return Results.BadRequest(new { mensagem = "Token invÃ¡lido." });
 
     if (senha.Length < 8)
         return Results.BadRequest(new { mensagem = "A senha precisa ter pelo menos 8 caracteres." });
 
     if (senha != confirmar)
-        return Results.BadRequest(new { mensagem = "As senhas não conferem." });
-
-    // Rate limiting por IP (5 req/hora)
-    var clientIp = RateLimiter.GetClientIp(http);
-    if (!RateLimiter.TryConsume("definir-senha:" + clientIp))
-        return Results.Json(new { mensagem = "Muitas tentativas. Tente novamente em uma hora." }, statusCode: 429);
+        return Results.BadRequest(new { mensagem = "As senhas nÃ£o conferem." });
 
     // Calcular SHA-256 do token recebido
     var tokenHash = System.Convert.ToHexString(
@@ -4428,7 +4456,7 @@ app.MapPost("/api/definir-senha/{token}", async (string token, DefinirSenhaInput
 
     try
     {
-        // Consumir token atomicamente: só procede se token válido, não usado e não expirado
+        // Consumir token atomicamente: sÃ³ procede se token vÃ¡lido, nÃ£o usado e nÃ£o expirado
         int usuarioId = 0;
         using (var cmd = new NpgsqlCommand(@"
             UPDATE tokens_redefinicao_senha
@@ -4439,23 +4467,23 @@ app.MapPost("/api/definir-senha/{token}", async (string token, DefinirSenhaInput
             cmd.Parameters.AddWithValue("@th", tokenHash);
             var result = await cmd.ExecuteScalarAsync();
             if (result == null)
-                return Results.BadRequest(new { mensagem = "Token inválido, expirado ou já utilizado." });
+                return Results.BadRequest(new { mensagem = "Token invÃ¡lido, expirado ou jÃ¡ utilizado." });
             usuarioId = Convert.ToInt32(result);
         }
 
-        // Verificar se usuário está ativo
+        // Verificar se usuÃ¡rio estÃ¡ ativo
         bool ativo = false;
         using (var cmd = new NpgsqlCommand("SELECT ativo FROM usuarios WHERE id = @id", conn, tx))
         {
             cmd.Parameters.AddWithValue("@id", usuarioId);
             var result = await cmd.ExecuteScalarAsync();
             if (result == null)
-                return Results.BadRequest(new { mensagem = "Usuário não encontrado." });
+                return Results.BadRequest(new { mensagem = "UsuÃ¡rio nÃ£o encontrado." });
             ativo = Convert.ToBoolean(result);
         }
 
         if (!ativo)
-            return Results.BadRequest(new { mensagem = "Usuário desativado. Contate o administrador." });
+            return Results.BadRequest(new { mensagem = "UsuÃ¡rio desativado. Contate o administrador." });
 
         // Atualizar senha
         var novoHash = BCrypt.Net.BCrypt.HashPassword(senha);
@@ -4468,7 +4496,7 @@ app.MapPost("/api/definir-senha/{token}", async (string token, DefinirSenhaInput
 
         await tx.CommitAsync();
 
-        return Results.Ok(new { mensagem = "Senha definida com sucesso! Faça login para acessar." });
+        return Results.Ok(new { mensagem = "Senha definida com sucesso! FaÃ§a login para acessar." });
     }
     catch (Exception ex)
     {
@@ -4476,6 +4504,7 @@ app.MapPost("/api/definir-senha/{token}", async (string token, DefinirSenhaInput
         return Results.BadRequest(new { mensagem = "Erro ao definir senha: " + ex.Message });
     }
 })
+.RequireRateLimiting("ip-login")
 .AllowAnonymous();
 
 app.MapGet("/api/usuarios", async (ClaimsPrincipal user) =>
@@ -4528,11 +4557,11 @@ app.MapPost("/api/usuarios", async (UsuarioInput i, ClaimsPrincipal user) =>
         cm.Parameters.AddWithValue("n", nivel);
         await cm.ExecuteNonQueryAsync();
 
-        return Results.Created($"/api/usuarios/{id}", new { id, mensagem = "Usuário criado!" });
+        return Results.Created($"/api/usuarios/{id}", new { id, mensagem = "UsuÃ¡rio criado!" });
     }
     catch (PostgresException ex) when (ex.SqlState == "23505")
     {
-        return Results.Conflict(new { mensagem = "Já existe um usuário com esse e-mail." });
+        return Results.Conflict(new { mensagem = "JÃ¡ existe um usuÃ¡rio com esse e-mail." });
     }
 });
 
@@ -4544,7 +4573,7 @@ app.MapPut("/api/usuarios/{id}", async (int id, UsuarioInput i, ClaimsPrincipal 
     bool ativo = i.Ativo ?? true;
 
     if (id == meuId && (!ativo || perfil != "admin"))
-        return Results.BadRequest(new { mensagem = "Você não pode desativar nem rebaixar o próprio usuário." });
+        return Results.BadRequest(new { mensagem = "VocÃª nÃ£o pode desativar nem rebaixar o prÃ³prio usuÃ¡rio." });
     if (!string.IsNullOrEmpty(i.Senha) && i.Senha.Length < 8)
         return Results.BadRequest(new { mensagem = "A senha precisa ter pelo menos 8 caracteres." });
 
@@ -4561,7 +4590,7 @@ app.MapPut("/api/usuarios/{id}", async (int id, UsuarioInput i, ClaimsPrincipal 
     cmd.Parameters.AddWithValue("ativo", ativo);
     cmd.Parameters.AddWithValue("hash", string.IsNullOrEmpty(i.Senha) ? "" : BCrypt.Net.BCrypt.HashPassword(i.Senha));
     if (await cmd.ExecuteNonQueryAsync() == 0)
-        return Results.NotFound(new { mensagem = "Usuário não encontrado." });
+        return Results.NotFound(new { mensagem = "UsuÃ¡rio nÃ£o encontrado." });
 
     using var cm = new NpgsqlCommand(@"
         INSERT INTO usuario_modulos (usuario_id, modulo, nivel) VALUES (@u, 'nutricao', @n)
@@ -4570,11 +4599,11 @@ app.MapPut("/api/usuarios/{id}", async (int id, UsuarioInput i, ClaimsPrincipal 
     cm.Parameters.AddWithValue("n", nivel);
     await cm.ExecuteNonQueryAsync();
 
-    return Results.Ok(new { mensagem = "Usuário atualizado!" });
+    return Results.Ok(new { mensagem = "UsuÃ¡rio atualizado!" });
 });
 
 // =====================================================================
-// ÁREA DO PACIENTE
+// ÃREA DO PACIENTE
 // =====================================================================
 app.MapPost("/api/auth/paciente", async (PacienteLoginInput i, HttpContext ctx) =>
 {
@@ -4589,7 +4618,7 @@ app.MapPost("/api/auth/paciente", async (PacienteLoginInput i, HttpContext ctx) 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
-    // Bloqueio por CPF (5) e por IP (20) nos últimos 15 minutos
+    // Bloqueio por CPF (5) e por IP (20) nos Ãºltimos 15 minutos
     long falhasCpf, falhasIp;
     using (var c = new NpgsqlCommand(@"
         SELECT
@@ -4638,9 +4667,9 @@ app.MapPost("/api/auth/paciente", async (PacienteLoginInput i, HttpContext ctx) 
     }
 
     return Results.Ok(new { token = Auth.GerarPaciente(jwtKey, pid, empresa), nome = nome.Split(' ')[0], tipo = "paciente" });
-});
+}).RequireRateLimiting("ip-login");
 
-// Tudo que a paciente enxerga, numa chamada só (o ID vem do token)
+// Tudo que a paciente enxerga, numa chamada sÃ³ (o ID vem do token)
 app.MapGet("/api/paciente/tudo", async (ClaimsPrincipal user) =>
 {
     int pid = int.Parse(user.FindFirst("pid")!.Value);
@@ -4700,18 +4729,18 @@ app.MapGet("/api/paciente/tudo", async (ClaimsPrincipal user) =>
     return Results.Ok(new { pid, nome, plano, orientacoes, metas });
 });
 
-// Para a equipe: últimos acessos da paciente
+// Para a equipe: Ãºltimos acessos da paciente
 app.MapGet("/api/acessos/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
-    // Apenas usuários do tipo "equipe" podem acessar (não pacientes)
+    // Apenas usuÃ¡rios do tipo "equipe" podem acessar (nÃ£o pacientes)
     var tipo = user.FindFirst("tipo")?.Value;
     if (tipo != "equipe")
         return Results.Forbid();
 
     int emp = Auth.Empresa(user);
-    // Validar se paciente pertence à empresa do usuário
+    // Validar se paciente pertence Ã  empresa do usuÃ¡rio
     if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
-        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+        return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
 
     var lista = new List<object>();
     using var conn = new NpgsqlConnection(connString);
@@ -4725,7 +4754,7 @@ app.MapGet("/api/acessos/{pacienteId}", async (int pacienteId, ClaimsPrincipal u
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 // =====================================================================
-// ÁREA DO PACIENTE: EXAMES
+// ÃREA DO PACIENTE: EXAMES
 // =====================================================================
 
 // POST /api/paciente/exames - Paciente envia exames (multipart: titulo, data, observacao, files)
@@ -4743,9 +4772,9 @@ app.MapPost("/api/paciente/exames", async (HttpRequest request, ClaimsPrincipal 
     var erro = ArquivoHelper.Validar(form.Files, somenteImagem: false);
     if (erro != null) return Results.BadRequest(new { mensagem = erro });
 
-    // Limite: até 5 arquivos por envio
+    // Limite: atÃ© 5 arquivos por envio
     if (form.Files.Count > 5)
-        return Results.BadRequest(new { mensagem = "Máximo 5 arquivos por envio." });
+        return Results.BadRequest(new { mensagem = "MÃ¡ximo 5 arquivos por envio." });
 
     // Limite: 30 exames por paciente
     using var conn = new NpgsqlConnection(connString);
@@ -4830,17 +4859,17 @@ app.MapGet("/api/paciente/arquivos/{id:int}", async (int id, ClaimsPrincipal use
     cmd.Parameters.AddWithValue("p", pid);
     using var rd = await cmd.ExecuteReaderAsync();
     if (!await rd.ReadAsync())
-        return Results.NotFound(new { mensagem = "Arquivo não encontrado." });
+        return Results.NotFound(new { mensagem = "Arquivo nÃ£o encontrado." });
 
     var result = Results.File(rd.GetFieldValue<byte[]>(1), rd.GetString(0));
-    // Adiciona header de segurança
+    // Adiciona header de seguranÃ§a
     var httpContext = app.Services.GetRequiredService<IHttpContextAccessor>().HttpContext;
     if (httpContext != null)
         httpContext.Response.Headers["X-Content-Type-Options"] = "nosniff";
     return result;
 });
 
-// DELETE /api/paciente/exames/{id} - Apaga exame enviado pelo próprio paciente (com arquivos)
+// DELETE /api/paciente/exames/{id} - Apaga exame enviado pelo prÃ³prio paciente (com arquivos)
 app.MapDelete("/api/paciente/exames/{id:int}", async (int id, ClaimsPrincipal user) =>
 {
     int pid = int.Parse(user.FindFirst("pid")!.Value);
@@ -4849,7 +4878,7 @@ app.MapDelete("/api/paciente/exames/{id:int}", async (int id, ClaimsPrincipal us
     await conn.OpenAsync();
     using var tx = await conn.BeginTransactionAsync();
 
-    // Verifica se é exame do paciente e enviado_por = 'paciente'
+    // Verifica se Ã© exame do paciente e enviado_por = 'paciente'
     using (var cmdCheck = new NpgsqlCommand("SELECT id FROM exames_paciente WHERE id = @id AND paciente_id = @p AND enviado_por = 'paciente'", conn, tx))
     {
         cmdCheck.Parameters.AddWithValue("id", id);
@@ -4857,7 +4886,7 @@ app.MapDelete("/api/paciente/exames/{id:int}", async (int id, ClaimsPrincipal us
         if (await cmdCheck.ExecuteScalarAsync() == null)
         {
             await tx.RollbackAsync();
-            return Results.NotFound(new { mensagem = "Exame não encontrado ou não pode ser excluído." });
+            return Results.NotFound(new { mensagem = "Exame nÃ£o encontrado ou nÃ£o pode ser excluÃ­do." });
         }
     }
 
@@ -4875,8 +4904,8 @@ app.MapDelete("/api/paciente/exames/{id:int}", async (int id, ClaimsPrincipal us
     await tx.CommitAsync();
 
     return rows > 0
-        ? Results.Ok(new { mensagem = "Exame excluído com sucesso!" })
-        : Results.NotFound(new { mensagem = "Exame não encontrado." });
+        ? Results.Ok(new { mensagem = "Exame excluÃ­do com sucesso!" })
+        : Results.NotFound(new { mensagem = "Exame nÃ£o encontrado." });
 });
 
 // POST /api/paciente/consentimentos - Registra consentimento do paciente (aceito=true) ou revoga (aceito=false)
@@ -4888,7 +4917,7 @@ app.MapPost("/api/paciente/consentimentos", async (HttpRequest request, ClaimsPr
     var form = await request.ReadFormAsync();
     string tipo = form["tipo"].ToString().Trim();
     string versao = form["versao_texto"].ToString().Trim();
-    if (tipo == "" || versao == "") return Results.BadRequest(new { mensagem = "Tipo e versão são obrigatórios." });
+    if (tipo == "" || versao == "") return Results.BadRequest(new { mensagem = "Tipo e versÃ£o sÃ£o obrigatÃ³rios." });
 
     // aceito: opcional, default true. Se false, revoga o consentimento
     bool aceito = true;
@@ -4945,7 +4974,7 @@ app.MapGet("/api/paciente/consentimentos", async (ClaimsPrincipal user) =>
     return Results.Ok(lista);
 });
 
-// GET /api/paciente/ultimos-valores - Últimos valores do paciente (peso, altura, % gordura) para pré-preenchimento
+// GET /api/paciente/ultimos-valores - Ãšltimos valores do paciente (peso, altura, % gordura) para prÃ©-preenchimento
 app.MapGet("/api/paciente/ultimos-valores", async (ClaimsPrincipal user) =>
 {
     int pid = int.Parse(user.FindFirst("pid")!.Value);
@@ -5053,7 +5082,7 @@ app.MapGet("/api/paciente/meus-dados", async (ClaimsPrincipal user) =>
         result["checkins"] = list;
     }
 
-    // 6. Evolução (registros antropométricos)
+    // 6. EvoluÃ§Ã£o (registros antropomÃ©tricos)
     using (var cmd = new NpgsqlCommand("SELECT * FROM evolucao_registros WHERE paciente_id = @p ORDER BY data_registro DESC", conn))
     {
         cmd.Parameters.AddWithValue("p", pid);
@@ -5091,7 +5120,7 @@ app.MapGet("/api/paciente/meus-dados", async (ClaimsPrincipal user) =>
         result["planos"] = list;
     }
 
-    // 8. Orientações nutricionais
+    // 8. OrientaÃ§Ãµes nutricionais
     using (var cmd = new NpgsqlCommand("SELECT * FROM orientacoes_nutricionais WHERE paciente_id = @p ORDER BY criado_em DESC", conn))
     {
         cmd.Parameters.AddWithValue("p", pid);
@@ -5107,7 +5136,7 @@ app.MapGet("/api/paciente/meus-dados", async (ClaimsPrincipal user) =>
         result["orientacoes"] = list;
     }
 
-    // 9. Observações
+    // 9. ObservaÃ§Ãµes
     using (var cmd = new NpgsqlCommand("SELECT * FROM observacoes_paciente WHERE paciente_id = @p ORDER BY criado_em DESC", conn))
     {
         cmd.Parameters.AddWithValue("p", pid);
@@ -5139,7 +5168,7 @@ app.MapGet("/api/paciente/meus-dados", async (ClaimsPrincipal user) =>
         result["consentimentos"] = list;
     }
 
-    // 11. Solicitações LGPD
+    // 11. SolicitaÃ§Ãµes LGPD
     using (var cmd = new NpgsqlCommand("SELECT * FROM solicitacoes_lgpd WHERE paciente_id = @p ORDER BY criado_em DESC", conn))
     {
         cmd.Parameters.AddWithValue("p", pid);
@@ -5177,7 +5206,7 @@ app.MapGet("/api/paciente/meus-dados", async (ClaimsPrincipal user) =>
     return Results.Ok(result);
 });
 
-// POST /api/paciente/solicitacoes - Cria solicitação LGPD (correcao, exclusao, informacao)
+// POST /api/paciente/solicitacoes - Cria solicitaÃ§Ã£o LGPD (correcao, exclusao, informacao)
 app.MapPost("/api/paciente/solicitacoes", async (HttpRequest request, ClaimsPrincipal user) =>
 {
     int pid = int.Parse(user.FindFirst("pid")!.Value);
@@ -5188,9 +5217,9 @@ app.MapPost("/api/paciente/solicitacoes", async (HttpRequest request, ClaimsPrin
     string descricao = form["descricao"].ToString().Trim();
 
     if (!new[] { "correcao", "exclusao", "informacao" }.Contains(tipo))
-        return Results.BadRequest(new { mensagem = "Tipo inválido. Use: correcao, exclusao ou informacao." });
+        return Results.BadRequest(new { mensagem = "Tipo invÃ¡lido. Use: correcao, exclusao ou informacao." });
     if (descricao.Length < 10)
-        return Results.BadRequest(new { mensagem = "Descrição muito curta (mín. 10 caracteres)." });
+        return Results.BadRequest(new { mensagem = "DescriÃ§Ã£o muito curta (mÃ­n. 10 caracteres)." });
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
@@ -5212,7 +5241,7 @@ app.MapPost("/api/paciente/solicitacoes", async (HttpRequest request, ClaimsPrin
     return Results.Ok(new { id, tipo, descricao, status = "pendente", criado_em = criado });
 });
 
-// GET /api/paciente/solicitacoes - Lista solicitações do paciente
+// GET /api/paciente/solicitacoes - Lista solicitaÃ§Ãµes do paciente
 app.MapGet("/api/paciente/solicitacoes", async (ClaimsPrincipal user) =>
 {
     int pid = int.Parse(user.FindFirst("pid")!.Value);
@@ -5240,16 +5269,16 @@ app.MapGet("/api/paciente/solicitacoes", async (ClaimsPrincipal user) =>
 });
 
 // =====================================================================
-// LGPD - EQUIPE (Gestão de solicitações da empresa)
+// LGPD - EQUIPE (GestÃ£o de solicitaÃ§Ãµes da empresa)
 // =====================================================================
 
-// GET /api/empresa/solicitacoes - Lista solicitações da empresa (equipe)
+// GET /api/empresa/solicitacoes - Lista solicitaÃ§Ãµes da empresa (equipe)
 app.MapGet("/api/empresa/solicitacoes", async (ClaimsPrincipal user) =>
 {
     int emp = int.Parse(user.FindFirst("empresa")!.Value);
     string perfil = user.FindFirst("perfil")?.Value ?? "";
 
-    // Apenas admin e super_admin podem ver (profissional NÃO tem acesso ao LGPD)
+    // Apenas admin e super_admin podem ver (profissional NÃƒO tem acesso ao LGPD)
     if (!new[] { "admin", "super_admin" }.Contains(perfil))
         return Results.Forbid();
 
@@ -5284,21 +5313,21 @@ app.MapGet("/api/empresa/solicitacoes", async (ClaimsPrincipal user) =>
     return Results.Ok(lista);
 });
 
-// PATCH /api/empresa/solicitacoes/{id}/atender - Marca solicitação como atendida
+// PATCH /api/empresa/solicitacoes/{id}/atender - Marca solicitaÃ§Ã£o como atendida
 app.MapPatch("/api/empresa/solicitacoes/{id:long}/atender", async (long id, HttpRequest request, ClaimsPrincipal user) =>
 {
     int emp = int.Parse(user.FindFirst("empresa")!.Value);
     string perfil = user.FindFirst("perfil")?.Value ?? "";
     int uid = int.Parse(user.FindFirst("uid")!.Value);
 
-    // Apenas admin e super_admin podem atender (profissional NÃO tem acesso ao LGPD)
+    // Apenas admin e super_admin podem atender (profissional NÃƒO tem acesso ao LGPD)
     if (!new[] { "admin", "super_admin" }.Contains(perfil))
         return Results.Forbid();
 
     var form = await request.ReadFormAsync();
     string novoStatus = form["status"].ToString().Trim().ToLower();
     if (!new[] { "em_analise", "atendida", "recusada" }.Contains(novoStatus))
-        return Results.BadRequest(new { mensagem = "Status inválido." });
+        return Results.BadRequest(new { mensagem = "Status invÃ¡lido." });
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
@@ -5313,20 +5342,20 @@ app.MapPatch("/api/empresa/solicitacoes/{id:long}/atender", async (long id, Http
     cmd.Parameters.AddWithValue("status", novoStatus);
 
     var result = await cmd.ExecuteScalarAsync();
-    if (result == null) return Results.NotFound(new { mensagem = "Solicitação não encontrada." });
+    if (result == null) return Results.NotFound(new { mensagem = "SolicitaÃ§Ã£o nÃ£o encontrada." });
 
     return Results.Ok(new { id, status = novoStatus });
 });
 
 // =====================================================================
-// HISTÓRICO UNIFICADO (linha do tempo do paciente)
+// HISTÃ“RICO UNIFICADO (linha do tempo do paciente)
 // =====================================================================
 app.MapGet("/api/historico/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
 {
     int emp = Auth.Empresa(user);
-    // Validar se paciente pertence à empresa (defesa em profundidade)
+    // Validar se paciente pertence Ã  empresa (defesa em profundidade)
     if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
-        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+        return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
 
     var lista = new List<object>();
     using var conn = new NpgsqlConnection(connString);
@@ -5334,12 +5363,12 @@ app.MapGet("/api/historico/{pacienteId}", async (int pacienteId, ClaimsPrincipal
     using var cmd = new NpgsqlCommand(@"
         SELECT * FROM (
             SELECT 'plano' AS tipo, criado_em::date AS data, criado_em AS ordem,
-                   'Versão ' || numero || ' do plano' AS titulo,
+                   'VersÃ£o ' || numero || ' do plano' AS titulo,
                    COALESCE(descricao, '') AS detalhe, '' AS extra
             FROM planos_versoes WHERE paciente_id = @p
 
             UNION ALL
-            SELECT 'evolucao', data_registro, criado_em, 'Registro de evolução',
+            SELECT 'evolucao', data_registro, criado_em, 'Registro de evoluÃ§Ã£o',
                    COALESCE(observacao, ''),
                    CASE WHEN peso_kg IS NULL THEN '' ELSE replace(peso_kg::text, '.', ',') || ' kg' END
             FROM evolucao_registros WHERE paciente_id = @p
@@ -5347,13 +5376,13 @@ app.MapGet("/api/historico/{pacienteId}", async (int pacienteId, ClaimsPrincipal
             UNION ALL
             SELECT 'checkin', data_checkin, criado_em, 'Check-in semanal',
                    COALESCE(observacoes_paciente, ''),
-                   replace(peso_atual_kg::text, '.', ',') || ' kg · adesão ' || COALESCE(adesao_plano_porcentagem, 0) || '%'
+                   replace(peso_atual_kg::text, '.', ',') || ' kg Â· adesÃ£o ' || COALESCE(adesao_plano_porcentagem, 0) || '%'
             FROM checkins_semanais WHERE paciente_id = @p
 
             UNION ALL
             SELECT CASE WHEN tipo = 'semana' THEN 'obs_semana' ELSE 'obs_geral' END,
                    data_ref, criado_em,
-                   CASE WHEN tipo = 'semana' THEN 'Observação da semana' ELSE 'Observação geral' END,
+                   CASE WHEN tipo = 'semana' THEN 'ObservaÃ§Ã£o da semana' ELSE 'ObservaÃ§Ã£o geral' END,
                    texto, ''
             FROM observacoes_paciente WHERE paciente_id = @p
 
@@ -5388,7 +5417,7 @@ app.MapGet("/api/historico/{pacienteId}", async (int pacienteId, ClaimsPrincipal
     return Results.Ok(lista);
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 
-// ===========================EXECUÇÃO DA APLICAÇÃO=========================================
+// ===========================EXECUÃ‡ÃƒO DA APLICAÃ‡ÃƒO=========================================
 app.Run();
 
 // =====================================================================
@@ -5399,7 +5428,7 @@ record SolicitarAcessoInput(string? Nome, string? Email, string? Telefone, strin
 record AprovarAcessoInput(string? NomeProfissional); // opcional: sobrescrever nome do profissional
 
 // =====================================================================
-// RATE LIMITING EM MEMÓRIA (para /api/acesso/solicitar)
+// RATE LIMITING EM MEMÃ“RIA (para /api/acesso/solicitar)
 // =====================================================================
 static class RateLimiter
 {
@@ -5432,7 +5461,7 @@ static class RateLimiter
 
     public static string GetClientIp(HttpContext ctx)
     {
-        // UseForwardedHeaders já preenche RemoteIpAddress com o IP real do cliente (ForwardLimit=1)
+        // UseForwardedHeaders jÃ¡ preenche RemoteIpAddress com o IP real do cliente (ForwardLimit=1)
         return ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
     }
 }
@@ -5457,7 +5486,7 @@ record ItemInput(
     double QuantidadeG, string? MedidaCaseira,
     double Kcal, double Proteinas, double Carbos, double Gorduras);
 
-// Entrada para cálculo automático via Python service (TACO)
+// Entrada para cÃ¡lculo automÃ¡tico via Python service (TACO)
 record ItemCalcularInput(
     int RefeicaoId, int Opcao, int? SubstituiItemId,
     string AlimentoId,           // ID do alimento na TACO (ex: "175" = banana)
@@ -5484,10 +5513,10 @@ record AceitarConvitePacienteInput(string? Token, string? Senha, string? Nome, s
 record OnboardingInput(string EmpresaNome, string AdminNome, string AdminEmail, string AdminSenha);
 record MedidaCaseiraInput(string Medida, decimal GramasPorUnidade, string? Observacao = null);
 // =====================================================================
-// MONTA O PLANO COMPLETO (refeições → itens)
+// MONTA O PLANO COMPLETO (refeiÃ§Ãµes â†’ itens)
 // =====================================================================
 // =====================================================================
-// MONTA O PLANO COMPLETO (refeições → itens)
+// MONTA O PLANO COMPLETO (refeiÃ§Ãµes â†’ itens)
 // =====================================================================
 static class PlanoHelper
 {
@@ -5525,7 +5554,7 @@ static class PlanoHelper
                     refeicoes.Add(new()
                     {
                         ["id"] = id,
-                        ["nome"] = rd.IsDBNull(1) ? "Refeição" : rd.GetString(1),
+                        ["nome"] = rd.IsDBNull(1) ? "RefeiÃ§Ã£o" : rd.GetString(1),
                         ["horario"] = rd.IsDBNull(2) ? "08:00" : rd.GetTimeSpan(2).ToString(@"hh\:mm"),
                         ["observacoes"] = rd.GetString(3),
                         ["itens"] = itens
@@ -5582,7 +5611,7 @@ static class PlanoHelper
 }
 
 // =====================================================================
-// AUXILIARES: CAMPOS DA EVOLUÇÃO
+// AUXILIARES: CAMPOS DA EVOLUÃ‡ÃƒO
 // =====================================================================
 class EvolucaoCampos
 {
@@ -5636,7 +5665,7 @@ static class ArquivoHelper
     {
         foreach (var f in files)
         {
-            if (f.Length == 0) return $"O arquivo \"{f.FileName}\" está vazio.";
+            if (f.Length == 0) return $"O arquivo \"{f.FileName}\" estÃ¡ vazio.";
             if (f.Length > LimiteBytes) return $"O arquivo \"{f.FileName}\" passa de 10 MB.";
             var tipo = (f.ContentType ?? "").ToLowerInvariant();
             bool ok = Imagens.Contains(tipo) || (!somenteImagem && tipo == "application/pdf");
@@ -5670,7 +5699,7 @@ static class ArquivoHelper
         }
     }
 
-    // Lista os arquivos (sem o conteúdo) agrupados pelo registro de origem
+    // Lista os arquivos (sem o conteÃºdo) agrupados pelo registro de origem
     public static async Task<Dictionary<int, List<object>>> Listar(NpgsqlConnection conn, int pacienteId, string origem)
     {
         var mapa = new Dictionary<int, List<object>>();
@@ -5729,8 +5758,8 @@ static class Auth
 static class PlanoEnforcement
 {
     // Verifica se a empresa tem assinatura ativa e retorna os limites
-    // Retorna null se não tem assinatura ou está cancelada/past_due
-    // Para "sem_plano", retorna limites do catálogo (max 5 pacientes)
+    // Retorna null se nÃ£o tem assinatura ou estÃ¡ cancelada/past_due
+    // Para "sem_plano", retorna limites do catÃ¡logo (max 5 pacientes)
     public static async Task<(bool temAcesso, PlanoLimites limites, bool bypassLimites, string? erro)> VerificarAcessoAsync(
         NpgsqlDataSource db, int empresaId, string acaoRequerida)
     {
@@ -5756,7 +5785,7 @@ static class PlanoEnforcement
         var limitesJson = rd.IsDBNull(2) ? null : rd.GetString(2);
         var bypassLimites = rd.GetBoolean(3);
 
-        // Se status é cancelada, past_due, inativa -> restrições (sem_plano é plano válido com limites)
+        // Se status Ã© cancelada, past_due, inativa -> restriÃ§Ãµes (sem_plano Ã© plano vÃ¡lido com limites)
         if (status == "cancelada" || status == "past_due" || status == "inativa")
         {
             var semPlanoLimites = Planos.ObterLimites("sem_plano");
@@ -5768,7 +5797,7 @@ static class PlanoEnforcement
             ? Planos.Limites.GetValueOrDefault(plano)
             : ACNutri.Billing.PlanoLimites.FromJson(limitesJson);
 
-        // Verificar ação específica
+        // Verificar aÃ§Ã£o especÃ­fica
         if (acaoRequerida == "pdf_export" && status != "ativa")
         {
             return (false, limites, bypassLimites, "plano_necessario");
@@ -5779,14 +5808,14 @@ static class PlanoEnforcement
 
     // Verifica limite de pacientes para a empresa
     // Super Admin sempre pode criar (bypass total)
-    // Se assinatura tem bypass_limites = true, também permite (ilimitado)
+    // Se assinatura tem bypass_limites = true, tambÃ©m permite (ilimitado)
     public static async Task<(bool podeCriar, int maxPacientes, int atual)> VerificarLimitePacientesAsync(
         NpgsqlDataSource db, int empresaId, ClaimsPrincipal? user = null)
     {
         // Super Admin bypass total
         if (user != null && Auth.EhSuperAdmin(user))
         {
-            // Contar pacientes atuais apenas para informação
+            // Contar pacientes atuais apenas para informaÃ§Ã£o
             await using var countCmd = db.CreateCommand(
                 "SELECT COUNT(*) FROM pacientes WHERE empresa_id = @emp AND COALESCE(status, 'ativo') = 'ativo';");
             countCmd.Parameters.AddWithValue("emp", empresaId);
@@ -5816,7 +5845,7 @@ static class PlanoEnforcement
     }
 }
 
-// Cria o primeiro super-admin (só se não existir nenhum usuário)
+// Cria o primeiro super-admin (sÃ³ se nÃ£o existir nenhum usuÃ¡rio)
 static class Seed
 {
     public static async Task Garantir(string connString, IConfiguration cfg)
@@ -5824,21 +5853,21 @@ static class Seed
         using var conn = new NpgsqlConnection(connString);
         await conn.OpenAsync();
 
-        // SEMPRE garante schema base e migrações (idempotente)
+        // SEMPRE garante schema base e migraÃ§Ãµes (idempotente)
         foreach (var sql in new[]
         {
             "INSERT INTO perfis (chave, nome) VALUES ('super_admin','Super Administrador') ON CONFLICT DO NOTHING",
             "INSERT INTO perfis (chave, nome) VALUES ('admin','Administrador') ON CONFLICT DO NOTHING",
             "INSERT INTO perfis (chave, nome) VALUES ('profissional','Profissional') ON CONFLICT DO NOTHING",
             "INSERT INTO perfis (chave, nome) VALUES ('atendente','Atendente') ON CONFLICT DO NOTHING",
-            "INSERT INTO modulos (chave, nome) VALUES ('nutricao','Nutrição') ON CONFLICT DO NOTHING",
+            "INSERT INTO modulos (chave, nome) VALUES ('nutricao','NutriÃ§Ã£o') ON CONFLICT DO NOTHING",
             "INSERT INTO empresas (nome) SELECT 'Empresa Principal' WHERE NOT EXISTS (SELECT 1 FROM empresas)",
             "INSERT INTO empresa_modulos (empresa_id, modulo) SELECT MIN(id), 'nutricao' FROM empresas ON CONFLICT DO NOTHING",
-            // Migração: adicionar coluna dados_extendidos na tabela anamneses (se não existir)
+            // MigraÃ§Ã£o: adicionar coluna dados_extendidos na tabela anamneses (se nÃ£o existir)
             @"ALTER TABLE anamneses ADD COLUMN IF NOT EXISTS dados_extendidos JSONB DEFAULT '{}'::jsonb;",
-            // Índice para JSONB
+            // Ãndice para JSONB
             @"CREATE INDEX IF NOT EXISTS idx_anamneses_dados_extendidos ON anamneses USING GIN (dados_extendidos);",
-            // Migração: adicionar coluna bypass_limites na tabela assinaturas (se não existir)
+            // MigraÃ§Ã£o: adicionar coluna bypass_limites na tabela assinaturas (se nÃ£o existir)
             @"ALTER TABLE assinaturas ADD COLUMN IF NOT EXISTS bypass_limites boolean NOT NULL DEFAULT false;"
         })
         {
@@ -5846,7 +5875,7 @@ static class Seed
             await c.ExecuteNonQueryAsync();
         }
 
-        // Só cria super-admin se não existir nenhum usuário
+        // SÃ³ cria super-admin se nÃ£o existir nenhum usuÃ¡rio
         using (var c = new NpgsqlCommand("SELECT COUNT(*) FROM usuarios", conn))
             if (Convert.ToInt32(await c.ExecuteScalarAsync()) > 0) return;
 
@@ -5855,7 +5884,7 @@ static class Seed
         var senha = cfg["Seed:SuperAdminSenha"];
         if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(senha) || senha.Length < 8)
         {
-            Console.WriteLine("!!! Nenhum usuário cadastrado. Defina Seed:SuperAdminEmail e Seed:SuperAdminSenha (mín. 8) nos user-secrets.");
+            Console.WriteLine("!!! Nenhum usuÃ¡rio cadastrado. Defina Seed:SuperAdminEmail e Seed:SuperAdminSenha (mÃ­n. 8) nos user-secrets.");
             return;
         }
 
@@ -5869,7 +5898,7 @@ static class Seed
         Console.WriteLine($">>> Super Admin criado: {email}");
     }
 }
-// Descobre a que paciente cada requisição pertence e confere a empresa
+// Descobre a que paciente cada requisiÃ§Ã£o pertence e confere a empresa
 static class Escopo
 {
     static readonly Dictionary<string, string> Sql = new()
@@ -5907,10 +5936,10 @@ static class Escopo
                 Add("paciente", get ? id : await Corpo(ctx, "pacienteId")); break;
 
             case "acessos":
-                // GET /api/acessos (sem ID) - super_admin: lista solicitacoes_acesso, NÃO é paciente
-                // POST /api/acessos/{id}/aprovar|recusar - super_admin: id é solicitação, não paciente
-                // POST /api/acessos/{id}/reenviar-email - super_admin: id é solicitação, não paciente
-                // DELETE /api/acessos/{id} - super_admin: id é solicitação, não paciente
+                // GET /api/acessos (sem ID) - super_admin: lista solicitacoes_acesso, NÃƒO Ã© paciente
+                // POST /api/acessos/{id}/aprovar|recusar - super_admin: id Ã© solicitaÃ§Ã£o, nÃ£o paciente
+                // POST /api/acessos/{id}/reenviar-email - super_admin: id Ã© solicitaÃ§Ã£o, nÃ£o paciente
+                // DELETE /api/acessos/{id} - super_admin: id Ã© solicitaÃ§Ã£o, nÃ£o paciente
                 // GET /api/acessos/{pacienteId} - nutricionista/team: isola por paciente (acessos_paciente)
                 if (get && seg.Length == 3 && int.TryParse(seg[2], out var pid))
                 {
@@ -5962,7 +5991,7 @@ static class Escopo
         return alvos;
     }
 
-    // Lê um número do corpo (JSON ou formulário) sem consumir a requisição
+    // LÃª um nÃºmero do corpo (JSON ou formulÃ¡rio) sem consumir a requisiÃ§Ã£o
     static async Task<int> Corpo(HttpContext ctx, string campo)
     {
         var req = ctx.Request;
@@ -6005,11 +6034,11 @@ static class Escopo
     }
 }
 
-// Helper para validação de isolamento multi-tenant (defesa em profundidade)
+// Helper para validaÃ§Ã£o de isolamento multi-tenant (defesa em profundidade)
 static class TenantValidation
 {
-    // Valida se um recurso pertence à empresa do usuário
-    // Retorna true se válido, false se não encontrado (para retornar 404 sem vazamento de informação)
+    // Valida se um recurso pertence Ã  empresa do usuÃ¡rio
+    // Retorna true se vÃ¡lido, false se nÃ£o encontrado (para retornar 404 sem vazamento de informaÃ§Ã£o)
     public static async Task<bool> ValidarEmpresaAsync(
         string connString, string table, string idColumn, int resourceId, int empresaId)
     {
@@ -6023,7 +6052,7 @@ static class TenantValidation
         return result != null;
     }
 
-    // Valida se um paciente pertence à empresa do usuário
+    // Valida se um paciente pertence Ã  empresa do usuÃ¡rio
     public static async Task<bool> ValidarPacienteEmpresaAsync(string connString, int pacienteId, int empresaId)
     {
         if (pacienteId <= 0) return false;
@@ -6037,9 +6066,9 @@ static class TenantValidation
     }
 }
 
-// Endpoint Filter reutilizável para isolamento multi-tenant por pacienteId
-// Extrai pacienteId da rota (path) ou do body (JSON/form), valida se pertence à empresa do token
-// Se token for tipo "paciente": só permite o próprio pid; caso contrário 404
+// Endpoint Filter reutilizÃ¡vel para isolamento multi-tenant por pacienteId
+// Extrai pacienteId da rota (path) ou do body (JSON/form), valida se pertence Ã  empresa do token
+// Se token for tipo "paciente": sÃ³ permite o prÃ³prio pid; caso contrÃ¡rio 404
 class TenantIsolationFilter : IEndpointFilter
 {
     private readonly string _connString;
@@ -6058,7 +6087,7 @@ class TenantIsolationFilter : IEndpointFilter
         var empresaClaim = user.FindFirst("empresa");
         if (empresaClaim == null || !int.TryParse(empresaClaim.Value, out var empresaId))
         {
-            return Results.NotFound(new { mensagem = "Registro não encontrado." });
+            return Results.NotFound(new { mensagem = "Registro nÃ£o encontrado." });
         }
 
         // Obter tipo do token
@@ -6068,8 +6097,8 @@ class TenantIsolationFilter : IEndpointFilter
         int pacienteId = 0;
 
         // 1. Tentar da rota (path parameters)
-        // Para endpoints de pacientes (/api/pacientes/{id}), o parâmetro "id" é o pacienteId
-        // Para outros endpoints, procurar parâmetro explícito "pacienteId"
+        // Para endpoints de pacientes (/api/pacientes/{id}), o parÃ¢metro "id" Ã© o pacienteId
+        // Para outros endpoints, procurar parÃ¢metro explÃ­cito "pacienteId"
         var path = httpContext.Request.Path.Value ?? "";
         var isPacientesEndpoint = path.StartsWith("/api/pacientes/", StringComparison.OrdinalIgnoreCase);
 
@@ -6081,7 +6110,7 @@ class TenantIsolationFilter : IEndpointFilter
         {
             pacienteId = pidFromStr;
         }
-        // Só tratar "id" como pacienteId se for endpoint /api/pacientes/{id}
+        // SÃ³ tratar "id" como pacienteId se for endpoint /api/pacientes/{id}
         else if (isPacientesEndpoint && context.HttpContext.Request.RouteValues.TryGetValue("id", out var idValue) && idValue is int idPid)
         {
             pacienteId = idPid;
@@ -6091,33 +6120,33 @@ class TenantIsolationFilter : IEndpointFilter
             pacienteId = idPidFromStr;
         }
 
-        // 2. Se não veio da rota, tentar ler do body (JSON ou form)
+        // 2. Se nÃ£o veio da rota, tentar ler do body (JSON ou form)
         if (pacienteId <= 0)
         {
             pacienteId = await LerPacienteIdDoBody(httpContext);
         }
 
-        // Se não conseguiu extrair pacienteId, não bloqueia (pode ser endpoint que não usa pacienteId)
+        // Se nÃ£o conseguiu extrair pacienteId, nÃ£o bloqueia (pode ser endpoint que nÃ£o usa pacienteId)
         if (pacienteId <= 0)
         {
             return await next(context);
         }
 
-        // Se token é de paciente, só permite acessar o próprio pid
+        // Se token Ã© de paciente, sÃ³ permite acessar o prÃ³prio pid
         if (tipoClaim == "paciente")
         {
             var pidClaim = user.FindFirst("pid");
             if (pidClaim == null || !int.TryParse(pidClaim.Value, out var tokenPacienteId) || tokenPacienteId != pacienteId)
             {
-                return Results.NotFound(new { mensagem = "Registro não encontrado." });
+                return Results.NotFound(new { mensagem = "Registro nÃ£o encontrado." });
             }
             return await next(context);
         }
 
-        // Token de equipe: validar se paciente pertence à empresa do token
+        // Token de equipe: validar se paciente pertence Ã  empresa do token
         if (!await TenantValidation.ValidarPacienteEmpresaAsync(_connString, pacienteId, empresaId))
         {
-            return Results.NotFound(new { mensagem = "Registro não encontrado." });
+            return Results.NotFound(new { mensagem = "Registro nÃ£o encontrado." });
         }
 
         return await next(context);
@@ -6166,3 +6195,5 @@ static class Cpf
         return true;
     }
 }
+
+

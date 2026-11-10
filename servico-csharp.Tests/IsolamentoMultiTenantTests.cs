@@ -21,6 +21,9 @@ public class IsolamentoMultiTenantTests : IClassFixture<WebApplicationFactory<Pr
     private const string JwtKey = "SUA_CHAVE_JWT_AQUI_MIN_32_CHARS_12345678901234567890";
     private const string Issuer = "bybarhub";
     private const string Audience = "bybarhub-app";
+    private static bool _databaseCleaned = false;
+    private static readonly object _cleanupLock = new();
+    private static int _testCounter = 0;
 
     public IsolamentoMultiTenantTests(WebApplicationFactory<Program> factory)
     {
@@ -43,6 +46,58 @@ public class IsolamentoMultiTenantTests : IClassFixture<WebApplicationFactory<Pr
                     options => options.MapInboundClaims = false);
             });
         });
+
+        // Limpeza global do banco de dados de teste (executa uma vez)
+        // Usa a connection string do factory para garantir que limpe o banco correto
+        lock (_cleanupLock)
+        {
+            if (!_databaseCleaned)
+            {
+                var connString = GetConnectionString();
+                LimparBancoTesteGlobalAsync(connString).GetAwaiter().GetResult();
+                _databaseCleaned = true;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Limpa todos os dados de teste do banco (empresas de teste, usuários, pacientes, etc.)
+    /// </summary>
+    private static async Task LimparBancoTesteGlobalAsync(string connString)
+    {
+        if (string.IsNullOrEmpty(connString)) return;
+
+        await using var conn = new NpgsqlConnection(connString);
+        await conn.OpenAsync();
+
+        // Limpar na ordem correta (filhos antes dos pais)
+        var tabelas = new[]
+        {
+            "checkins_semanais", "orientacoes_nutricionais", "metas_acompanhamento", "metas_paciente",
+            "planos_versoes", "evolucao_registros", "exames_paciente", "observacoes_paciente",
+            "anamneses", "arquivos_paciente", "pacientes", "usuarios", "empresas"
+        };
+
+        foreach (var tabela in tabelas)
+        {
+            try
+            {
+                // Deletar apenas dados de teste (empresas com nome começando com 'Empresa Teste')
+                await using var cmd = new NpgsqlCommand($@"
+                    DELETE FROM {tabela}
+                    WHERE empresa_id IN (SELECT id FROM empresas WHERE nome LIKE 'Empresa Teste%')", conn);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            catch { /* tabela pode não existir, ignora */ }
+        }
+
+        // Também limpar empresas de teste
+        try
+        {
+            await using var cmd = new NpgsqlCommand("DELETE FROM empresas WHERE nome LIKE 'Empresa Teste%'", conn);
+            await cmd.ExecuteNonQueryAsync();
+        }
+        catch { }
     }
 
     /// <summary>
@@ -115,21 +170,24 @@ public class IsolamentoMultiTenantTests : IClassFixture<WebApplicationFactory<Pr
             await cmdPerfis.ExecuteNonQueryAsync();
         }
 
-        // Criar empresa
-        await using (var cmd = new NpgsqlCommand("INSERT INTO empresas (nome) VALUES ('Empresa Teste') RETURNING id;", conn))
+        // Criar empresa com nome único por teste para evitar conflitos
+        string empresaNome = $"Empresa Teste {testName}";
+        await using (var cmd = new NpgsqlCommand("INSERT INTO empresas (nome) VALUES (@nome) RETURNING id;", conn))
         {
+            cmd.Parameters.AddWithValue("nome", empresaNome);
             var result = await cmd.ExecuteScalarAsync();
             int empresaId = Convert.ToInt32(result);
 
-            // Criar usuário com ID único baseado no hash do nome do teste + timestamp
-            int usuarioId = Math.Abs(testName.GetHashCode() + Environment.TickCount) % 1000000 + 1000;
-            string userEmail = $"usuario_{testName}_{Guid.NewGuid():N}@teste.com".Replace("-", "");
+            // Criar usuário com ID único e email garantidamente único
+            int usuarioId = Math.Abs(testName.GetHashCode() + Environment.TickCount + Random.Shared.Next()) % 1000000 + 1000;
+            int counter = Interlocked.Increment(ref _testCounter);
+            string uniquePart = $"{counter}_{Guid.NewGuid():N}";
+            string userEmail = $"usr_{uniquePart}_{testName}@teste.com".Replace("-", "");
             if (userEmail.Length > 100) userEmail = userEmail.Substring(0, 100);
 
             await using var cmdUser = new NpgsqlCommand(@"
                 INSERT INTO usuarios (id, empresa_id, nome, email, senha_hash, perfil, ativo)
-                VALUES (@uid, @emp, 'Usuário Teste', @email, 'hash', 'profissional', true)
-                ON CONFLICT (id) DO UPDATE SET empresa_id = EXCLUDED.empresa_id, email = EXCLUDED.email;", conn);
+                VALUES (@uid, @emp, 'Usuário Teste', @email, 'hash', 'profissional', true)", conn);
             cmdUser.Parameters.AddWithValue("uid", usuarioId);
             cmdUser.Parameters.AddWithValue("emp", empresaId);
             cmdUser.Parameters.AddWithValue("email", userEmail);
@@ -145,8 +203,10 @@ public class IsolamentoMultiTenantTests : IClassFixture<WebApplicationFactory<Pr
         await using var conn = new NpgsqlConnection(connString);
         await conn.OpenAsync();
 
-        // Email único para evitar conflito de chave única
-        string email = $"paciente_{testName}_{Guid.NewGuid():N}@teste.com".Replace("-", "");
+        // Email único para evitar conflito de chave única - colocar parte única no início para não ser truncada
+        int counter = Interlocked.Increment(ref _testCounter);
+        string uniquePart = $"{counter}_{Guid.NewGuid():N}";
+        string email = $"pac_{uniquePart}_{testName}@teste.com".Replace("-", "");
         if (email.Length > 100) email = email.Substring(0, 100);
 
         await using var cmd = new NpgsqlCommand(@"
@@ -2574,6 +2634,62 @@ public class IsolamentoMultiTenantTests : IClassFixture<WebApplicationFactory<Pr
         finally
         {
             await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task GET_PacienteArquivo_PacienteToken_NaoPodeAcessarArquivoDeOutroPacienteMesmaEmpresa_DeveRetornar404()
+    {
+        var testName = nameof(GET_PacienteArquivo_PacienteToken_NaoPodeAcessarArquivoDeOutroPacienteMesmaEmpresa_DeveRetornar404);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId1 = await CriarPacienteTesteAsync(empresaId, testName + "_p1");
+        var pacienteId2 = await CriarPacienteTesteAsync(empresaId, testName + "_p2");
+        int arquivoIdPaciente2 = 0;
+        try
+        {
+            // Criar arquivo do paciente 2
+            arquivoIdPaciente2 = await CriarArquivoTesteAsync(pacienteId2, empresaId);
+
+            // Token do paciente 1 tentando acessar arquivo do paciente 2
+            var token = GerarTokenPaciente(pid: pacienteId1, empresa: empresaId);
+            var client = CriarCliente(token);
+
+            var response = await client.GetAsync($"/api/paciente/arquivos/{arquivoIdPaciente2}");
+
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.Forbidden);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task GET_PacienteArquivo_PacienteToken_NaoPodeAcessarArquivoDeOutraEmpresa_DeveRetornar404()
+    {
+        var testName = nameof(GET_PacienteArquivo_PacienteToken_NaoPodeAcessarArquivoDeOutraEmpresa_DeveRetornar404);
+        var (empresaId1, usuarioId1) = await CriarEmpresaEUsuariosTesteAsync(testName + "_e1");
+        var (empresaId2, usuarioId2) = await CriarEmpresaEUsuariosTesteAsync(testName + "_e2");
+        var pacienteId1 = await CriarPacienteTesteAsync(empresaId1, testName + "_p1");
+        var pacienteId2 = await CriarPacienteTesteAsync(empresaId2, testName + "_p2");
+        int arquivoIdPaciente2 = 0;
+        try
+        {
+            // Criar arquivo do paciente 2 na empresa 2
+            arquivoIdPaciente2 = await CriarArquivoTesteAsync(pacienteId2, empresaId2);
+
+            // Token do paciente da empresa 1 tentando acessar arquivo do paciente da empresa 2
+            var token = GerarTokenPaciente(pid: pacienteId1, empresa: empresaId1);
+            var client = CriarCliente(token);
+
+            var response = await client.GetAsync($"/api/paciente/arquivos/{arquivoIdPaciente2}");
+
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.Forbidden);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId1);
+            await LimparDadosTesteAsync(empresaId2);
         }
     }
 
