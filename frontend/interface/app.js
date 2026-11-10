@@ -6646,12 +6646,21 @@ function confirmarExcluirEmpresa(empresaId, empresaNome) {
 
 async function excluirEmpresa(empresaId) {
     try {
-        const res = await fetch(`${API_URL}/api/admin/empresas/${empresaId}`, {
+        const res = await fetch(`${API_URL}/admin/empresas/${empresaId}`, {
             method: 'DELETE'
         });
         if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.mensagem || 'Erro ao excluir empresa');
+            let mensagem = 'Erro ao excluir empresa';
+            // Só tenta ler JSON se houver body e não for 404/204
+            if (res.status !== 404 && res.status !== 204 && res.headers.get('content-length') !== '0') {
+                try {
+                    const err = await res.json();
+                    mensagem = err.mensagem || mensagem;
+                } catch {
+                    // Ignora erro de parse JSON
+                }
+            }
+            throw new Error(mensagem);
         }
         mostrarToast('Empresa excluída com sucesso', 'sucesso');
         carregarEmpresas();
