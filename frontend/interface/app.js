@@ -5124,6 +5124,23 @@ function formatarDataHora(iso) {
     return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+// Helper: fetch com timeout de 20s e botão de retry
+async function fetchComTimeout(url, options = {}, context = 'carregar dados') {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    try {
+        const res = await fetch(url, { ...options, signal: controller.signal });
+        clearTimeout(timeoutId);
+        return res;
+    } catch (err) {
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') {
+            throw new Error(`TIMEOUT: O servidor está demorando para responder (${context}).`);
+        }
+        throw err;
+    }
+}
+
 async function carregarAreaPaciente() {
     const el = document.getElementById("pac-conteudo");
     el.innerHTML = `<p class="text-slate-400 text-sm">Carregando...</p>`;
@@ -6942,7 +6959,7 @@ async function aceitarConvite(event) {
 
         // Sucesso - salvar token e entrar
         sessionStorage.setItem(TOKEN_KEY, data.token);
-        sessionStorage.setItem("bybar_user", JSON.stringify({ nome: data.nome || nome, perfil: "profissional" }));
+        sessionStorage.setItem("bybar_user", JSON.stringify({ nome: data.nome || nome, tipo: "equipe", perfil: "profissional" }));
 
         // Redirecionar para o sistema
         const conviteContainer = document.getElementById("convite-container");

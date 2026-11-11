@@ -3823,7 +3823,7 @@ async function fazerLogin(event) {
             return;
         }
         sessionStorage.setItem(TOKEN_KEY, data.token);
-        sessionStorage.setItem("bybar_user", JSON.stringify({ nome: data.nome, perfil: data.perfil }));
+        sessionStorage.setItem("bybar_user", JSON.stringify({ nome: data.nome, tipo: "equipe", perfil: data.perfil }));
         entrarNoSistema(data.nome);
     } catch (e) {
         msg.innerText = "Não foi possível conectar ao servidor.";
