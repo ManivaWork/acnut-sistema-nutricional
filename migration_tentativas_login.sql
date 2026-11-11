@@ -7,7 +7,7 @@ BEGIN;
 CREATE TABLE IF NOT EXISTS tentativas_login (
     id BIGSERIAL PRIMARY KEY,
     tipo VARCHAR(50) NOT NULL,           -- 'equipe', 'paciente', 'definir_senha', 'solicitar_acesso'
-    identificador VARCHAR(255) NOT NULL, -- email ou CPF limpo
+    identificador_hash CHAR(64) NOT NULL, -- SHA-256 hash do identificador (email/CPF) + pepper
     ip INET NOT NULL,                    -- IP do cliente
     sucesso BOOLEAN NOT NULL DEFAULT false,
     criado_em TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS tentativas_login (
 
 -- Índice para consultas rápidas de contagem de falhas recentes
 CREATE INDEX IF NOT EXISTS ix_tentativas_login_tipo_ident_ip_criado
-    ON tentativas_login (tipo, identificador, ip, criado_em DESC)
+    ON tentativas_login (tipo, identificador_hash, ip, criado_em DESC)
     WHERE sucesso = false;
 
 -- Índice para limpeza periódica de registros antigos

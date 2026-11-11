@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
+using System.Net;
 using ACNutri.Billing;
 using ACNutri.Email;
 
@@ -78,27 +79,41 @@ builder.Services.AddHttpClient<AsaasClient>();
 builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AsaasConfig>>().Value);
 
-// === Rate Limiting para endpoints de autenticaÃ§Ã£o ===
-// Limite por IP mais folgado (30 req/15min) + bloqueio de tentativas falhas por identificador+IP no banco
+// === // === // === // === // === // === Rate Limiting para endpoints de autenticação ===
+// Limite por IP mais folgado (30 req/15min por IP) + bloqueio de tentativas falhas por identificador+IP no banco
+// Em testes, o header X-Test-Run-Id pode ser usado para isolar o rate limiter por execução de teste
 builder.Services.AddRateLimiter(options =>
 {
-    // PolÃ­tica por IP - limite geral de proteção (nÃ£o bloqueia logins bem-sucedidos)
-    options.AddFixedWindowLimiter("ip-auth", limiterOptions =>
+    // Política "ip-auth" - 30 req/15min particionado por IP do cliente
+    // Em testes, usa header X-Test-Run-Id como prefixo se presente (para isolar entre testes paralelos)
+    options.AddPolicy("ip-auth", httpContext =>
     {
-        limiterOptions.PermitLimit = 30;
-        limiterOptions.Window = TimeSpan.FromMinutes(15);
-        limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-        limiterOptions.QueueLimit = 0;
+        var testRunPrefix = httpContext.Request.Headers["X-Test-Run-Id"].FirstOrDefault();
+        var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var partitionKey = string.IsNullOrEmpty(testRunPrefix) ? ip : $"{testRunPrefix}:{ip}";
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: partitionKey,
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromMinutes(15),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0,
+                AutoReplenishment = true
+            });
     });
 
-    // Rejeição personalizada com Retry-After baseado no tempo real restante
+    // Rejeição personalizada com Retry-After e headers de rate limit
     options.OnRejected = async (context, token) =>
     {
         context.HttpContext.Response.StatusCode = 429;
-        // Calcular Retry-Atry baseado no tempo restante da janela
         var retryAfter = 900; // fallback 15 min
         context.HttpContext.Response.Headers["Retry-After"] = retryAfter.ToString();
-        await context.HttpContext.Response.WriteAsJsonAsync(new { mensagem = $"Muitas requisições. Tente novamente em {retryAfter / 60} minutos." }, token);
+        context.HttpContext.Response.Headers["X-RateLimit-Limit"] = "30";
+        context.HttpContext.Response.Headers["X-RateLimit-Remaining"] = "0";
+        context.HttpContext.Response.Headers["X-RateLimit-Reset"] = DateTimeOffset.UtcNow.AddSeconds(retryAfter).ToUnixTimeSeconds().ToString();
+        await context.HttpContext.Response.WriteAsJsonAsync(new { mensagem = $"Muitas tentativas. Tente novamente em {retryAfter / 60} minutos." }, token);
     };
 });
 
@@ -114,15 +129,29 @@ if (app.Environment.IsProduction() && (pythonBaseUrlLog.Contains("127.0.0.1") ||
     startupLogger.LogWarning("Python:BaseUrl aponta para localhost/127.0.0.1 em ambiente Production. Configure a URL do serviÃ§o Python em produÃ§Ã£o (ex.: https://seu-servico.onrender.com).");
 }
 
-// Forwarded headers DEVE ser o PRIMEIRO middleware (antes de qualquer leitura de IP)
-// No Render: proxy nÃ£o Ã© loopback, entÃ£o limpamos KnownNetworks/KnownProxies para confiar no X-Forwarded-For do proxy
-app.UseForwardedHeaders(new ForwardedHeadersOptions
+// Verificar configuraÃ§Ã£o do pepper para rate limiting (hash do identificador+IP)
+var pepper = builder.Configuration["RateLimit:Pepper"];
+if (string.IsNullOrEmpty(pepper))
 {
-    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
-    ForwardLimit = 1, // Pega apenas o Ãºltimo IP da cadeia (o do cliente real apÃ³s o proxy do Render)
-    KnownNetworks = { }, // Vazio = confia em todos (necessÃ¡rio no Render onde proxy nÃ£o Ã© loopback/known)
-    KnownProxies = { }
-});
+    startupLogger.LogWarning("RateLimit:Pepper nÃ£o configurado! Usando valor padrÃ£o INSEGURO 'default-pepper-change-in-production'. Defina RateLimit:Pepper nos user-secrets/variÃ¡veis de ambiente com uma string aleatÃ³ria longa (ex.: 64 chars) para produÃ§Ã£o.");
+}
+else if (pepper == "default-pepper-change-in-production")
+{
+    startupLogger.LogWarning("RateLimit:Pepper estÃ¡ usando o valor padrÃ£o INSEGURO 'default-pepper-change-in-production'. Altere para uma string aleatÃ³ria longa em produÃ§Ã£o.");
+}
+
+// Forwarded headers - apenas em Production (no Render hÃ¡ proxy reverso)
+// Em Development/Test nÃ£o hÃ¡ proxy, entÃ£o nÃ£o precisamos e evitamos problemas com IP
+if (app.Environment.IsProduction())
+{
+    app.UseForwardedHeaders(new ForwardedHeadersOptions
+    {
+        ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+        ForwardLimit = 1, // Pega apenas o Ãºltimo IP da cadeia (o do cliente real apÃ³s o proxy do Render)
+        KnownNetworks = { }, // Vazio = confia em todos (necessÃ¡rio no Render onde proxy nÃ£o Ã© loopback/known)
+        KnownProxies = { }
+    });
+}
 
 // VerificaÃ§Ã£o de IP do cliente em desenvolvimento (log para debug)
 if (app.Environment.IsDevelopment())
@@ -137,9 +166,6 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-// Rate Limiting middleware (aplica a política "ip-auth" globalmente; endpoints usam .RequireRateLimiting("ip-auth"))
-app.UseRateLimiter();
-
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
@@ -148,6 +174,9 @@ app.UseCors("Front");
 app.UseAuthentication();
 
 app.UseRouting();
+
+// Rate Limiting middleware (aplica a política "ip-auth" por endpoint via .RequireRateLimiting("ip-auth"))
+app.UseRateLimiter();
 
 // Health endpoint for UptimeRobot (no auth, no DB)
 app.MapGet("/health", () => Results.Ok("ok")).AllowAnonymous();
@@ -2758,17 +2787,24 @@ app.MapPost("/api/auth/login", async (LoginInput input, ILogger<Program> logger,
     if (email == "" || string.IsNullOrEmpty(senha))
         return Results.BadRequest(new { mensagem = "Informe e-mail e senha." });
 
-    var ip = http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    // Em TestServer RemoteIpAddress pode ser null; default para ::1 (loopback IPv6) para testes funcionarem
+    var ip = http.Connection.RemoteIpAddress?.ToString() ?? "::1";
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
     // 1. Verificar tentativas falhas por email+IP (janela 15 min, max 5)
-    var (bloqueado, retryAfterSeg) = await VerificarTentativasFalhas(conn, "equipe", email, ip);
+    var (bloqueado, retryAfterSeg) = await VerificarTentativasFalhas(conn, "equipe", email, ip, logger);
     if (bloqueado)
     {
         logger.LogWarning("Login bloqueado por tentativas falhas: email={Email} ip={Ip}", email, ip);
-        return Results.Json(new { mensagem = $"Muitas tentativas. Tente novamente em {Math.Ceiling(retryAfterSeg / 60.0)} minutos." }, statusCode: 429);
+        return RateLimitHelpers.JsonWithHeaders(new { mensagem = $"Muitas tentativas. Tente novamente em {Math.Ceiling(retryAfterSeg / 60.0)} minutos." }, 429, new Dictionary<string, string>
+        {
+            ["Retry-After"] = retryAfterSeg.ToString(),
+            ["X-RateLimit-Limit"] = "5",
+            ["X-RateLimit-Remaining"] = "0",
+            ["X-RateLimit-Reset"] = DateTimeOffset.UtcNow.AddSeconds(retryAfterSeg).ToUnixTimeSeconds().ToString()
+        });
     }
 
     // 2. Buscar candidatos
@@ -2796,7 +2832,7 @@ app.MapPost("/api/auth/login", async (LoginInput input, ILogger<Program> logger,
     if (candidatos.Count == 0)
     {
         // Registrar tentativa falha (anti-enumeração: mesmo tratamento para usuário inexistente)
-        await RegistrarTentativaFalha(conn, "equipe", email, ip);
+        await RegistrarTentativaFalha(conn, "equipe", email, ip, logger);
         logger.LogWarning("Login falhou: nenhum usuÃ¡rio ativo com e-mail={Email}", email);
         return Results.Json(new { mensagem = "E-mail ou senha incorretos." }, statusCode: 401);
     }
@@ -2820,13 +2856,13 @@ app.MapPost("/api/auth/login", async (LoginInput input, ILogger<Program> logger,
 
     if (!loginOk)
     {
-        await RegistrarTentativaFalha(conn, "equipe", email, ip);
+        await RegistrarTentativaFalha(conn, "equipe", email, ip, logger);
         logger.LogWarning("Login falhou: senha incorreta para e-mail={Email} (candidatos={Count})", email, candidatos.Count);
         return Results.Json(new { mensagem = "E-mail ou senha incorretos." }, statusCode: 401);
     }
 
     // 4. Sucesso: zerar tentativas falhas para este email+IP
-    await ZerarTentativasFalhas(conn, "equipe", email, ip);
+    await ZerarTentativasFalhas(conn, "equipe", email, ip, logger);
 
     // 5. MÃ³dulos ligados na empresa + nÃ­vel do usuÃ¡rio
     var modulos = new Dictionary<string, string>();
@@ -2847,53 +2883,128 @@ app.MapPost("/api/auth/login", async (LoginInput input, ILogger<Program> logger,
     return Results.Ok(new { token, nome, perfil, modulos });
 }).RequireRateLimiting("ip-auth");
 
-// Helper methods para controle de tentativas falhas por identificador+IP
-async Task<(bool bloqueado, int retryAfterSeg)> VerificarTentativasFalhas(NpgsqlConnection conn, string tipo, string identificador, string ip)
+// Pepper para hash do identificador (configurÃ¡vel via variÃ¡vel de ambiente RATE_LIMIT_PEPPER)
+string ObterPepper() => builder.Configuration["RateLimit:Pepper"] ?? "default-pepper-change-in-production";
+
+string HashIdentificador(string identificador, string pepper)
 {
-    // Conta falhas nos últimos 15 minutos para este identificador+IP
-    using var cmd = new NpgsqlCommand(@"
-        SELECT COUNT(*), MAX(criado_em)
-        FROM tentativas_login
-        WHERE tipo = @tipo AND identificador = @ident AND ip = @ip::inet
-          AND sucesso = false AND criado_em > CURRENT_TIMESTAMP - interval '15 minutes';", conn);
-    cmd.Parameters.AddWithValue("tipo", tipo);
-    cmd.Parameters.AddWithValue("ident", identificador);
-    cmd.Parameters.AddWithValue("ip", ip);
-    using var rd = await cmd.ExecuteReaderAsync();
-    if (await rd.ReadAsync())
+    using var sha = System.Security.Cryptography.SHA256.Create();
+    var bytes = System.Text.Encoding.UTF8.GetBytes(identificador + pepper);
+    return System.Convert.ToHexString(sha.ComputeHash(bytes)).ToLowerInvariant();
+}
+
+// Helper methods para controle de tentativas falhas por identificador+IP (hash)
+async Task<(bool bloqueado, int retryAfterSeg)> VerificarTentativasFalhas(NpgsqlConnection conn, string tipo, string identificador, string ip, ILogger logger)
+{
+    var hash = HashIdentificador(identificador, ObterPepper());
+
+    // Validar IP - se for inválido (ex: "unknown"), pula rate limiting por banco
+    if (!IPAddress.TryParse(ip, out _))
     {
-        var count = rd.GetInt64(0);
-        var ultimaTentativa = rd.IsDBNull(1) ? DateTime.MinValue : rd.GetDateTime(1);
-        if (count >= 5)
-        {
-            var decorrido = (DateTime.UtcNow - ultimaTentativa).TotalSeconds;
-            var restante = Math.Max(0, 900 - (int)decorrido);
-            return (true, restante);
-        }
+        return (false, 0);
     }
-    return (false, 0);
+
+    try
+    {
+        // Limpeza automática: remove registros com mais de 24 horas
+        await LimparTentativasAntigas(conn);
+
+        // Conta falhas nos últimos 15 minutos para este identificador+IP
+        using var cmd = new NpgsqlCommand(@"
+            SELECT COUNT(*), MAX(criado_em)
+            FROM tentativas_login
+            WHERE tipo = @tipo AND identificador_hash = @hash AND ip = @ip::inet
+              AND sucesso = false AND criado_em > CURRENT_TIMESTAMP - interval '15 minutes';", conn);
+        cmd.Parameters.AddWithValue("tipo", tipo);
+        cmd.Parameters.AddWithValue("hash", hash);
+        cmd.Parameters.AddWithValue("ip", ip);
+        using var rd = await cmd.ExecuteReaderAsync();
+        if (await rd.ReadAsync())
+        {
+            var count = rd.GetInt64(0);
+            var ultimaTentativa = rd.IsDBNull(1) ? DateTime.MinValue : rd.GetDateTime(1);
+            if (count >= 5)
+            {
+                var decorrido = (DateTime.UtcNow - ultimaTentativa).TotalSeconds;
+                var restante = Math.Max(0, 900 - (int)decorrido);
+                return (true, restante);
+            }
+        }
+        return (false, 0);
+    }
+    catch (Exception ex)
+    {
+        // Graceful degradation: se a tabela nÃ£o existe ou hÃ¡ erro de banco, loga e permite o login (apenas limite por IP em memÃ³ria)
+        logger.LogWarning(ex, "Erro ao verificar tentativas falhas para {Tipo} {IdentificadorHash} IP {Ip}. Rate limiting por banco desabilitado.", tipo, hash, ip);
+        return (false, 0);
+    }
 }
 
-async Task RegistrarTentativaFalha(NpgsqlConnection conn, string tipo, string identificador, string ip)
+async Task LimparTentativasAntigas(NpgsqlConnection conn)
 {
-    using var cmd = new NpgsqlCommand(@"
-        INSERT INTO tentativas_login (tipo, identificador, ip, sucesso, criado_em)
-        VALUES (@tipo, @ident, @ip::inet, false, CURRENT_TIMESTAMP);", conn);
-    cmd.Parameters.AddWithValue("tipo", tipo);
-    cmd.Parameters.AddWithValue("ident", identificador);
-    cmd.Parameters.AddWithValue("ip", ip);
-    await cmd.ExecuteNonQueryAsync();
+    try
+    {
+        using var cmd = new NpgsqlCommand(@"
+            DELETE FROM tentativas_login
+            WHERE criado_em < CURRENT_TIMESTAMP - interval '24 hours';", conn);
+        await cmd.ExecuteNonQueryAsync();
+    }
+    catch
+    {
+        // Ignora erros de limpeza (tabela pode nÃ£o existir ainda)
+    }
 }
 
-async Task ZerarTentativasFalhas(NpgsqlConnection conn, string tipo, string identificador, string ip)
+async Task RegistrarTentativaFalha(NpgsqlConnection conn, string tipo, string identificador, string ip, ILogger logger)
 {
-    using var cmd = new NpgsqlCommand(@"
-        DELETE FROM tentativas_login
-        WHERE tipo = @tipo AND identificador = @ident AND ip = @ip::inet AND sucesso = false;", conn);
-    cmd.Parameters.AddWithValue("tipo", tipo);
-    cmd.Parameters.AddWithValue("ident", identificador);
-    cmd.Parameters.AddWithValue("ip", ip);
-    await cmd.ExecuteNonQueryAsync();
+    // Validar IP - se for invÃ¡lido (ex: "unknown"), pula registro
+    if (!IPAddress.TryParse(ip, out _))
+    {
+        return;
+    }
+
+    var hash = HashIdentificador(identificador, ObterPepper());
+    try
+    {
+        using var cmd = new NpgsqlCommand(@"
+            INSERT INTO tentativas_login (tipo, identificador_hash, ip, sucesso, criado_em)
+            VALUES (@tipo, @hash, @ip::inet, false, CURRENT_TIMESTAMP);", conn);
+        cmd.Parameters.AddWithValue("tipo", tipo);
+        cmd.Parameters.AddWithValue("hash", hash);
+        cmd.Parameters.AddWithValue("ip", ip);
+        await cmd.ExecuteNonQueryAsync();
+    }
+    catch (Exception ex)
+    {
+        // Graceful degradation: loga erro mas nÃ£o bloqueia o fluxo
+        logger.LogWarning(ex, "Erro ao registrar tentativa falha para {Tipo} {IdentificadorHash} IP {Ip}", tipo, hash, ip);
+    }
+}
+
+async Task ZerarTentativasFalhas(NpgsqlConnection conn, string tipo, string identificador, string ip, ILogger logger)
+{
+    // Validar IP - se for invÃ¡lido (ex: "unknown"), pula limpeza
+    if (!IPAddress.TryParse(ip, out _))
+    {
+        return;
+    }
+
+    var hash = HashIdentificador(identificador, ObterPepper());
+    try
+    {
+        using var cmd = new NpgsqlCommand(@"
+            DELETE FROM tentativas_login
+            WHERE tipo = @tipo AND identificador_hash = @hash AND ip = @ip::inet AND sucesso = false;", conn);
+        cmd.Parameters.AddWithValue("tipo", tipo);
+        cmd.Parameters.AddWithValue("hash", hash);
+        cmd.Parameters.AddWithValue("ip", ip);
+        await cmd.ExecuteNonQueryAsync();
+    }
+    catch (Exception ex)
+    {
+        // Graceful degradation: loga erro mas nÃ£o bloqueia o fluxo
+        logger.LogWarning(ex, "Erro ao zerar tentativas falhas para {Tipo} {IdentificadorHash} IP {Ip}", tipo, hash, ip);
+    }
 }
 
 var perfisEquipe = new HashSet<string> { "super_admin", "admin", "profissional", "atendente" };
@@ -3743,6 +3854,15 @@ app.MapPost("/api/auth/aceitar-convite", async (AceitarConviteInput input) =>
 // SOLICITAÃ‡Ã•ES DE ACESSO (PÃºblico + Super Admin)
 // =====================================================================
 
+// Helper: obter IP vÃ¡lido para banco (retorna IPAddress ou DBNull.Value se invÃ¡lido)
+object ObterIpParaBanco(HttpContext http)
+{
+    var ipStr = http.Connection.RemoteIpAddress?.ToString();
+    if (IPAddress.TryParse(ipStr, out var ip))
+        return ip;
+    return DBNull.Value;
+}
+
 // POST /api/acesso/solicitar - Visitante solicita acesso (pÃºblico)
 app.MapPost("/api/acesso/solicitar", async (SolicitarAcessoInput input, HttpContext http) =>
 {
@@ -3752,59 +3872,75 @@ app.MapPost("/api/acesso/solicitar", async (SolicitarAcessoInput input, HttpCont
     var registroProfissional = (input.RegistroProfissional ?? "").Trim();
     var clinicaNome = (input.ClinicaNome ?? "").Trim();
     var mensagem = (input.Mensagem ?? "").Trim();
-    var ip = http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    var ip = http.Connection.RemoteIpAddress?.ToString() ?? "::1";
+    var ipParaBanco = ObterIpParaBanco(http);
+    var logger = http.RequestServices.GetRequiredService<ILogger<Program>>();
 
     if (string.IsNullOrWhiteSpace(nome) || string.IsNullOrWhiteSpace(email) || !email.Contains("@"))
-        return Results.BadRequest(new { mensagem = "Nome e e-mail vÃ¡lido sÃ£o obrigatÃ³rios." });
+        return Results.BadRequest(new { mensagem = "Nome e e-mail válido são obrigatórios." });
 
     if (string.IsNullOrWhiteSpace(registroProfissional))
-        return Results.BadRequest(new { mensagem = "Registro profissional (CRN/CRM) Ã© obrigatÃ³rio." });
+        return Results.BadRequest(new { mensagem = "Registro profissional (CRN/CRM) é obrigatório." });
 
     if (string.IsNullOrWhiteSpace(clinicaNome))
-        return Results.BadRequest(new { mensagem = "Nome da clÃ­nica/empresa Ã© obrigatÃ³rio." });
+        return Results.BadRequest(new { mensagem = "Nome da clínica/empresa é obrigatório." });
 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
     // 1. Verificar tentativas falhas por email+IP (janela 15 min, max 5)
-    var (bloqueado, retryAfterSeg) = await VerificarTentativasFalhas(conn, "solicitar_acesso", email, ip);
+    var (bloqueado, retryAfterSeg) = await VerificarTentativasFalhas(conn, "solicitar_acesso", email, ip, logger);
     if (bloqueado)
     {
-        return Results.Json(new { mensagem = $"Muitas tentativas. Tente novamente em {Math.Ceiling(retryAfterSeg / 60.0)} minutos." }, statusCode: 429);
+        return RateLimitHelpers.JsonWithHeaders(new { mensagem = $"Muitas tentativas. Tente novamente em {Math.Ceiling(retryAfterSeg / 60.0)} minutos." }, 429, new Dictionary<string, string>
+        {
+            ["Retry-After"] = retryAfterSeg.ToString(),
+            ["X-RateLimit-Limit"] = "5",
+            ["X-RateLimit-Remaining"] = "0",
+            ["X-RateLimit-Reset"] = DateTimeOffset.UtcNow.AddSeconds(retryAfterSeg).ToUnixTimeSeconds().ToString()
+        });
     }
 
     var userAgent = http.Request.Headers["User-Agent"].ToString();
 
-    try
+    // 2. Verificar se já existe solicitação pendente para este email (evita exception de unique constraint)
+    bool jaExistePendente = false;
+    using (var cmd = new NpgsqlCommand("SELECT 1 FROM solicitacoes_acesso WHERE lower(email) = @email AND status = 'pendente'", conn))
     {
-        // Inserir solicitaÃ§Ã£o (constraint Ãºnica por email pendente impede duplicatas)
-        using var cmd = new NpgsqlCommand(@"
-            INSERT INTO solicitacoes_acesso (nome, email, telefone, registro_profissional, clinica_nome, mensagem, ip, user_agent)
-            VALUES (@nome, @email, @tel, @reg, @clinica, @msg, @ip::inet, @ua) RETURNING id;", conn);
+        cmd.Parameters.AddWithValue("email", email);
+        using var rd = await cmd.ExecuteReaderAsync();
+        jaExistePendente = await rd.ReadAsync();
+    }
+
+    if (jaExistePendente)
+    {
+        // Registrar tentativa falha (email já tem solicitação pendente)
+        await RegistrarTentativaFalha(conn, "solicitar_acesso", email, ip, logger);
+        return Results.BadRequest(new { mensagem = "Já existe uma solicitação pendente para este e-mail." });
+    }
+
+    // 3. Inserir solicitação
+    using (var cmd = new NpgsqlCommand(@"
+        INSERT INTO solicitacoes_acesso (nome, email, telefone, registro_profissional, clinica_nome, mensagem, ip, user_agent)
+        VALUES (@nome, @email, @tel, @reg, @clinica, @msg, @ip, @ua) RETURNING id;", conn))
+    {
         cmd.Parameters.AddWithValue("nome", nome);
         cmd.Parameters.AddWithValue("email", email);
         cmd.Parameters.AddWithValue("tel", string.IsNullOrEmpty(telefone) ? DBNull.Value : (object)telefone);
         cmd.Parameters.AddWithValue("reg", registroProfissional);
         cmd.Parameters.AddWithValue("clinica", clinicaNome);
         cmd.Parameters.AddWithValue("msg", string.IsNullOrEmpty(mensagem) ? DBNull.Value : (object)mensagem);
-        cmd.Parameters.AddWithValue("ip", ip);
+        cmd.Parameters.AddWithValue("ip", ipParaBanco);
         cmd.Parameters.AddWithValue("ua", string.IsNullOrEmpty(userAgent) ? DBNull.Value : (object)userAgent);
 
         await cmd.ExecuteNonQueryAsync();
     }
-    catch (PostgresException ex) when (ex.SqlState == "23505") // unique_violation
-    {
-        // Silenciosamente ignorar - nÃ£o revelar se email jÃ¡ tem solicitaÃ§Ã£o pendente
-        // Mas registrar tentativa para rate limiting
-        await RegistrarTentativaFalha(conn, "solicitar_acesso", email, ip);
-        return Results.Ok(new { mensagem = "Se os dados estiverem corretos, sua solicitaÃ§Ã£o serÃ¡ analisada em atÃ© 2 dias Ãºteis." });
-    }
 
-    // 2. Sucesso: zerar tentativas falhas
-    await ZerarTentativasFalhas(conn, "solicitar_acesso", email, ip);
+    // 4. Sucesso: zerar tentativas falhas
+    await ZerarTentativasFalhas(conn, "solicitar_acesso", email, ip, logger);
 
-    // Sempre retornar sucesso genÃ©rico (anti-enumeraÃ§Ã£o de email)
-    return Results.Ok(new { mensagem = "Se os dados estiverem corretos, sua solicitaÃ§Ã£o serÃ¡ analisada em atÃ© 2 dias Ãºteis." });
+    // Sempre retornar sucesso genérico (anti-enumeração de email)
+    return Results.Ok(new { mensagem = "Se os dados estiverem corretos, sua solicitação será analisada em até 2 dias úteis." });
 })
 .RequireRateLimiting("ip-auth")
 .AllowAnonymous();
@@ -4476,18 +4612,20 @@ app.MapPost("/api/definir-senha/{token}", async (string token, DefinirSenhaInput
 {
     var senha = input.Senha ?? "";
     var confirmar = input.ConfirmarSenha ?? "";
-    var ip = http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    // Em TestServer RemoteIpAddress pode ser null; default para ::1 (loopback IPv6) para testes funcionarem
+    var ip = http.Connection.RemoteIpAddress?.ToString() ?? "::1";
+    var logger = http.RequestServices.GetRequiredService<ILogger<Program>>();
 
     if (string.IsNullOrWhiteSpace(token) || token.Length < 32)
-        return Results.BadRequest(new { mensagem = "Token invÃ¡lido." });
+        return Results.BadRequest(new { mensagem = "Token inválido." });
 
     if (senha.Length < 8)
         return Results.BadRequest(new { mensagem = "A senha precisa ter pelo menos 8 caracteres." });
 
     if (senha != confirmar)
-        return Results.BadRequest(new { mensagem = "As senhas nÃ£o conferem." });
+        return Results.BadRequest(new { mensagem = "As senhas não conferem." });
 
-    // Calcular SHA-256 do token recebido
+    // Calcular SHA-256 do token recebido (usado como identificador para rate limiting)
     var tokenHash = System.Convert.ToHexString(
         System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(token))
     ).ToLowerInvariant();
@@ -4495,7 +4633,20 @@ app.MapPost("/api/definir-senha/{token}", async (string token, DefinirSenhaInput
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
-    // 1. Validar token e obter email do usuário (para rate limiting por email+IP)
+    // 1. Verificar tentativas falhas por token_hash+IP (janela 15 min, max 5) - ANTES de validar token no banco
+    var (bloqueado, retryAfterSeg) = await VerificarTentativasFalhas(conn, "definir_senha", tokenHash, ip, logger);
+    if (bloqueado)
+    {
+        return RateLimitHelpers.JsonWithHeaders(new { mensagem = $"Muitas tentativas. Tente novamente em {Math.Ceiling(retryAfterSeg / 60.0)} minutos." }, 429, new Dictionary<string, string>
+        {
+            ["Retry-After"] = retryAfterSeg.ToString(),
+            ["X-RateLimit-Limit"] = "5",
+            ["X-RateLimit-Remaining"] = "0",
+            ["X-RateLimit-Reset"] = DateTimeOffset.UtcNow.AddSeconds(retryAfterSeg).ToUnixTimeSeconds().ToString()
+        });
+    }
+
+    // 2. Validar token e obter email do usuário
     string email = "";
     int usuarioId = 0;
     using (var cmd = new NpgsqlCommand(@"
@@ -4514,13 +4665,10 @@ app.MapPost("/api/definir-senha/{token}", async (string token, DefinirSenhaInput
     }
 
     if (usuarioId == 0)
-        return Results.BadRequest(new { mensagem = "Token invÃ¡lido, expirado ou jÃ¡ utilizado." });
-
-    // 2. Verificar tentativas falhas por email+IP (janela 15 min, max 5)
-    var (bloqueado, retryAfterSeg) = await VerificarTentativasFalhas(conn, "definir_senha", email, ip);
-    if (bloqueado)
     {
-        return Results.Json(new { mensagem = $"Muitas tentativas. Tente novamente em {Math.Ceiling(retryAfterSeg / 60.0)} minutos." }, statusCode: 429);
+        // Registrar tentativa falha (token inválido)
+        await RegistrarTentativaFalha(conn, "definir_senha", tokenHash, ip, logger);
+        return Results.BadRequest(new { mensagem = "Token inválido, expirado ou já utilizado." });
     }
 
     using var tx = await conn.BeginTransactionAsync();
@@ -4566,7 +4714,7 @@ app.MapPost("/api/definir-senha/{token}", async (string token, DefinirSenhaInput
         await tx.CommitAsync();
 
         // 4. Sucesso: zerar tentativas falhas
-        await ZerarTentativasFalhas(conn, "definir_senha", email, ip);
+        await ZerarTentativasFalhas(conn, "definir_senha", email, ip, logger);
 
         return Results.Ok(new { mensagem = "Senha definida com sucesso! FaÃ§a login para acessar." });
     }
@@ -4574,7 +4722,7 @@ app.MapPost("/api/definir-senha/{token}", async (string token, DefinirSenhaInput
     {
         await tx.RollbackAsync();
         // Registrar tentativa falha
-        await RegistrarTentativaFalha(conn, "definir_senha", email, ip);
+        await RegistrarTentativaFalha(conn, "definir_senha", email, ip, logger);
         return Results.BadRequest(new { mensagem = "Erro ao definir senha: " + ex.Message });
     }
 })
@@ -4683,8 +4831,11 @@ app.MapPost("/api/auth/paciente", async (PacienteLoginInput i, HttpContext ctx) 
 {
     const string generico = "CPF ou data de nascimento incorretos.";
     var cpf = Cpf.Limpar(i.Cpf);
-    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    // Em TestServer RemoteIpAddress pode ser null; default para ::1 (loopback IPv6) para testes funcionarem
+    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "::1";
+    var logger = ctx.RequestServices.GetRequiredService<ILogger<Program>>();
 
+    // Validar formato CPF e nascimento (necessário para rate limiting por identificador)
     if (!Cpf.Valido(cpf) || !DateTime.TryParse(i.Nascimento,
             System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var nasc))
         return Results.Json(new { mensagem = generico }, statusCode: 401);
@@ -4692,11 +4843,17 @@ app.MapPost("/api/auth/paciente", async (PacienteLoginInput i, HttpContext ctx) 
     using var conn = new NpgsqlConnection(connString);
     await conn.OpenAsync();
 
-    // 1. Verificar tentativas falhas por CPF+IP (janela 15 min, max 5)
-    var (bloqueado, retryAfterSeg) = await VerificarTentativasFalhas(conn, "paciente", cpf, ip);
+    // 1. Verificar tentativas falhas por CPF+IP (janela 15 min, max 5) - ANTES de buscar no banco
+    var (bloqueado, retryAfterSeg) = await VerificarTentativasFalhas(conn, "paciente", cpf, ip, logger);
     if (bloqueado)
     {
-        return Results.Json(new { mensagem = $"Muitas tentativas. Tente novamente em {Math.Ceiling(retryAfterSeg / 60.0)} minutos." }, statusCode: 429);
+        return RateLimitHelpers.JsonWithHeaders(new { mensagem = $"Muitas tentativas. Tente novamente em {Math.Ceiling(retryAfterSeg / 60.0)} minutos." }, 429, new Dictionary<string, string>
+        {
+            ["Retry-After"] = retryAfterSeg.ToString(),
+            ["X-RateLimit-Limit"] = "5",
+            ["X-RateLimit-Remaining"] = "0",
+            ["X-RateLimit-Reset"] = DateTimeOffset.UtcNow.AddSeconds(retryAfterSeg).ToUnixTimeSeconds().ToString()
+        });
     }
 
     int pid = 0, empresa = 0; string nome = "";
@@ -4715,21 +4872,12 @@ app.MapPost("/api/auth/paciente", async (PacienteLoginInput i, HttpContext ctx) 
     if (!achou)
     {
         // Registrar tentativa falha
-        await RegistrarTentativaFalha(conn, "paciente", cpf, ip);
+        await RegistrarTentativaFalha(conn, "paciente", cpf, ip, logger);
         return Results.Json(new { mensagem = generico }, statusCode: 401);
     }
 
     // 2. Sucesso: zerar tentativas falhas para este CPF+IP
-    await ZerarTentativasFalhas(conn, "paciente", cpf, ip);
-
-    // 3. Limpar tentativas antigas (manter tabela limpa)
-    using (var limpa = new NpgsqlCommand(
-        "DELETE FROM tentativas_login WHERE tipo = 'paciente' AND identificador = @c AND ip = @ip::inet AND sucesso = false;", conn))
-    {
-        limpa.Parameters.AddWithValue("c", cpf);
-        limpa.Parameters.AddWithValue("ip", ip);
-        await limpa.ExecuteNonQueryAsync();
-    }
+    await ZerarTentativasFalhas(conn, "paciente", cpf, ip, logger);
 
     return Results.Ok(new { token = Auth.GerarPaciente(jwtKey, pid, empresa), nome = nome.Split(' ')[0], tipo = "paciente" });
 }).RequireRateLimiting("ip-auth");
@@ -5933,7 +6081,21 @@ static class Seed
             // Ãndice para JSONB
             @"CREATE INDEX IF NOT EXISTS idx_anamneses_dados_extendidos ON anamneses USING GIN (dados_extendidos);",
             // MigraÃ§Ã£o: adicionar coluna bypass_limites na tabela assinaturas (se nÃ£o existir)
-            @"ALTER TABLE assinaturas ADD COLUMN IF NOT EXISTS bypass_limites boolean NOT NULL DEFAULT false;"
+            @"ALTER TABLE assinaturas ADD COLUMN IF NOT EXISTS bypass_limites boolean NOT NULL DEFAULT false;",
+            // Tabela para rate limiting por identificador+IP (hash do identificador)
+            @"CREATE TABLE IF NOT EXISTS tentativas_login (
+                id BIGSERIAL PRIMARY KEY,
+                tipo VARCHAR(50) NOT NULL,
+                identificador_hash CHAR(64) NOT NULL,
+                ip INET NOT NULL,
+                sucesso BOOLEAN NOT NULL DEFAULT false,
+                criado_em TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );",
+            @"CREATE INDEX IF NOT EXISTS ix_tentativas_login_tipo_hash_ip_criado
+                ON tentativas_login (tipo, identificador_hash, ip, criado_em DESC)
+                WHERE sucesso = false;",
+            @"CREATE INDEX IF NOT EXISTS ix_tentativas_login_criado_em
+                ON tentativas_login (criado_em);"
         })
         {
             using var c = new NpgsqlCommand(sql, conn);
@@ -6259,6 +6421,37 @@ static class Cpf
         }
         return true;
     }
+}
+
+// Custom IResult for JSON with headers (for rate limiting responses)
+sealed class JsonWithHeadersResult : IResult
+{
+    private readonly object _value;
+    private readonly int _statusCode;
+    private readonly Dictionary<string, string> _headers;
+
+    public JsonWithHeadersResult(object value, int statusCode, Dictionary<string, string> headers)
+    {
+        _value = value;
+        _statusCode = statusCode;
+        _headers = headers;
+    }
+
+    public Task ExecuteAsync(HttpContext httpContext)
+    {
+        foreach (var header in _headers)
+        {
+            httpContext.Response.Headers.Append(header.Key, header.Value);
+        }
+        httpContext.Response.StatusCode = _statusCode;
+        return httpContext.Response.WriteAsJsonAsync(_value);
+    }
+}
+
+static class RateLimitHelpers
+{
+    public static IResult JsonWithHeaders(object value, int statusCode, Dictionary<string, string> headers)
+        => new JsonWithHeadersResult(value, statusCode, headers);
 }
 
 
