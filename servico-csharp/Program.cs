@@ -823,7 +823,7 @@ app.MapPost("/api/avaliacoes", async (AvaliacaoInput input, IHttpClientFactory c
     if (!responsePython.IsSuccessStatusCode)
     {
         var errorBody = await responsePython.Content.ReadAsStringAsync();
-        // Log apenas status e mensagem de erro de campo (sem dados de saúde)
+        // Log apenas status, loc (campo) e msg (mensagem) - NUNCA o input/valor enviado (dado de saúde)
         string fieldError = "";
         try
         {
@@ -833,7 +833,17 @@ app.MapPost("/api/avaliacoes", async (AvaliacaoInput input, IHttpClientFactory c
                 if (detail.ValueKind == JsonValueKind.Array)
                 {
                     var msgs = detail.EnumerateArray()
-                        .Select(d => d.TryGetProperty("msg", out var m) ? m.GetString() : d.ToString())
+                        .Select(d =>
+                        {
+                            string loc = "";
+                            if (d.TryGetProperty("loc", out var locProp) && locProp.ValueKind == JsonValueKind.Array)
+                            {
+                                var locParts = locProp.EnumerateArray().Select(x => x.GetString()).Where(x => !string.IsNullOrEmpty(x));
+                                loc = string.Join(".", locParts);
+                            }
+                            string msg = d.TryGetProperty("msg", out var m) ? m.GetString() ?? "" : "";
+                            return string.IsNullOrEmpty(loc) ? msg : $"{loc}: {msg}";
+                        })
                         .Where(m => !string.IsNullOrEmpty(m));
                     fieldError = string.Join("; ", msgs);
                 }

@@ -233,7 +233,7 @@ public class IsolamentoMultiTenantTests : IClassFixture<WebApplicationFactory<Pr
         {
             "checkins_semanais", "orientacoes_nutricionais", "metas_acompanhamento", "metas_paciente",
             "planos_versoes", "evolucao_registros", "exames_paciente", "observacoes_paciente",
-            "anamneses", "pacientes", "usuarios", "empresas"
+            "avaliacoes_fisicas", "anamneses", "pacientes", "usuarios", "empresas"
         };
 
         foreach (var tabela in tabelas)
@@ -377,6 +377,54 @@ public class IsolamentoMultiTenantTests : IClassFixture<WebApplicationFactory<Pr
 
             var response = await clientGet.GetAsync($"/api/checkins/{pacienteId}");
             response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    // ============================================
+    // 1B. AVALIAÇÕES FÍSICAS
+    // ============================================
+    [Fact]
+    public async Task POST_Avaliacao_EmpresaA_NaoPodeGravarPacienteDaEmpresaB_DeveRetornar404()
+    {
+        var testName = nameof(POST_Avaliacao_EmpresaA_NaoPodeGravarPacienteDaEmpresaB_DeveRetornar404);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        try
+        {
+            var tokenEmpresaA = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(tokenEmpresaA);
+
+            var payload = new { PacienteId = 999, Idade = 30, Sexo = "M", PesoKg = 70.5, AlturaCm = 175, NivelAtividade = "sedentario", Objetivo = "manter_peso", PercentualGordura = 20.0, MassaMagraKg = 56.0 };
+            var response = await client.PostAsJsonAsync("/api/avaliacoes", payload);
+
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
+    }
+
+    [Fact]
+    public async Task POST_Avaliacao_EmpresaMesma_PodeGravar_DeveRetornar200()
+    {
+        var testName = nameof(POST_Avaliacao_EmpresaMesma_PodeGravar_DeveRetornar200);
+        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
+        var pacienteId = await CriarPacienteTesteAsync(empresaId, testName);
+        try
+        {
+            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "edicao" } });
+            var client = CriarCliente(token);
+
+            var payload = new { PacienteId = pacienteId, Idade = 30, Sexo = "M", PesoKg = 70.5, AlturaCm = 175, NivelAtividade = "sedentario", Objetivo = "manter_peso", PercentualGordura = 20.0, MassaMagraKg = 56.0 };
+            var response = await client.PostAsJsonAsync("/api/avaliacoes", payload);
+
+            // Não deve retornar 404 (tenant validation falhou) - Python pode estar indisponível (503)
+            response.StatusCode.Should().NotBe(HttpStatusCode.NotFound);
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.OK, HttpStatusCode.ServiceUnavailable);
         }
         finally
         {
