@@ -5274,12 +5274,13 @@ async function abaPaciente(aba) {
                         ${pontos ? `<div class="flex items-center gap-1.5 mt-3">${pontos}</div>` : ""}
                     </div>`;
                 }).join("") : vazio("Nenhuma meta combinada ainda.", `abaPaciente('metas')`);
-        } catch (err) {
+        }
+        }
+        catch (err) {
             console.error(`Erro ao carregar aba ${aba}:`, err);
             el.innerHTML = erro("Erro ao carregar", "Ocorreu um erro inesperado.", `abaPaciente('${aba}')`);
         }
     }, 0);
-}
 }
 
 // ===== ANAMNESE - Página separada (full-screen) =====
