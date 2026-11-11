@@ -4661,6 +4661,12 @@ function entrarComoPaciente(nome) {
 
 // ===== CONSENTIMENTO LGPD =====
 async function verificarConsentimento() {
+    // Só verifica consentimento para pacientes (token tipo=paciente tem claim 'pid')
+    // Equipe (tipo=equipe) não tem pid e vai direto ao painel
+    const usuario = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
+    if (usuario.tipo !== 'paciente') {
+        return true; // Equipe não precisa de consentimento LGPD
+    }
     try {
         const res = await fetch(`${API_URL}/paciente/consentimentos`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
