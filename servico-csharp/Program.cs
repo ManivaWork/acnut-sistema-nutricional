@@ -783,8 +783,14 @@ app.MapPost("/api/pacientes/{id}/anonimizar", async (int id, ClaimsPrincipal use
 });
 
 //==================================== AVALIAÃ‡ÃƒO FÃSICA (integra com o microserviÃ§o Python)======================================
-app.MapPost("/api/avaliacoes", async (AvaliacaoInput input, IHttpClientFactory clientFactory, ILogger<Program> logger) =>
+app.MapPost("/api/avaliacoes", async (AvaliacaoInput input, IHttpClientFactory clientFactory, ILogger<Program> logger, ClaimsPrincipal user) =>
 {
+    int emp = Auth.Empresa(user);
+
+    // Validar se paciente pertence à empresa do token (ANTES de chamar Python)
+    if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, input.PacienteId, emp))
+        return Results.NotFound(new { mensagem = "Paciente não encontrado." });
+
     var httpClient = clientFactory.CreateClient("Python");
     var payloadPython = new
     {
@@ -817,21 +823,39 @@ app.MapPost("/api/avaliacoes", async (AvaliacaoInput input, IHttpClientFactory c
     if (!responsePython.IsSuccessStatusCode)
     {
         var errorBody = await responsePython.Content.ReadAsStringAsync();
-        var logBody = errorBody.Length > 500 ? errorBody[..500] + "..." : errorBody;
+        // Log apenas status e mensagem de erro de campo (sem dados de saúde)
+        string fieldError = "";
+        try
+        {
+            using var errDoc = JsonDocument.Parse(errorBody);
+            if (errDoc.RootElement.TryGetProperty("detail", out var detail))
+            {
+                if (detail.ValueKind == JsonValueKind.Array)
+                {
+                    var msgs = detail.EnumerateArray()
+                        .Select(d => d.TryGetProperty("msg", out var m) ? m.GetString() : d.ToString())
+                        .Where(m => !string.IsNullOrEmpty(m));
+                    fieldError = string.Join("; ", msgs);
+                }
+                else
+                {
+                    fieldError = detail.GetString() ?? "";
+                }
+            }
+        }
+        catch { }
+        logger.LogWarning("Python Service /calcular-plano retornou {StatusCode}: {FieldError}", responsePython.StatusCode, fieldError);
 
         if ((int)responsePython.StatusCode >= 500 || responsePython.StatusCode == System.Net.HttpStatusCode.BadGateway || responsePython.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable || responsePython.StatusCode == System.Net.HttpStatusCode.GatewayTimeout || responsePython.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
-            logger.LogWarning("Python Service /calcular-plano retornou {StatusCode}: {Body}", responsePython.StatusCode, logBody);
             return Results.Json(new { mensagem = "O serviÃ§o de cÃ¡lculos nutricionais estÃ¡ temporariamente indisponÃ­vel. Tente novamente em alguns instantes." }, statusCode: 503);
         }
         else if ((int)responsePython.StatusCode >= 400)
         {
-            logger.LogWarning("Python Service /calcular-plano retornou erro 4xx {StatusCode}: {Body}", responsePython.StatusCode, logBody);
             return Results.Json(new { mensagem = "Dados invÃ¡lidos para cÃ¡lculo nutricional. Verifique os campos informados." }, statusCode: 400);
         }
         else
         {
-            logger.LogWarning("Python Service /calcular-plano retornou {StatusCode}: {Body}", responsePython.StatusCode, logBody);
             return Results.Json(new { mensagem = "Erro inesperado no serviÃ§o de cÃ¡lculos nutricionais." }, statusCode: 502);
         }
     }
@@ -847,9 +871,10 @@ app.MapPost("/api/avaliacoes", async (AvaliacaoInput input, IHttpClientFactory c
     await conn.OpenAsync();
     using var cmd = new NpgsqlCommand(@"
         INSERT INTO avaliacoes_fisicas (paciente_id, empresa_id, peso_kg, altura_cm, percentual_gordura, massa_magra_kg, tmb_kcal, get_kcal)
-        VALUES (@paciente_id, (SELECT empresa_id FROM pacientes WHERE id = @paciente_id), @peso, @altura, @gordura, @massa_magra, @tmb, @get) RETURNING id;", conn);
+        VALUES (@paciente_id, @emp, @peso, @altura, @gordura, @massa_magra, @tmb, @get) RETURNING id;", conn);
 
     cmd.Parameters.AddWithValue("paciente_id", input.PacienteId);
+    cmd.Parameters.AddWithValue("emp", emp);
     cmd.Parameters.AddWithValue("peso", input.PesoKg);
     cmd.Parameters.AddWithValue("altura", input.AlturaCm);
     cmd.Parameters.AddWithValue("gordura", input.PercentualGordura);
