@@ -856,9 +856,9 @@ app.MapPost("/api/avaliacoes", async (AvaliacaoInput input, IHttpClientFactory c
         catch { }
         logger.LogWarning("Python Service /calcular-plano retornou {StatusCode}: {FieldError}", responsePython.StatusCode, fieldError);
 
-        if ((int)responsePython.StatusCode >= 500 || responsePython.StatusCode == System.Net.HttpStatusCode.BadGateway || responsePython.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable || responsePython.StatusCode == System.Net.HttpStatusCode.GatewayTimeout || responsePython.StatusCode == System.Net.HttpStatusCode.NotFound)
+        if ((int)responsePython.StatusCode >= 500 || responsePython.StatusCode == System.Net.HttpStatusCode.BadGateway || responsePython.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable || responsePython.StatusCode == System.Net.HttpStatusCode.GatewayTimeout || responsePython.StatusCode == System.Net.HttpStatusCode.NotFound || responsePython.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
         {
-            return Results.Json(new { mensagem = "O serviÃ§o de cÃ¡lculos nutricionais estÃ¡ temporariamente indisponÃ­vel. Tente novamente em alguns instantes." }, statusCode: 503);
+            return Results.Json(new { mensagem = "O cÃ¡culo estÃ¡ temporariamente indisponÃ­vel, tente novamente em instantes." }, statusCode: 503);
         }
         else if ((int)responsePython.StatusCode >= 400)
         {
@@ -1615,10 +1615,10 @@ app.MapPost("/api/planos/item/calcular", async (ItemCalcularInput input, ClaimsP
         var errorBody = await responsePython.Content.ReadAsStringAsync();
         var logBody = errorBody.Length > 500 ? errorBody[..500] + "..." : errorBody;
 
-        if ((int)responsePython.StatusCode >= 500 || responsePython.StatusCode == System.Net.HttpStatusCode.BadGateway || responsePython.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable || responsePython.StatusCode == System.Net.HttpStatusCode.GatewayTimeout || responsePython.StatusCode == System.Net.HttpStatusCode.NotFound)
+        if ((int)responsePython.StatusCode >= 500 || responsePython.StatusCode == System.Net.HttpStatusCode.BadGateway || responsePython.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable || responsePython.StatusCode == System.Net.HttpStatusCode.GatewayTimeout || responsePython.StatusCode == System.Net.HttpStatusCode.NotFound || responsePython.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
         {
             logger.LogWarning("Python Service /calcular-item retornou {StatusCode}: {Body}", responsePython.StatusCode, logBody);
-            return Results.Json(new { mensagem = "O serviÃ§o de cÃ¡lculos nutricionais estÃ¡ temporariamente indisponÃ­vel. Tente novamente em alguns instantes." }, statusCode: 503);
+            return Results.Json(new { mensagem = "O cÃ¡culo estÃ¡ temporariamente indisponÃ­vel, tente novamente em instantes." }, statusCode: 503);
         }
         else if ((int)responsePython.StatusCode >= 400)
         {
