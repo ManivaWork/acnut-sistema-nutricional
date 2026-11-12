@@ -4663,8 +4663,9 @@ function entrarComoPaciente(nome) {
 async function verificarConsentimento() {
     // Só verifica consentimento para pacientes (token tipo=paciente tem claim 'pid')
     // Equipe (tipo=equipe) não tem pid e vai direto ao painel
+    // Qualquer outro valor (inclusive ausente/null/undefined) segue o fluxo normal de consentimento
     const usuario = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
-    if (usuario.tipo !== 'paciente') {
+    if (usuario.tipo === 'equipe') {
         return true; // Equipe não precisa de consentimento LGPD
     }
     try {

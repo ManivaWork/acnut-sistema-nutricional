@@ -182,9 +182,10 @@ public class IsolamentoMultiTenantTests : IClassFixture<WebApplicationFactory<Pr
             int empresaId = Convert.ToInt32(result);
 
             // Criar usuário com ID único e email garantidamente único
-            int usuarioId = Math.Abs(testName.GetHashCode() + Environment.TickCount + Random.Shared.Next()) % 1000000 + 1000;
+            // Usar counter + hash do GUID para ID único estável e sem colisão
             int counter = Interlocked.Increment(ref _testCounter);
             string uniquePart = $"{counter}_{Guid.NewGuid():N}";
+            int usuarioId = Math.Abs(uniquePart.GetHashCode()) % 9000000 + 1000000; // Range 1M-10M para evitar conflitos com IDs existentes
             string userEmail = $"usr_{uniquePart}_{testName}@teste.com".Replace("-", "");
             if (userEmail.Length > 100) userEmail = userEmail.Substring(0, 100);
 
