@@ -3842,11 +3842,17 @@ function entrarNoSistema(nome) {
 </script>
 <script>
 function fazerLogout() {
-    // 1. Limpa storage
+    // 1. Limpa TODOS os storage (sessionStorage + localStorage)
+    // sessionStorage
     sessionStorage.removeItem("bybar_token");
     sessionStorage.removeItem("bybar_user");
     sessionStorage.removeItem("convite_paciente_token");
+    sessionStorage.removeItem("paciente_token");
+    // localStorage
     try { localStorage.removeItem("acnut_paciente_ativo"); } catch (e) {}
+    try { localStorage.removeItem("anamnese_collapsed"); } catch (e) {}
+    try { localStorage.removeItem("acnut_sidebar_expandida"); } catch (e) {}
+    try { localStorage.removeItem("token"); } catch (e) {}
 
     // 2. Remove banner de plano se existir
     const banner = document.getElementById("banner-plano");
