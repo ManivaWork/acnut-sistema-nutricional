@@ -901,6 +901,41 @@ app.MapPost("/api/avaliacoes", async (AvaliacaoInput input, IHttpClientFactory c
         calculos_python = JsonSerializer.Deserialize<object>(jsonResp)
     });
 });
+
+app.MapGet("/api/avaliacoes/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
+{
+    int emp = Auth.Empresa(user);
+    // Validar se paciente pertence Ã  empresa (isolamento multi-tenant)
+    if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
+        return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
+
+    var avaliacoes = new List<object>();
+    using var conn = new NpgsqlConnection(connString);
+    await conn.OpenAsync();
+    using var cmd = new NpgsqlCommand(@"
+        SELECT id, peso_kg, altura_cm, percentual_gordura, massa_magra_kg, tmb_kcal, get_kcal, criado_em
+        FROM avaliacoes_fisicas
+        WHERE paciente_id = @id
+        ORDER BY criado_em DESC, id DESC;", conn);
+    cmd.Parameters.AddWithValue("id", pacienteId);
+    using var reader = await cmd.ExecuteReaderAsync();
+    while (await reader.ReadAsync())
+    {
+        avaliacoes.Add(new
+        {
+            id = Convert.ToInt32(reader.GetValue(0)),
+            peso_kg = reader.GetDecimal(1),
+            altura_cm = reader.GetDecimal(2),
+            percentual_gordura = reader.IsDBNull(3) ? (decimal?)null : reader.GetDecimal(3),
+            massa_magra_kg = reader.IsDBNull(4) ? (decimal?)null : reader.GetDecimal(4),
+            tmb_kcal = reader.GetDecimal(5),
+            get_kcal = reader.GetDecimal(6),
+            criado_em = reader.GetDateTime(7).ToString("yyyy-MM-ddTHH:mm:ss")
+        });
+    }
+    return Results.Ok(avaliacoes);
+}).AddEndpointFilter(new TenantIsolationFilter(connString));
+
 // ================================================= ALIMENTOS =================================================================
 app.MapGet("/api/alimentos", async () =>
 {
