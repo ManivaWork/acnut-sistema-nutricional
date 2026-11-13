@@ -586,12 +586,12 @@ async function gerarAvaliacao(e) {
         pacienteId: parseInt(document.getElementById("a-paciente-id").value),
         idade: parseInt(document.getElementById("a-idade").value),
         sexo: document.getElementById("a-sexo").value,
-        pesoKg: parseFloat(document.getElementById("a-peso").value),
-        alturaCm: parseFloat(document.getElementById("a-altura").value),
+        pesoKg: parseFloat(document.getElementById("a-peso").value) || 0,
+        alturaCm: parseFloat(document.getElementById("a-altura").value) || 0,
         nivelAtividade: document.getElementById("a-atividade").value,
         objetivo: document.getElementById("a-objetivo").value,
-        percentualGordura: parseFloat(document.getElementById("a-gordura").value || 0),
-        massaMagraKg: parseFloat(document.getElementById("a-massa").value || 0)
+        percentualGordura: parseFloat(document.getElementById("a-gordura").value) || 0,
+        massaMagraKg: parseFloat(document.getElementById("a-massa").value) || 0
         };
         try {
         const res = await fetch(`${API_URL}/avaliacoes`, {
@@ -1531,6 +1531,11 @@ async function carregarProntuarioCompleto() {
     } catch (err) {
         console.error("Erro ao carregar prontuário:", err);
         mostrarToast("Erro ao carregar prontuário", "erro");
+        // Limpar estados de loading que podem ter ficado presos
+        const anamneseContainer = document.getElementById("prontuario-anamnese-content");
+        if (anamneseContainer) {
+            anamneseContainer.innerHTML = `<div class="bg-slate-900/50 border border-slate-700/60 rounded-xl p-5 text-center text-slate-400"><p class="text-rose-400">Erro ao carregar anamnese. Tente recarregar.</p></div>`;
+        }
     }
 }
 // ========================== PLANO ALIMENTAR (refeições, opções, substituições, versões) ===============================
@@ -4063,6 +4068,8 @@ async function fazerLoginPaciente(e) {
         if (!res.ok) { msg.innerText = data.mensagem || "CPF ou data de nascimento incorretos."; erro.style.display = "flex"; return; }
         sessionStorage.setItem(TOKEN_KEY, data.token);
         sessionStorage.setItem("bybar_user", JSON.stringify({ nome: data.nome, tipo: "paciente" }));
+        // Processa convite pendente se houver (paciente existente aceitando convite)
+        await processarConvitePendenteAposLogin();
         erro.style.display = "none";
         entrarComoPaciente(data.nome);
     } catch {
@@ -4093,6 +4100,8 @@ async function fazerLogin(e) {
         }
         sessionStorage.setItem(TOKEN_KEY, data.token);
         sessionStorage.setItem("bybar_user", JSON.stringify({ nome: data.nome, tipo: "equipe", perfil: data.perfil }));
+        // Processa convite pendente se houver (nutricionista aceitando convite de outro nutricionista? raro mas possível)
+        await processarConvitePendenteAposLogin();
         erroDiv.style.display = "none";
         entrarNoSistema(data.nome);
     } catch {
@@ -4712,8 +4721,8 @@ function mostrarModalConsentimento() {
 
         const modal = document.createElement('div');
         modal.id = 'modal-consentimento';
-        // z-60 para ficar acima do overlay da anamnese (z-50)
-        modal.className = 'fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm';
+        // z-[10000] para ficar acima do area-paciente (z-index: 9000)
+        modal.className = 'fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm';
         modal.innerHTML = `
             <div class="bg-slate-800 border border-white/10 rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
                 <div class="flex items-center justify-between p-5 border-b border-white/10 shrink-0">
@@ -7230,6 +7239,49 @@ async function verificarConvitePacienteURL() {
     return false;
 }
 
+// ===== FLUXO: PACIENTE EXISTENTE ACEITA CONVITE =====
+const CONVITE_TOKEN_KEY = 'convite_paciente_token';
+
+function irLoginComConvite() {
+    const token = document.getElementById('convite-token-input').value;
+    if (!token) {
+        mostrarToast('Token de convite não encontrado.', 'erro');
+        return;
+    }
+    // Guarda token para auto-aceitar após login
+    sessionStorage.setItem(CONVITE_TOKEN_KEY, token);
+    navegar('login');
+}
+
+// Chamado após login bem-sucedido (em fazerLogin ou loginPaciente)
+async function processarConvitePendenteAposLogin() {
+    const token = sessionStorage.getItem(CONVITE_TOKEN_KEY);
+    if (!token) return false;
+
+    try {
+        const res = await fetch(`${API_URL}/convites-paciente/${token}/aceitar`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${getToken()}` }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+            sessionStorage.removeItem(CONVITE_TOKEN_KEY);
+            mostrarToast('Convite aceito! Você agora está vinculado ao nutricionista.', 'sucesso');
+            return true;
+        } else if (res.status === 409) {
+            // Convite já aceito ou paciente já vinculado
+            sessionStorage.removeItem(CONVITE_TOKEN_KEY);
+            mostrarToast(data.mensagem || 'Este convite já foi processado.', 'aviso');
+        } else {
+            console.warn('Erro ao auto-aceitar convite:', data.mensagem);
+        }
+    } catch (e) {
+        console.warn('Erro ao processar convite pendente:', e);
+    }
+    return false;
+}
+
+// Tratamento de erro 409 (CPF duplicado) no fluxo "novo paciente"
 async function aceitarConvitePaciente() {
     const token = document.getElementById("convite-token-input").value;
     const nome = document.getElementById("convite-nome")?.value?.trim();
@@ -7295,7 +7347,15 @@ async function aceitarConvitePaciente() {
         }, 2000);
 
     } catch (e) {
-        if (msg) msg.innerText = e.message;
+        // Tratamento especial: CPF já cadastrado (409)
+        if (e.message && e.message.includes('CPF') && e.message.includes('já')) {
+            if (msg) msg.innerText = 'Este CPF já possui cadastro. Clique em "Entrar e Aceitar Convite" acima.';
+            // Scroll suave para o botão de login
+            const btnLogin = document.querySelector('button[onclick="irLoginComConvite()"]');
+            if (btnLogin) btnLogin.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else {
+            if (msg) msg.innerText = e.message;
+        }
         erroDiv.style.display = "flex";
     } finally {
         btn.disabled = false;

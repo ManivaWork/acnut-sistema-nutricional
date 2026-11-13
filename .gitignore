@@ -6,6 +6,7 @@ __pycache__/
 .vs/
 appsettings.Development.json
 .env
+.venv/
 servico-csharp/appsettings.Development.json
 node_modules/
 .vitest/
