@@ -44,26 +44,26 @@ public record PlanoLimites(int MaxPacientes, int MaxProfissionais, int StorageMB
 public static class Planos
 {
     // Preços por ciclo (em reais)
-    // Mensal: R$ 27,90 | Semestral: R$ 160,00 | Anual: R$ 300,00
+    // Mensal: R$ 27,90 | Semestral: R$ 159,90 | Anual: R$ 299,90
     public static readonly Dictionary<string, Dictionary<string, decimal>> Precos = new()
     {
         ["basico"] = new()
         {
             ["mensal"] = 27.90m,
-            ["semestral"] = 160.00m,
-            ["anual"] = 300.00m
+            ["semestral"] = 159.90m,
+            ["anual"] = 299.90m
         },
         ["profissional"] = new()
         {
             ["mensal"] = 27.90m,
-            ["semestral"] = 160.00m,
-            ["anual"] = 300.00m
+            ["semestral"] = 159.90m,
+            ["anual"] = 299.90m
         },
         ["enterprise"] = new()
         {
             ["mensal"] = 27.90m,
-            ["semestral"] = 160.00m,
-            ["anual"] = 300.00m
+            ["semestral"] = 159.90m,
+            ["anual"] = 299.90m
         },
         ["sem_plano"] = new()
         {

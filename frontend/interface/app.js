@@ -362,6 +362,15 @@ function atualizarBotaoFormulario(editando) {
         if (btnCancelar) btnCancelar.classList.toggle('hidden', !editando);
         }
 function navegar(secao) {
+        // Bloquear acesso a 'billing' para não super_admin
+        if (secao === 'billing') {
+            const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
+            if (user.perfil !== 'super_admin') {
+                mostrarToast('Acesso restrito: apenas super administradores podem acessar o painel de billing.', 'erro');
+                return;
+            }
+        }
+
         document.querySelectorAll("main > section").forEach(s => s.classList.add("hidden"));
         const secaoAlvo = document.getElementById(`sec-${secao}`);
         if (secaoAlvo) {
@@ -565,12 +574,7 @@ async function cadastrarPaciente(event) {
 
         // Tratamento especial para 403: plano não permite cadastrar pacientes
         if (response.status === 403) {
-            mostrarToastComAcao(
-                "Seu plano atual não permite cadastrar pacientes. Assine um plano para continuar.",
-                'erro',
-                'Ver Planos',
-                () => navegar('billing')
-            );
+            mostrarToast("Seu plano atual não permite cadastrar pacientes. Regularize pelo link de pagamento enviado por e-mail ou fale com o suporte.", 'erro');
         } else {
             mostrarToast("Erro ao guardar os dados do paciente: " + erroTexto, 'erro');
         }
@@ -4498,14 +4502,11 @@ function mostrarBannerPlano(data) {
             <div class="flex items-center gap-3 min-w-0">
                 <i class="fa-solid fa-triangle-exclamation text-amber-400 text-xl shrink-0"></i>
                 <div class="min-w-0">
-                    <p class="font-semibold text-amber-100">Plano não ativo</p>
-                    <p class="text-sm text-amber-300 truncate">Você está no plano <strong>Sem Plano</strong> (limite: ${data.limite_pacientes ?? 3} pacientes). Assine um plano para desbloquear todos os recursos.</p>
+                    <p class="font-semibold text-amber-100">Assinatura inativa</p>
+                    <p class="text-sm text-amber-300 truncate">Sua assinatura está inativa. Regularize pelo link de pagamento enviado por e-mail ou fale com o suporte.</p>
                 </div>
             </div>
             <div class="flex gap-2 shrink-0">
-                <button onclick="navegar('billing')" class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded-xl transition whitespace-nowrap">
-                    Ver Planos
-                </button>
                 <button onclick="document.getElementById('banner-plano').remove()" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-amber-200 font-semibold rounded-xl transition whitespace-nowrap">
                     Dispensar
                 </button>
@@ -4546,13 +4547,599 @@ async function verificarLimitePacientes() {
         if (!res.ok) return true;
         const data = await res.json();
         if (data.status === 'sem_plano' && listaPacientes.length >= (data.limite_pacientes || 3)) {
-            mostrarToast(`Limite de pacientes atingido (${listaPacientes.length}/${data.limite_pacientes || 3}). Assine um plano para adicionar mais.`, 'erro');
+            mostrarToast(`Limite de pacientes atingido (${listaPacientes.length}/${data.limite_pacientes || 3}). Regularize pelo link de pagamento enviado por e-mail ou fale com o suporte.`, 'erro');
             return false;
         }
         return true;
     } catch {
         return true; // Em caso de erro, permite (backend valida)
     }
+}
+
+// ============================================================
+// CHECKOUT FLUXO - Planos na tela de login
+// ============================================================
+
+let checkoutState = {
+    plano: null,
+    ciclo: null,
+    ref: null,
+    invoiceUrl: null,
+    pollingInterval: null
+};
+
+/**
+ * Inicializa os cards de planos na tela de login
+ */
+function inicializarPlanosLogin() {
+    const container = document.getElementById('planos-cards');
+    const atalho = document.getElementById('planos-atalho');
+    if (!container || !window.PLANOS_CONFIG) return;
+
+    const planos = PLANOS_CONFIG.planosOrdem;
+    container.innerHTML = '';
+
+    planos.forEach((planoId, index) => {
+        const plano = {
+            id: planoId,
+            nome: PLANOS_CONFIG.nomes[planoId],
+            descricao: PLANOS_CONFIG.descricoes[planoId],
+            limites: PLANOS_CONFIG.limites[planoId]
+        };
+
+        // Determinar destaque (semestral e anual têm badge)
+        const card = document.createElement('article');
+        card.className = 'plano-card';
+        card.setAttribute('role', 'listitem');
+        card.dataset.plano = planoId;
+
+        // Badge de destaque no ciclo padrão (anual)
+        const destaqueAnual = PLANOS_CONFIG.destaque.anual;
+        const destaqueSemestral = PLANOS_CONFIG.destaque.semestral;
+
+        card.innerHTML = `
+            <div class="plano-header">
+                <h3 class="plano-nome">${plano.nome}</h3>
+                <p class="plano-desc">${plano.descricao}</p>
+                <div class="plano-preco">
+                    <span class="plano-valor" data-plano="${planoId}" data-ciclo="anual">${formatarPreco(planoId, 'anual')}</span>
+                    <span class="plano-periodo">/ano</span>
+                    <span class="plano-economia anual">${destaqueAnual.label}</span>
+                </div>
+            </div>
+            <div class="plano-limites">
+                <div class="plano-limite-item">
+                    <i class="fa-solid fa-users"></i>
+                    <span>${plano.limites.max_pacientes} pacientes</span>
+                </div>
+                <div class="plano-limite-item">
+                    <i class="fa-solid fa-user-tie"></i>
+                    <span>${plano.limites.max_profissionais} profissionais</span>
+                </div>
+                <div class="plano-limite-item">
+                    <i class="fa-solid fa-database"></i>
+                    <span>${plano.limites.storage_mb} MB armazenamento</span>
+                </div>
+                <div class="plano-limite-item">
+                    <i class="fa-solid fa-file-lines"></i>
+                    <span>${plano.limites.max_versoes_plano} versões de plano</span>
+                </div>
+            </div>
+            <button type="button" class="lg-btn plano-btn" onclick="iniciarCheckout('${planoId}')">
+                <span>Assinar ${plano.nome}</span>
+                <i class="fa-solid fa-arrow-right"></i>
+            </button>
+        `;
+
+        container.appendChild(card);
+    });
+
+    // Mostrar atalho se não estiver visível (mobile)
+    if (atalho) {
+        const isMobile = window.innerWidth < 768;
+        atalho.style.display = isMobile ? 'block' : 'none';
+    }
+}
+
+/**
+ * Inicia o checkout para um plano específico
+ * Abre o Estado 1: Dados Cadastrais
+ */
+function iniciarCheckout(planoId) {
+    if (!PLANOS_CONFIG.precos[planoId]) {
+        mostrarToast('Plano inválido', 'erro');
+        return;
+    }
+
+    // Default para anual (melhor custo-benefício)
+    const ciclo = 'anual';
+
+    checkoutState.plano = planoId;
+    checkoutState.ciclo = ciclo;
+    checkoutState.ref = null;
+    checkoutState.invoiceUrl = null;
+
+    // Preencher hidden inputs
+    document.getElementById('checkout-plano-selecionado').value = planoId;
+    document.getElementById('checkout-ciclo-selecionado').value = ciclo;
+
+    // Reset form
+    document.getElementById('form-checkout-dados').reset();
+    document.getElementById('ck-erro').style.display = 'none';
+
+    // Trocar tela
+    mostrarTelaCheckout('checkout-dados');
+
+    // Scroll suave
+    document.getElementById('checkout-dados').scrollIntoView({ behavior: 'smooth' });
+}
+
+/**
+ * Mostra uma tela específica do checkout
+ */
+function mostrarTelaCheckout(telaId) {
+    // Esconder todas as telas de checkout
+    const telas = ['checkout-dados', 'checkout-pagamento', 'checkout-aguardando', 'checkout-confirmado', 'checkout-erro'];
+    telas.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+
+    // Mostrar a tela solicitada
+    const tela = document.getElementById(telaId);
+    if (tela) {
+        tela.style.display = 'flex';
+        tela.classList.add('checkout-step', 'ativo');
+    }
+
+    // Adicionar máscara CPF/CNPJ quando mostrar tela de dados
+    if (telaId === 'checkout-dados') {
+        const cpfCnpjInput = document.getElementById('ck-cpf-cnpj');
+        if (cpfCnpjInput) {
+            // Remover listener anterior se houver
+            cpfCnpjInput.removeEventListener('input', mascararCpfCnpjHandler);
+            // Adicionar novo
+            cpfCnpjInput.addEventListener('input', mascararCpfCnpjHandler);
+        }
+    }
+}
+
+// Handler para máscara CPF/CNPJ (separado para poder remover)
+function mascararCpfCnpjHandler(e) {
+    mascararCpfCnpj(e.target);
+}
+
+/**
+ * Volta para a seção de planos no login
+ */
+function voltarParaPlanos() {
+    // Parar polling se ativo
+    if (checkoutState.pollingInterval) {
+        clearInterval(checkoutState.pollingInterval);
+        checkoutState.pollingInterval = null;
+    }
+
+    // Esconder telas de checkout
+    const telas = ['checkout-dados', 'checkout-pagamento', 'checkout-aguardando', 'checkout-confirmado', 'checkout-erro'];
+    telas.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+
+    // Reset state
+    checkoutState = {
+        plano: null,
+        ciclo: null,
+        ref: null,
+        invoiceUrl: null,
+        pollingInterval: null
+    };
+
+    // Scroll para planos
+    const planosSection = document.getElementById('planos-checkout');
+    if (planosSection) {
+        planosSection.scrollIntoView({ behavior: 'smooth' });
+    }
+}
+
+/**
+ * Envia dados cadastrais (Estado 1 -> Estado 2)
+ */
+async function enviarDadosCheckout(event) {
+    event.preventDefault();
+
+    const btn = document.getElementById('btn-checkout-dados');
+    const erroDiv = document.getElementById('ck-erro');
+    const erroSpan = erroDiv.querySelector('span');
+
+    // Validações
+    const nome = document.getElementById('ck-nome').value.trim();
+    const email = document.getElementById('ck-email').value.trim();
+    const cpfCnpj = document.getElementById('ck-cpf-cnpj').value.replace(/\D/g, '');
+    const telefone = document.getElementById('ck-telefone').value.trim();
+    const clinica = document.getElementById('ck-clinica').value.trim();
+    const termosAceitos = document.getElementById('ck-termos').checked;
+
+    if (!nome || !email || !cpfCnpj || !telefone || !clinica) {
+        erroSpan.textContent = 'Preencha todos os campos obrigatórios.';
+        erroDiv.style.display = 'flex';
+        return;
+    }
+
+    if (!validarEmail(email)) {
+        erroSpan.textContent = 'E-mail inválido.';
+        erroDiv.style.display = 'flex';
+        return;
+    }
+
+    if (!validarCpfCnpj(cpfCnpj)) {
+        erroSpan.textContent = 'CPF/CNPJ inválido.';
+        erroDiv.style.display = 'flex';
+        return;
+    }
+
+    if (!termosAceitos) {
+        erroSpan.textContent = 'É necessário aceitar os Termos e a LGPD.';
+        erroDiv.style.display = 'flex';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span>Processando...</span><i class="fa-solid fa-spinner fa-spin"></i>';
+    erroDiv.style.display = 'none';
+
+    try {
+        const resultado = await billingApi.criarPreCadastroEAssinatura({
+            plano: checkoutState.plano,
+            ciclo: checkoutState.ciclo,
+            nome,
+            email,
+            cpfCnpj,
+            telefone,
+            clinica,
+            termosAceitos
+        });
+
+        checkoutState.ref = resultado.ref;
+        checkoutState.invoiceUrl = resultado.invoiceUrl;
+
+        // Atualizar resumo no Estado 2
+        const planoNome = PLANOS_CONFIG.nomes[checkoutState.plano];
+        const cicloLabel = PLANOS_CONFIG.cicloLabels[checkoutState.ciclo];
+        const valor = formatarPreco(checkoutState.plano, checkoutState.ciclo);
+        document.getElementById('cp-resumo-plano').textContent = `${planoNome} • ${cicloLabel} • ${valor}`;
+
+        // Mostrar Estado 2
+        mostrarTelaCheckout('checkout-pagamento');
+
+    } catch (err) {
+        console.error('Erro ao criar pré-cadastro:', err);
+        erroSpan.textContent = err.message || 'Erro ao processar. Tente novamente.';
+        erroDiv.style.display = 'flex';
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>Continuar para Pagamento</span><i class="fa-solid fa-arrow-right"></i>';
+    }
+}
+
+/**
+ * Abre pagamento no Asaas (Estado 2 -> Estado 3)
+ */
+function abrirPagamentoAsaas() {
+    if (!checkoutState.invoiceUrl) {
+        mostrarToast('Erro: URL de pagamento não disponível', 'erro');
+        return;
+    }
+
+    // Em simulação: abre em nova aba (em produção seria redirect)
+    if (window.PLANOS_CONFIG.MODO_SIMULACAO) {
+        window.open(checkoutState.invoiceUrl, '_blank');
+    } else {
+        window.location.href = checkoutState.invoiceUrl;
+    }
+
+    // Mostrar Estado 3
+    mostrarTelaCheckout('checkout-aguardando');
+    iniciarPollingStatus();
+}
+
+/**
+ * Inicia polling de status do pagamento
+ */
+function iniciarPollingStatus() {
+    // Limpar interval anterior
+    if (checkoutState.pollingInterval) {
+        clearInterval(checkoutState.pollingInterval);
+    }
+
+    const estadoCarregando = document.getElementById('ca-estado-carregando');
+    const estadoBoleto = document.getElementById('ca-estado-boleto');
+    const mensagem = document.getElementById('ca-mensagem');
+    const erroDiv = document.getElementById('ca-erro');
+
+    // Verificar se é boleto (em simulação, assumimos cartão/Pix = rápido)
+    const isBoleto = false; // TODO: detectar pelo billingType escolhido
+
+    if (isBoleto) {
+        estadoCarregando.style.display = 'none';
+        estadoBoleto.style.display = 'block';
+    } else {
+        estadoCarregando.style.display = 'block';
+        estadoBoleto.style.display = 'none';
+        mensagem.textContent = 'Verificando pagamento...';
+    }
+
+    erroDiv.style.display = 'none';
+
+    // Polling a cada 5 segundos
+    checkoutState.pollingInterval = setInterval(async () => {
+        try {
+            const status = await billingApi.consultarStatus(checkoutState.ref);
+
+            if (status.status === 'pago') {
+                clearInterval(checkoutState.pollingInterval);
+                checkoutState.pollingInterval = null;
+                mostrarConfirmado(status.definirSenhaToken);
+            } else if (status.status === 'recusado') {
+                clearInterval(checkoutState.pollingInterval);
+                checkoutState.pollingInterval = null;
+                mostrarErro('recusado', status.mensagem || 'Pagamento recusado. Tente outro método.');
+            } else if (status.status === 'expirado') {
+                clearInterval(checkoutState.pollingInterval);
+                checkoutState.pollingInterval = null;
+                mostrarErro('expirado', status.mensagem || 'Tempo para pagamento expirou. Inicie novamente.');
+            }
+            // aguardando_pagamento: continua polling
+        } catch (err) {
+            console.error('Erro no polling:', err);
+            // Não para o polling em erro de rede
+        }
+    }, 5000);
+}
+
+/**
+ * Verificação manual (botão "Verificar novamente")
+ */
+async function verificarPagamentoAgora() {
+    if (!checkoutState.ref) return;
+
+    const btn = document.getElementById('btn-verificar-agora');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verificando...';
+
+    try {
+        const status = await billingApi.consultarStatus(checkoutState.ref);
+
+        if (status.status === 'pago') {
+            clearInterval(checkoutState.pollingInterval);
+            checkoutState.pollingInterval = null;
+            mostrarConfirmado(status.definirSenhaToken);
+        } else if (status.status === 'recusado') {
+            clearInterval(checkoutState.pollingInterval);
+            checkoutState.pollingInterval = null;
+            mostrarErro('recusado', status.mensagem || 'Pagamento recusado. Tente outro método.');
+        } else if (status.status === 'expirado') {
+            clearInterval(checkoutState.pollingInterval);
+            checkoutState.pollingInterval = null;
+            mostrarErro('expirado', status.mensagem || 'Tempo para pagamento expirou. Inicie novamente.');
+        } else {
+            mostrarToast('Pagamento ainda não confirmado. Aguarde mais alguns instantes.', 'info');
+        }
+    } catch (err) {
+        console.error('Erro ao verificar:', err);
+        mostrarToast('Erro ao verificar status. Tente novamente.', 'erro');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-rotate"></i> <span>Verificar novamente</span>';
+    }
+}
+
+/**
+ * Mostra Estado 4: Pagamento Confirmado
+ */
+function mostrarConfirmado(definirSenhaToken) {
+    // Salvar token para usar no "Definir Minha Senha"
+    if (definirSenhaToken) {
+        sessionStorage.setItem('checkout_definir_senha_token', definirSenhaToken);
+    }
+
+    const planoNome = PLANOS_CONFIG.nomes[checkoutState.plano];
+    const cicloLabel = PLANOS_CONFIG.cicloLabels[checkoutState.ciclo];
+    const valor = formatarPreco(checkoutState.plano, checkoutState.ciclo);
+
+    document.getElementById('cc-resumo').textContent = `Plano ${planoNome} (${cicloLabel}) • ${valor}`;
+
+    mostrarTelaCheckout('checkout-confirmado');
+}
+
+/**
+ * Vai para tela "Definir Minha Senha" com token do checkout
+ */
+function irParaDefinirSenha() {
+    const token = sessionStorage.getItem('checkout_definir_senha_token');
+
+    if (token) {
+        // URL com token para a tela "Definir Minha Senha"
+        const url = `${window.location.origin}/interface/index.html?definir-senha=${token}`;
+        window.location.href = url;
+    } else {
+        // Fallback: mostra tela definir senha diretamente
+        mostrarTelaDefinirSenhaCheckout();
+    }
+}
+
+/**
+ * Fallback: mostra tela "Definir Minha Senha" integrada
+ */
+function mostrarTelaDefinirSenhaCheckout() {
+    // Esconder checkout
+    document.getElementById('checkout-confirmado').style.display = 'none';
+
+    // Mostrar tela definir senha (reaproveitando onboarding)
+    const definirSenhaContainer = document.getElementById('definir-senha-container');
+    const loginContainer = document.getElementById('login-container');
+
+    if (definirSenhaContainer && loginContainer) {
+        loginContainer.style.display = 'none';
+        definirSenhaContainer.style.display = 'flex';
+        // Simular estado válido com token
+        document.getElementById('ds-estado-carregando').style.display = 'none';
+        document.getElementById('ds-estado-valido').style.display = 'block';
+        document.getElementById('ds-nome-usuario').textContent = 'Novo usuário';
+    }
+}
+
+/**
+ * Mostra tela de erro
+ */
+function mostrarErro(tipo, mensagem) {
+    const titulos = {
+        recusado: 'Pagamento recusado',
+        expirado: 'Tempo esgotado',
+        erro: 'Erro no processamento'
+    };
+
+    document.getElementById('ce-titulo').textContent = titulos[tipo] || 'Erro';
+    document.getElementById('ce-mensagem').textContent = mensagem;
+
+    // Ajustar botão
+    const btn = document.getElementById('ce-btn-tentar');
+    if (tipo === 'expirado') {
+        btn.onclick = voltarParaPlanos;
+        btn.innerHTML = '<span>Voltar aos planos</span><i class="fa-solid fa-arrow-left"></i>';
+    } else {
+        btn.onclick = tentarNovamenteCheckout;
+        btn.innerHTML = '<span>Tentar novamente</span><i class="fa-solid fa-rotate"></i>';
+    }
+
+    mostrarTelaCheckout('checkout-erro');
+}
+
+/**
+ * Tenta novamente a partir do erro
+ */
+function tentarNovamenteCheckout() {
+    const tipo = document.getElementById('ce-titulo').textContent;
+
+    if (tipo.includes('recusado')) {
+        // Voltar para pagamento
+        mostrarTelaCheckout('checkout-pagamento');
+    } else if (tipo.includes('esgotado')) {
+        // Voltar para planos
+        voltarParaPlanos();
+    } else {
+        // Voltar para dados
+        mostrarTelaCheckout('checkout-dados');
+    }
+}
+
+/**
+ * Volta para dados cadastrais
+ */
+function voltarParaDados() {
+    mostrarTelaCheckout('checkout-dados');
+}
+
+/**
+ * Volta para pagamento
+ */
+function voltarParaPagamento() {
+    if (checkoutState.pollingInterval) {
+        clearInterval(checkoutState.pollingInterval);
+        checkoutState.pollingInterval = null;
+    }
+    mostrarTelaCheckout('checkout-pagamento');
+}
+
+/**
+ * Validação de e-mail
+ */
+function validarEmail(email) {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(email);
+}
+
+/**
+ * Validação de CPF/CNPJ com dígitos verificadores
+ */
+function validarCpfCnpj(valor) {
+    const limpo = valor.replace(/\D/g, '');
+
+    if (limpo.length === 11) {
+        return validarCPF(limpo);
+    } else if (limpo.length === 14) {
+        return validarCNPJ(limpo);
+    }
+    return false;
+}
+
+function validarCPF(cpf) {
+    if (/^(\d)\1{10}$/.test(cpf)) return false; // Todos dígitos iguais
+
+    let soma = 0;
+    for (let i = 0; i < 9; i++) {
+        soma += parseInt(cpf[i]) * (10 - i);
+    }
+    let digito1 = 11 - (soma % 11);
+    if (digito1 >= 10) digito1 = 0;
+    if (digito1 !== parseInt(cpf[9])) return false;
+
+    soma = 0;
+    for (let i = 0; i < 10; i++) {
+        soma += parseInt(cpf[i]) * (11 - i);
+    }
+    let digito2 = 11 - (soma % 11);
+    if (digito2 >= 10) digito2 = 0;
+    if (digito2 !== parseInt(cpf[10])) return false;
+
+    return true;
+}
+
+function validarCNPJ(cnpj) {
+    if (/^(\d)\1{13}$/.test(cnpj)) return false;
+
+    const pesos1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    const pesos2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+
+    let soma = 0;
+    for (let i = 0; i < 12; i++) {
+        soma += parseInt(cnpj[i]) * pesos1[i];
+    }
+    let digito1 = soma % 11;
+    digito1 = digito1 < 2 ? 0 : 11 - digito1;
+    if (digito1 !== parseInt(cnpj[12])) return false;
+
+    soma = 0;
+    for (let i = 0; i < 13; i++) {
+        soma += parseInt(cnpj[i]) * pesos2[i];
+    }
+    let digito2 = soma % 11;
+    digito2 = digito2 < 2 ? 0 : 11 - digito2;
+    if (digito2 !== parseInt(cnpj[13])) return false;
+
+    return true;
+}
+
+/**
+ * Máscara CPF/CNPJ no input
+ */
+function mascararCpfCnpj(input) {
+    let valor = input.value.replace(/\D/g, '');
+
+    if (valor.length <= 11) {
+        // CPF: 000.000.000-00
+        valor = valor.replace(/(\d{3})(\d)/, '$1.$2');
+        valor = valor.replace(/(\d{3})(\d)/, '$1.$2');
+        valor = valor.replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+    } else {
+        // CNPJ: 00.000.000/0000-00
+        valor = valor.replace(/(\d{2})(\d)/, '$1.$2');
+        valor = valor.replace(/(\d{3})(\d)/, '$1.$2');
+        valor = valor.replace(/(\d{3})(\d)/, '$1.$2');
+        valor = valor.replace(/(\d{4})(\d{1,2})$/, '$1-$2');
+    }
+
+    input.value = valor;
 }
 
 // ---------- Área do paciente (somente leitura) ----------
@@ -7378,5 +7965,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     // 4. Caso padrão - mostrar login
     sessionStorage.removeItem(TOKEN_KEY);
     if (typeof mostrarLogin === "function") mostrarLogin();
+
+    // 5. Inicializar cards de planos na tela de login
+    if (typeof inicializarPlanosLogin === "function") inicializarPlanosLogin();
 }
 );

@@ -7,6 +7,10 @@
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+        <!-- Planos Config (deve carregar antes do app.js) -->
+        <script src="/interface/config/planos.js"></script>
+        <!-- Billing API (simulação) -->
+        <script src="/interface/js/billingApi.js"></script>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>AC hub</title>
@@ -910,6 +914,266 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
 .lg-tab { flex:1; height:40px; border-radius:10px; font-size:14px; font-weight:600; color:#a99bd0; background:transparent; border:0; cursor:pointer; transition:.2s; }
 .lg-tab.ativo { color:#fff; background:#6c34eb; }
 .lg-input input[type="date"] { color-scheme: dark; }
+
+/* ============================================================
+   PLANOS CHECKOUT - Cards e Fluxo
+   ============================================================ */
+
+.planos-section {
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid rgba(255,255,255,.08);
+}
+
+.planos-header {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.planos-title {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 6px;
+}
+
+.planos-subtitle {
+    font-size: 0.8rem;
+    color: #9199b3;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.planos-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.plano-card {
+    background: #1e2235;
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 16px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    transition: transform .2s, box-shadow .2s, border-color .2s;
+    position: relative;
+    overflow: hidden;
+}
+
+.plano-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 32px -8px rgba(0,0,0,.4);
+    border-color: rgba(108,52,235,.3);
+}
+
+.plano-card.destaque {
+    border-color: rgba(108,52,235,.5);
+    box-shadow: 0 0 0 1px rgba(108,52,235,.2);
+}
+
+.plano-card.destaque::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #6c34eb, #b731b4, #e42c84);
+}
+
+.plano-badge {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.plano-badge.semestral {
+    background: rgba(34,184,160,.2);
+    color: #22b8a0;
+}
+
+.plano-badge.anual {
+    background: rgba(228,44,132,.2);
+    color: #e42c84;
+}
+
+.plano-header {
+    text-align: center;
+    margin-bottom: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(255,255,255,.06);
+}
+
+.plano-nome {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 4px;
+}
+
+.plano-desc {
+    font-size: 0.75rem;
+    color: #9199b3;
+    margin-bottom: 12px;
+    min-height: 36px;
+}
+
+.plano-preco {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.plano-valor {
+    font-size: 2rem;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1;
+}
+
+.plano-periodo {
+    font-size: 0.75rem;
+    color: #9199b3;
+}
+
+.plano-economia {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+    margin-top: 4px;
+}
+
+.plano-economia.semestral {
+    background: rgba(34,184,160,.2);
+    color: #22b8a0;
+}
+
+.plano-economia.anual {
+    background: rgba(228,44,132,.2);
+    color: #e42c84;
+}
+
+.plano-limites {
+    flex: 1;
+    margin: 16px 0;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255,255,255,.06);
+}
+
+.plano-limite-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: #b4bbd1;
+    margin-bottom: 8px;
+}
+
+.plano-limite-item i {
+    width: 16px;
+    height: 16px;
+    color: #6c34eb;
+    flex-shrink: 0;
+}
+
+.plano-btn {
+    width: 100%;
+    margin-top: auto;
+}
+
+.planos-atalho {
+    text-align: center;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px dashed rgba(255,255,255,.1);
+}
+
+.planos-note {
+    text-align: center;
+    margin-top: 20px;
+    font-size: 0.75rem;
+    color: #6c758e;
+}
+
+.planos-note i {
+    color: #9a6df5;
+    margin-right: 6px;
+}
+
+/* Responsivo: mobile - cards empilhados */
+@media (max-width: 768px) {
+    .planos-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    .plano-card {
+        padding: 16px;
+    }
+    .plano-valor {
+        font-size: 1.75rem;
+    }
+}
+
+/* Checkout flow screens */
+.checkout-step {
+    display: none;
+}
+
+.checkout-step.ativo {
+    display: block;
+    animation: fadeIn .3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Secondary button variant */
+.lg-btn-secondary {
+    background: #2d3248 !important;
+    color: #eef0f7 !important;
+    border: 1px solid rgba(255,255,255,.1) !important;
+}
+
+.lg-btn-secondary:hover {
+    background: #3a3f5c !important;
+}
+
+/* Faixa simulação (adicionada via JS) */
+#faixa-simulacao {
+    animation: slideDown .3s ease;
+}
+
+@keyframes slideDown {
+    from { transform: translateY(-100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+/* Ajuste body quando faixa ativa */
+body.has-faixa-simulacao {
+    padding-top: 32px;
+}
+
+/* Input checkbox custom */
+.lg-field label input[type="checkbox"] {
+    accent-color: #6c34eb;
+}
+
+/* Toast container z-index fix */
+#toast-container {
+    z-index: 100000;
+}
 </style>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex">
@@ -1037,6 +1301,25 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         <button type="submit" class="lg-btn"><span>Ver meu plano</span><i class="fa-solid fa-arrow-right"></i></button>
         </form>
 
+        <!-- ====================================================== PLANOS (Checkout) ======================================================= -->
+        <section id="planos-checkout" class="planos-section" aria-labelledby="planos-titulo">
+          <div class="planos-header">
+            <h2 id="planos-titulo" class="planos-title">Escolha seu plano</h2>
+            <p class="planos-subtitle">Todos os planos incluem: pacientes ilimitados no trial, suporte por e-mail, LGPD ready</p>
+          </div>
+          <div id="planos-cards" class="planos-grid" role="list">
+            <!-- Cards gerados via JS em app.js -->
+          </div>
+          <p class="planos-note"><i class="fa-solid fa-shield-halved"></i> Seus dados são criptografados. Cancelamento a qualquer momento.</p>
+        </section>
+
+        <!-- Atalho "Quero assinar" (aparece se cards não estiverem visíveis) -->
+        <div id="planos-atalho" class="planos-atalho" style="display: none;">
+          <a href="#planos-checkout" onclick="event.preventDefault(); document.getElementById('planos-checkout').scrollIntoView({behavior: 'smooth'});" class="lg-link">
+            <i class="fa-solid fa-arrow-down"></i> Quero assinar um plano
+          </a>
+        </div>
+
             <p class="lg-foot"><i class="fa-solid fa-shield-halved"></i>Acesso restrito à equipe AC System </p>
         </div>
     </div>
@@ -1085,6 +1368,445 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
       </div>
     </form>
   </div>
+</div>
+
+<!-- ====================================================== CHECKOUT FLUXO (Estados 1-4) ======================================================= -->
+<!-- Estado 1: Dados Cadastrais -->
+<div id="checkout-dados" class="lg-screen" style="display: none;">
+    <div class="lg-art" aria-hidden="true">
+        <svg viewBox="0 0 800 800" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+        <linearGradient id="ckSky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0"    stop-color="#12082b"/>
+        <stop offset="0.38" stop-color="#3b1a78"/>
+        <stop offset="0.62" stop-color="#9d3aa8"/>
+        <stop offset="0.80" stop-color="#ec5f8f"/>
+        <stop offset="1"    stop-color="#fb923c"/>
+        </linearGradient>
+        <radialGradient id="ckGlow" cx="0.55" cy="0.62" r="0.45">
+        <stop offset="0" stop-color="#fdba74" stop-opacity=".55"/>
+        <stop offset="1" stop-color="#fdba74" stop-opacity="0"/>
+        </radialGradient>
+        <symbol id="ckPine" viewBox="-20 -64 40 70">
+        <path d="M0 -62 L12 -38 L6 -38 L16 -16 L8 -16 L18 2 L-18 2 L-8 -16 L-16 -16 L-6 -38 L-12 -38 Z"/>
+        </symbol>
+        </defs>
+        <rect width="800" height="800" fill="url(#ckSky)"/>
+        <rect width="800" height="800" fill="url(#ckGlow)"/>
+        <g fill="#fff">
+        <circle cx="90"  cy="70"  r="1.6" opacity=".9"/>
+        <circle cx="210" cy="140" r="1.1" opacity=".7"/>
+        <circle cx="330" cy="60"  r="1.4" opacity=".85"/>
+        <circle cx="450" cy="170" r="1"   opacity=".6"/>
+        <circle cx="560" cy="90"  r="2"   opacity=".95"/>
+        <circle cx="690" cy="150" r="1.2" opacity=".75"/>
+        <circle cx="740" cy="55"  r="1.5" opacity=".8"/>
+        <circle cx="150" cy="260" r="1"   opacity=".55"/>
+        <circle cx="400" cy="250" r="1.2" opacity=".6"/>
+        <circle cx="620" cy="260" r="1"   opacity=".5"/>
+        </g>
+        <path d="M0 520 L120 430 L220 490 L360 330 L470 440 L560 385 L680 480 L800 410 L800 800 L0 800Z" fill="#4a2186"/>
+        <path d="M0 600 L140 520 L260 580 L400 470 L520 560 L650 500 L800 585 L800 800 L0 800Z" fill="#2c1257"/>
+        <path d="M0 690 L180 625 L330 675 L480 615 L640 670 L800 635 L800 800 L0 800Z" fill="#170a33"/>
+        <g fill="#0c0620">
+        <use href="#ckPine" x="30"  y="730" width="60" height="105"/>
+        <use href="#ckPine" x="95"  y="745" width="48" height="84"/>
+        <use href="#ckPine" x="160" y="735" width="56" height="98"/>
+        <use href="#ckPine" x="560" y="740" width="52" height="92"/>
+        <use href="#ckPine" x="625" y="725" width="64" height="112"/>
+        <use href="#ckPine" x="700" y="745" width="54" height="94"/>
+        <use href="#ckPine" x="755" y="720" width="70" height="122"/>
+        </g>
+        <rect y="770" width="800" height="30" fill="#0c0620"/>
+        </svg>
+    </div>
+    <div class="lg-panel">
+        <div class="lg-box">
+            <div class="lg-brand">
+                <img src="/interface/assets/logo.png" alt="AC Hub" class="lg-logo-img">
+            </div>
+            <h1 class="lg-title">Dados cadastrais<span>.</span></h1>
+            <div class="lg-bar"></div>
+            <p class="text-slate-400 text-sm mb-6">Preencha seus dados para criar a assinatura. A senha será definida após o pagamento.</p>
+            <form id="form-checkout-dados" onsubmit="enviarDadosCheckout(event)" class="space-y-4">
+                <input type="hidden" id="checkout-plano-selecionado" value="">
+                <input type="hidden" id="checkout-ciclo-selecionado" value="">
+                <div class="lg-field">
+                    <div class="lg-input">
+                        <i class="fa-regular fa-user lg-ico"></i>
+                        <input id="ck-nome" type="text" placeholder="Nome completo" autocomplete="name" required>
+                    </div>
+                </div>
+                <div class="lg-field">
+                    <div class="lg-input">
+                        <i class="fa-regular fa-envelope lg-ico"></i>
+                        <input id="ck-email" type="email" placeholder="E-mail" autocomplete="email" required>
+                    </div>
+                </div>
+                <div class="lg-field">
+                    <div class="lg-input">
+                        <i class="fa-regular fa-id-card lg-ico"></i>
+                        <input id="ck-cpf-cnpj" type="text" placeholder="CPF ou CNPJ" autocomplete="off" required maxlength="18" oninput="mascararCpfCnpj(this)">
+                    </div>
+                </div>
+                <div class="lg-field">
+                    <div class="lg-input">
+                        <i class="fa-regular fa-phone lg-ico"></i>
+                        <input id="ck-telefone" type="tel" placeholder="Telefone" autocomplete="tel" required oninput="mascararTelefone(this)">
+                    </div>
+                </div>
+                <div class="lg-field">
+                    <div class="lg-input">
+                        <i class="fa-solid fa-building lg-ico"></i>
+                        <input id="ck-clinica" type="text" placeholder="Nome da clínica/empresa" autocomplete="off" required>
+                    </div>
+                </div>
+                <div class="lg-field">
+                    <label class="flex items-start gap-3 cursor-pointer">
+                        <input type="checkbox" id="ck-termos" required class="mt-1 w-4 h-4 rounded border-slate-600 text-emerald-500 focus:ring-emerald-500">
+                        <span class="text-sm text-slate-300">
+                            Aceito os <a href="#" id="link-termos" class="text-emerald-400 hover:underline">Termos de Uso</a> e a <a href="#" id="link-lgpd" class="text-emerald-400 hover:underline">Política de Privacidade (LGPD)</a>
+                            <span class="text-rose-400">*</span>
+                        </span>
+                    </label>
+                </div>
+                <div id="ck-erro" class="lg-error" style="display: none;">
+                    <i class="fa-solid fa-circle-exclamation"></i><span></span>
+                </div>
+                <button type="submit" class="lg-btn" id="btn-checkout-dados">
+                    <span>Continuar para Pagamento</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </form>
+            <button type="button" onclick="voltarParaPlanos()" class="lg-link" style="margin-top: 16px; display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fa-solid fa-arrow-left"></i> Voltar aos planos
+            </button>
+            <p class="lg-foot"><i class="fa-solid fa-shield-halved"></i>Dados protegidos por LGPD. Não compartilhamos suas informações.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Estado 2: Finalizar Pagamento -->
+<div id="checkout-pagamento" class="lg-screen" style="display: none;">
+    <div class="lg-art" aria-hidden="true">
+        <svg viewBox="0 0 800 800" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+        <linearGradient id="cpSky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0"    stop-color="#12082b"/>
+        <stop offset="0.38" stop-color="#3b1a78"/>
+        <stop offset="0.62" stop-color="#9d3aa8"/>
+        <stop offset="0.80" stop-color="#ec5f8f"/>
+        <stop offset="1"    stop-color="#fb923c"/>
+        </linearGradient>
+        <radialGradient id="cpGlow" cx="0.55" cy="0.62" r="0.45">
+        <stop offset="0" stop-color="#fdba74" stop-opacity=".55"/>
+        <stop offset="1" stop-color="#fdba74" stop-opacity="0"/>
+        </radialGradient>
+        <symbol id="cpPine" viewBox="-20 -64 40 70">
+        <path d="M0 -62 L12 -38 L6 -38 L16 -16 L8 -16 L18 2 L-18 2 L-8 -16 L-16 -16 L-6 -38 L-12 -38 Z"/>
+        </symbol>
+        </defs>
+        <rect width="800" height="800" fill="url(#cpSky)"/>
+        <rect width="800" height="800" fill="url(#cpGlow)"/>
+        <g fill="#fff">
+        <circle cx="90"  cy="70"  r="1.6" opacity=".9"/>
+        <circle cx="210" cy="140" r="1.1" opacity=".7"/>
+        <circle cx="330" cy="60"  r="1.4" opacity=".85"/>
+        <circle cx="450" cy="170" r="1"   opacity=".6"/>
+        <circle cx="560" cy="90"  r="2"   opacity=".95"/>
+        <circle cx="690" cy="150" r="1.2" opacity=".75"/>
+        <circle cx="740" cy="55"  r="1.5" opacity=".8"/>
+        <circle cx="150" cy="260" r="1"   opacity=".55"/>
+        <circle cx="400" cy="250" r="1.2" opacity=".6"/>
+        <circle cx="620" cy="260" r="1"   opacity=".5"/>
+        </g>
+        <path d="M0 520 L120 430 L220 490 L360 330 L470 440 L560 385 L680 480 L800 410 L800 800 L0 800Z" fill="#4a2186"/>
+        <path d="M0 600 L140 520 L260 580 L400 470 L520 560 L650 500 L800 585 L800 800 L0 800Z" fill="#2c1257"/>
+        <path d="M0 690 L180 625 L330 675 L480 615 L640 670 L800 635 L800 800 L0 800Z" fill="#170a33"/>
+        <g fill="#0c0620">
+        <use href="#cpPine" x="30"  y="730" width="60" height="105"/>
+        <use href="#cpPine" x="95"  y="745" width="48" height="84"/>
+        <use href="#cpPine" x="160" y="735" width="56" height="98"/>
+        <use href="#cpPine" x="560" y="740" width="52" height="92"/>
+        <use href="#cpPine" x="625" y="725" width="64" height="112"/>
+        <use href="#cpPine" x="700" y="745" width="54" height="94"/>
+        <use href="#cpPine" x="755" y="720" width="70" height="122"/>
+        </g>
+        <rect y="770" width="800" height="30" fill="#0c0620"/>
+        </svg>
+    </div>
+    <div class="lg-panel">
+        <div class="lg-box">
+            <div class="lg-brand">
+                <img src="/interface/assets/logo.png" alt="AC Hub" class="lg-logo-img">
+            </div>
+            <h1 class="lg-title">Finalizar pagamento<span>.</span></h1>
+            <div class="lg-bar"></div>
+            <div class="bg-emerald-900/30 border border-emerald-500/30 rounded-xl p-5 mb-6">
+                <div class="flex items-center gap-3 mb-3">
+                    <i class="fa-solid fa-circle-check text-emerald-400 text-xl"></i>
+                    <div>
+                        <p class="font-semibold text-emerald-100">Dados recebidos com sucesso</p>
+                        <p class="text-sm text-emerald-300" id="cp-resumo-plano"></p>
+                    </div>
+                </div>
+                <p class="text-sm text-emerald-300 mb-4">Você será redirecionado para a página segura do <strong>Asaas</strong> para escolher a forma de pagamento:</p>
+                <div class="grid grid-cols-3 gap-3 mb-4">
+                    <div class="bg-slate-800/50 rounded-xl p-3 text-center border border-slate-700">
+                        <i class="fa-brands fa-pix text-emerald-400 text-2xl"></i>
+                        <p class="text-xs text-slate-300 mt-1">Pix</p>
+                    </div>
+                    <div class="bg-slate-800/50 rounded-xl p-3 text-center border border-slate-700">
+                        <i class="fa-solid fa-credit-card text-blue-400 text-2xl"></i>
+                        <p class="text-xs text-slate-300 mt-1">Cartão</p>
+                    </div>
+                    <div class="bg-slate-800/50 rounded-xl p-3 text-center border border-slate-700">
+                        <i class="fa-solid fa-barcode text-amber-400 text-2xl"></i>
+                        <p class="text-xs text-slate-300 mt-1">Boleto</p>
+                    </div>
+                </div>
+                <p class="text-xs text-slate-400 text-center"><i class="fa-solid fa-lock"></i> Nunca solicitamos dados de cartão aqui. O pagamento é processado 100% no Asaas.</p>
+            </div>
+            <div class="flex gap-3">
+                <button type="button" onclick="abrirPagamentoAsaas()" class="flex-1 lg-btn" id="btn-pagar-asaas">
+                    <span>Pagar com Asaas</span>
+                    <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                </button>
+                <button type="button" onclick="voltarParaDados()" class="flex-1 lg-btn lg-btn-secondary">
+                    <span>Voltar</span>
+                    <i class="fa-solid fa-arrow-left"></i>
+                </button>
+            </div>
+            <p class="lg-foot"><i class="fa-solid fa-shield-halved"></i>Pagamento seguro via Asaas (PCI DSS Level 1)</p>
+        </div>
+    </div>
+</div>
+
+<!-- Estado 3: Aguardando Confirmação -->
+<div id="checkout-aguardando" class="lg-screen" style="display: none;">
+    <div class="lg-art" aria-hidden="true">
+        <svg viewBox="0 0 800 800" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+        <linearGradient id="caSky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0"    stop-color="#12082b"/>
+        <stop offset="0.38" stop-color="#3b1a78"/>
+        <stop offset="0.62" stop-color="#9d3aa8"/>
+        <stop offset="0.80" stop-color="#ec5f8f"/>
+        <stop offset="1"    stop-color="#fb923c"/>
+        </linearGradient>
+        <radialGradient id="caGlow" cx="0.55" cy="0.62" r="0.45">
+        <stop offset="0" stop-color="#fdba74" stop-opacity=".55"/>
+        <stop offset="1" stop-color="#fdba74" stop-opacity="0"/>
+        </radialGradient>
+        <symbol id="caPine" viewBox="-20 -64 40 70">
+        <path d="M0 -62 L12 -38 L6 -38 L16 -16 L8 -16 L18 2 L-18 2 L-8 -16 L-16 -16 L-6 -38 L-12 -38 Z"/>
+        </symbol>
+        </defs>
+        <rect width="800" height="800" fill="url(#caSky)"/>
+        <rect width="800" height="800" fill="url(#caGlow)"/>
+        <g fill="#fff">
+        <circle cx="90"  cy="70"  r="1.6" opacity=".9"/>
+        <circle cx="210" cy="140" r="1.1" opacity=".7"/>
+        <circle cx="330" cy="60"  r="1.4" opacity=".85"/>
+        <circle cx="450" cy="170" r="1"   opacity=".6"/>
+        <circle cx="560" cy="90"  r="2"   opacity=".95"/>
+        <circle cx="690" cy="150" r="1.2" opacity=".75"/>
+        <circle cx="740" cy="55"  r="1.5" opacity=".8"/>
+        <circle cx="150" cy="260" r="1"   opacity=".55"/>
+        <circle cx="400" cy="250" r="1.2" opacity=".6"/>
+        <circle cx="620" cy="260" r="1"   opacity=".5"/>
+        </g>
+        <path d="M0 520 L120 430 L220 490 L360 330 L470 440 L560 385 L680 480 L800 410 L800 800 L0 800Z" fill="#4a2186"/>
+        <path d="M0 600 L140 520 L260 580 L400 470 L520 560 L650 500 L800 585 L800 800 L0 800Z" fill="#2c1257"/>
+        <path d="M0 690 L180 625 L330 675 L480 615 L640 670 L800 635 L800 800 L0 800Z" fill="#170a33"/>
+        <g fill="#0c0620">
+        <use href="#caPine" x="30"  y="730" width="60" height="105"/>
+        <use href="#caPine" x="95"  y="745" width="48" height="84"/>
+        <use href="#caPine" x="160" y="735" width="56" height="98"/>
+        <use href="#caPine" x="560" y="740" width="52" height="92"/>
+        <use href="#caPine" x="625" y="725" width="64" height="112"/>
+        <use href="#caPine" x="700" y="745" width="54" height="94"/>
+        <use href="#caPine" x="755" y="720" width="70" height="122"/>
+        </g>
+        <rect y="770" width="800" height="30" fill="#0c0620"/>
+        </svg>
+    </div>
+    <div class="lg-panel">
+        <div class="lg-box">
+            <div class="lg-brand">
+                <img src="/interface/assets/logo.png" alt="AC Hub" class="lg-logo-img">
+            </div>
+            <h1 class="lg-title">Aguardando confirmação<span>.</span></h1>
+            <div class="lg-bar"></div>
+            <div id="ca-estado-carregando" class="text-center py-8">
+                <div class="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <p class="text-slate-400" id="ca-mensagem">Verificando pagamento...</p>
+            </div>
+            <div id="ca-estado-boleto" style="display: none;" class="bg-amber-900/30 border border-amber-500/30 rounded-xl p-5 mb-6 text-center">
+                <i class="fa-solid fa-barcode text-amber-400 text-3xl mb-3"></i>
+                <p class="text-amber-100 font-semibold mb-2">Pagamento via Boleto</p>
+                <p class="text-amber-300 text-sm">Boletos podem levar <strong>1 a 3 dias úteis</strong> para compensar. Verificaremos automaticamente.</p>
+            </div>
+            <div id="ca-erro" class="lg-error" style="display: none;"></div>
+            <div class="flex flex-col sm:flex-row gap-3 mt-6">
+                <button type="button" onclick="verificarPagamentoAgora()" class="lg-btn" id="btn-verificar-agora">
+                    <i class="fa-solid fa-rotate"></i> <span>Verificar novamente</span>
+                </button>
+                <button type="button" onclick="voltarParaPagamento()" class="lg-btn lg-btn-secondary">
+                    <i class="fa-solid fa-arrow-left"></i> <span>Voltar ao pagamento</span>
+                </button>
+            </div>
+            <p class="lg-foot"><i class="fa-solid fa-shield-halved"></i>Verificação automática a cada 5 segundos. Feche esta aba e volte depois se preferir.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Estado 4: Pagamento Confirmado -->
+<div id="checkout-confirmado" class="lg-screen" style="display: none;">
+    <div class="lg-art" aria-hidden="true">
+        <svg viewBox="0 0 800 800" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+        <linearGradient id="ccSky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0"    stop-color="#12082b"/>
+        <stop offset="0.38" stop-color="#3b1a78"/>
+        <stop offset="0.62" stop-color="#9d3aa8"/>
+        <stop offset="0.80" stop-color="#ec5f8f"/>
+        <stop offset="1"    stop-color="#fb923c"/>
+        </linearGradient>
+        <radialGradient id="ccGlow" cx="0.55" cy="0.62" r="0.45">
+        <stop offset="0" stop-color="#fdba74" stop-opacity=".55"/>
+        <stop offset="1" stop-color="#fdba74" stop-opacity="0"/>
+        </radialGradient>
+        <symbol id="ccPine" viewBox="-20 -64 40 70">
+        <path d="M0 -62 L12 -38 L6 -38 L16 -16 L8 -16 L18 2 L-18 2 L-8 -16 L-16 -16 L-6 -38 L-12 -38 Z"/>
+        </symbol>
+        </defs>
+        <rect width="800" height="800" fill="url(#ccSky)"/>
+        <rect width="800" height="800" fill="url(#ccGlow)"/>
+        <g fill="#fff">
+        <circle cx="90"  cy="70"  r="1.6" opacity=".9"/>
+        <circle cx="210" cy="140" r="1.1" opacity=".7"/>
+        <circle cx="330" cy="60"  r="1.4" opacity=".85"/>
+        <circle cx="450" cy="170" r="1"   opacity=".6"/>
+        <circle cx="560" cy="90"  r="2"   opacity=".95"/>
+        <circle cx="690" cy="150" r="1.2" opacity=".75"/>
+        <circle cx="740" cy="55"  r="1.5" opacity=".8"/>
+        <circle cx="150" cy="260" r="1"   opacity=".55"/>
+        <circle cx="400" cy="250" r="1.2" opacity=".6"/>
+        <circle cx="620" cy="260" r="1"   opacity=".5"/>
+        </g>
+        <path d="M0 520 L120 430 L220 490 L360 330 L470 440 L560 385 L680 480 L800 410 L800 800 L0 800Z" fill="#4a2186"/>
+        <path d="M0 600 L140 520 L260 580 L400 470 L520 560 L650 500 L800 585 L800 800 L0 800Z" fill="#2c1257"/>
+        <path d="M0 690 L180 625 L330 675 L480 615 L640 670 L800 635 L800 800 L0 800Z" fill="#170a33"/>
+        <g fill="#0c0620">
+        <use href="#ccPine" x="30"  y="730" width="60" height="105"/>
+        <use href="#ccPine" x="95"  y="745" width="48" height="84"/>
+        <use href="#ccPine" x="160" y="735" width="56" height="98"/>
+        <use href="#ccPine" x="560" y="740" width="52" height="92"/>
+        <use href="#ccPine" x="625" y="725" width="64" height="112"/>
+        <use href="#ccPine" x="700" y="745" width="54" height="94"/>
+        <use href="#ccPine" x="755" y="720" width="70" height="122"/>
+        </g>
+        <rect y="770" width="800" height="30" fill="#0c0620"/>
+        </svg>
+    </div>
+    <div class="lg-panel">
+        <div class="lg-box">
+            <div class="lg-brand">
+                <img src="/interface/assets/logo.png" alt="AC Hub" class="lg-logo-img">
+            </div>
+            <h1 class="lg-title">Pagamento confirmado<span>!</span></h1>
+            <div class="lg-bar"></div>
+            <div class="w-16 h-16 mx-auto mb-4 bg-emerald-500/20 rounded-full flex items-center justify-center">
+                <i class="fa-solid fa-circle-check text-emerald-400 text-3xl"></i>
+            </div>
+            <h2 class="text-xl font-bold text-white mb-2 text-center">Sua assinatura está ativa!</h2>
+            <p class="text-slate-400 text-center mb-6" id="cc-resumo">Agora crie sua senha de acesso para entrar no sistema.</p>
+            <div id="cc-estado-sucesso" class="text-center py-4">
+                <button type="button" onclick="irParaDefinirSenha()" class="lg-btn" id="btn-criar-acesso">
+                    <span>Criar meu acesso</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </div>
+            <div id="cc-estado-erro" class="lg-error" style="display: none;"></div>
+            <p class="lg-foot"><i class="fa-solid fa-shield-halved"></i>Link único, uso único, válido por 24h. Também enviado por e-mail.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Estados de Erro do Checkout -->
+<div id="checkout-erro" class="lg-screen" style="display: none;">
+    <div class="lg-art" aria-hidden="true">
+        <svg viewBox="0 0 800 800" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+        <linearGradient id="ceSky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0"    stop-color="#12082b"/>
+        <stop offset="0.38" stop-color="#3b1a78"/>
+        <stop offset="0.62" stop-color="#9d3aa8"/>
+        <stop offset="0.80" stop-color="#ec5f8f"/>
+        <stop offset="1"    stop-color="#fb923c"/>
+        </linearGradient>
+        <radialGradient id="ceGlow" cx="0.55" cy="0.62" r="0.45">
+        <stop offset="0" stop-color="#fdba74" stop-opacity=".55"/>
+        <stop offset="1" stop-color="#fdba74" stop-opacity="0"/>
+        </radialGradient>
+        <symbol id="cePine" viewBox="-20 -64 40 70">
+        <path d="M0 -62 L12 -38 L6 -38 L16 -16 L8 -16 L18 2 L-18 2 L-8 -16 L-16 -16 L-6 -38 L-12 -38 Z"/>
+        </symbol>
+        </defs>
+        <rect width="800" height="800" fill="url(#ceSky)"/>
+        <rect width="800" height="800" fill="url(#ceGlow)"/>
+        <g fill="#fff">
+        <circle cx="90"  cy="70"  r="1.6" opacity=".9"/>
+        <circle cx="210" cy="140" r="1.1" opacity=".7"/>
+        <circle cx="330" cy="60"  r="1.4" opacity=".85"/>
+        <circle cx="450" cy="170" r="1"   opacity=".6"/>
+        <circle cx="560" cy="90"  r="2"   opacity=".95"/>
+        <circle cx="690" cy="150" r="1.2" opacity=".75"/>
+        <circle cx="740" cy="55"  r="1.5" opacity=".8"/>
+        <circle cx="150" cy="260" r="1"   opacity=".55"/>
+        <circle cx="400" cy="250" r="1.2" opacity=".6"/>
+        <circle cx="620" cy="260" r="1"   opacity=".5"/>
+        </g>
+        <path d="M0 520 L120 430 L220 490 L360 330 L470 440 L560 385 L680 480 L800 410 L800 800 L0 800Z" fill="#4a2186"/>
+        <path d="M0 600 L140 520 L260 580 L400 470 L520 560 L650 500 L800 585 L800 800 L0 800Z" fill="#2c1257"/>
+        <path d="M0 690 L180 625 L330 675 L480 615 L640 670 L800 635 L800 800 L0 800Z" fill="#170a33"/>
+        <g fill="#0c0620">
+        <use href="#cePine" x="30"  y="730" width="60" height="105"/>
+        <use href="#cePine" x="95"  y="745" width="48" height="84"/>
+        <use href="#cePine" x="160" y="735" width="56" height="98"/>
+        <use href="#cePine" x="560" y="740" width="52" height="92"/>
+        <use href="#cePine" x="625" y="725" width="64" height="112"/>
+        <use href="#cePine" x="700" y="745" width="54" height="94"/>
+        <use href="#cePine" x="755" y="720" width="70" height="122"/>
+        </g>
+        <rect y="770" width="800" height="30" fill="#0c0620"/>
+        </svg>
+    </div>
+    <div class="lg-panel">
+        <div class="lg-box">
+            <div class="lg-brand">
+                <img src="/interface/assets/logo.png" alt="AC Hub" class="lg-logo-img">
+            </div>
+            <h1 class="lg-title">Ops<span>!</span></h1>
+            <div class="lg-bar"></div>
+            <div class="w-16 h-16 mx-auto mb-4 bg-rose-500/20 rounded-full flex items-center justify-center">
+                <i class="fa-solid fa-triangle-exclamation text-rose-400 text-3xl"></i>
+            </div>
+            <h2 class="text-xl font-bold text-white mb-2 text-center" id="ce-titulo">Algo não saiu como esperado</h2>
+            <p class="text-slate-400 text-center mb-6" id="ce-mensagem"></p>
+            <div class="flex flex-col sm:flex-row gap-3">
+                <button type="button" onclick="tentarNovamenteCheckout()" class="lg-btn" id="ce-btn-tentar">
+                    <span>Tentar novamente</span>
+                    <i class="fa-solid fa-rotate"></i>
+                </button>
+                <button type="button" onclick="voltarParaPlanos()" class="lg-btn lg-btn-secondary">
+                    <i class="fa-solid fa-arrow-left"></i> <span>Voltar aos planos</span>
+                </button>
+            </div>
+            <p class="lg-foot"><i class="fa-solid fa-shield-halved"></i>Se o problema persistir, entre em contato com suporte.</p>
+        </div>
+    </div>
 </div>
 
 <!-- ====================================================== ONBOARDING (Primeira Empresa + Super-Admin) ======================================================= -->

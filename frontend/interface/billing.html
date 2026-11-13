@@ -64,8 +64,8 @@
       </select>
       <select id="bill-novo-ciclo" class="acnut-input">
         <option value="mensal">Mensal — R$ 27,90</option>
-        <option value="semestral">Semestral — R$ 160,00</option>
-        <option value="anual">Anual — R$ 300,00</option>
+        <option value="semestral">Semestral — R$ 159,90</option>
+        <option value="anual">Anual — R$ 299,90</option>
       </select>
       <div id="bill-preview" class="text-sm text-slate-400 space-y-1"></div>
       <div id="modal-bill-erro" class="hidden lg-error"><i class="fa-solid fa-circle-exclamation"></i><span></span></div>
@@ -95,21 +95,95 @@
       </table>
     </div>
   </div>
+
+  <!-- ============================================================ -->
+  <!-- PAINEL SUPER ADMIN (APENAS LEITURA - MOCKS) -->
+  <!-- TODO: Substituir por chamadas reais na Fase Backend -->
+  <!-- ============================================================ -->
+  <div id="billing-superadmin" class="hidden space-y-6" data-superadmin-only="true">
+    <!-- Empresas / Assinaturas -->
+    <div class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-building text-blue-400"></i> Empresas / Assinaturas
+        </h3>
+        <span class="px-3 py-1 text-xs font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-full">
+          MODO SIMULAÇÃO
+        </span>
+      </div>
+      <p class="text-sm text-slate-400 mb-4">Visualização de todas as assinaturas do sistema (apenas leitura).</p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm" id="sa-tabela-assinaturas">
+          <thead>
+            <tr class="text-left text-[11px] font-bold uppercase text-slate-500 border-b border-slate-700/50">
+              <th class="py-3 px-4">Empresa</th>
+              <th class="py-3 px-4">Plano</th>
+              <th class="py-3 px-4">Ciclo</th>
+              <th class="py-3 px-4">Valor</th>
+              <th class="py-3 px-4">Status</th>
+              <th class="py-3 px-4">Início vigência</th>
+              <th class="py-3 px-4">Fim vigência</th>
+              <th class="py-3 px-4">Asaas Customer</th>
+              <th class="py-3 px-4">Asaas Subscription</th>
+              <th class="py-3 px-4">Ações</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-700/40" id="sa-assinaturas-body">
+            <tr><td colspan="10" class="py-6 text-center text-slate-400">Carregando…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Webhook Log -->
+    <div class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-bolt text-purple-400"></i> Log de Webhooks Asaas
+        </h3>
+        <span class="px-3 py-1 text-xs font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-full">
+          MODO SIMULAÇÃO
+        </span>
+      </div>
+      <p class="text-sm text-slate-400 mb-4">Eventos recebidos do Asaas (apenas leitura).</p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm" id="sa-tabela-webhooks">
+          <thead>
+            <tr class="text-left text-[11px] font-bold uppercase text-slate-500 border-b border-slate-700/50">
+              <th class="py-3 px-4">ID</th>
+              <th class="py-3 px-4">Data</th>
+              <th class="py-3 px-4">Tipo Evento</th>
+              <th class="py-3 px-4">Asaas Event ID</th>
+              <th class="py-3 px-4">Processado</th>
+              <th class="py-3 px-4">Erro</th>
+              <th class="py-3 px-4">Payload (resumo)</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-700/40" id="sa-webhooks-body">
+            <tr><td colspan="7" class="py-6 text-center text-slate-400">Carregando…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
-// ===== Catálogo de planos (espelha o backend) =====
+// ============================================================
+// Catálogo de planos (espelha o backend - PLANOS_CONFIG)
+// Preços corrigidos: Mensal 27,90 | Semestral 159,90 | Anual 299,90
+// ============================================================
 const PLANOS_CATALOGO = {
   basico:       {
-    precos: { mensal: 27.90, semestral: 160.00, anual: 300.00 },
+    precos: { mensal: 27.90, semestral: 159.90, anual: 299.90 },
     limites: { max_pacientes: 50,  max_profissionais: 2,  storage_mb: 500,   max_versoes_plano: 5 }
   },
   profissional: {
-    precos: { mensal: 27.90, semestral: 160.00, anual: 300.00 },
+    precos: { mensal: 27.90, semestral: 159.90, anual: 299.90 },
     limites: { max_pacientes: 200, max_profissionais: 10, storage_mb: 2000,  max_versoes_plano: 20 }
   },
   enterprise:   {
-    precos: { mensal: 27.90, semestral: 160.00, anual: 300.00 },
+    precos: { mensal: 27.90, semestral: 159.90, anual: 299.90 },
     limites: { max_pacientes: 1000, max_profissionais: 50, storage_mb: 10000, max_versoes_plano: 100 }
   }
 };
@@ -126,6 +200,15 @@ const STATUS_COR = {
   inativa: 'bg-slate-500/15 text-slate-400 border-slate-500/30'
 };
 
+// Status pills para super_admin
+const SA_STATUS_COR = {
+  ativa: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+  trial: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+  past_due: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+  cancelada: 'bg-rose-500/15 text-rose-400 border-rose-500/30',
+  inativa: 'bg-slate-500/15 text-slate-400 border-slate-500/30'
+};
+
 // Verifica se usuário logado é admin ou super_admin
 async function exigirAdmin() {
   const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
@@ -134,6 +217,12 @@ async function exigirAdmin() {
     return false;
   }
   return true;
+}
+
+// Verifica se é super_admin
+function ehSuperAdmin() {
+  const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
+  return user.perfil === 'super_admin';
 }
 
 async function carregarBilling() {
@@ -169,6 +258,11 @@ async function carregarBilling() {
   // Webhook log (apenas super_admin)
   const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
   if (user.perfil === 'super_admin') carregarWebhookLog();
+
+  // Painel Super Admin (mocks)
+  if (user.perfil === 'super_admin') {
+    carregarSuperAdminPanel();
+  }
 }
 
 function renderStatus(st) {
@@ -320,6 +414,109 @@ async function carregarWebhookLog() {
       </tr>
     `).join('');
   } catch { /* ignora */ }
+}
+
+// ============================================================
+// PAINEL SUPER ADMIN (MOCKS via billingApi.js)
+// ============================================================
+async function carregarSuperAdminPanel() {
+  const panel = document.getElementById('billing-superadmin');
+  if (panel) panel.classList.remove('hidden');
+
+  // Carregar assinaturas mock
+  try {
+    const assinaturas = await billingApi.listarAssinaturas();
+    renderSuperAdminAssinaturas(assinaturas);
+  } catch (e) {
+    console.error('Erro ao carregar assinaturas mock:', e);
+    document.getElementById('sa-assinaturas-body').innerHTML =
+      '<tr><td colspan="10" class="py-6 text-center text-rose-400">Erro ao carregar dados de simulação</td></tr>';
+  }
+
+  // Carregar webhooks mock
+  try {
+    const webhooks = await billingApi.listarWebhookEvents();
+    renderSuperAdminWebhooks(webhooks);
+  } catch (e) {
+    console.error('Erro ao carregar webhooks mock:', e);
+    document.getElementById('sa-webhooks-body').innerHTML =
+      '<tr><td colspan="7" class="py-6 text-center text-rose-400">Erro ao carregar dados de simulação</td></tr>';
+  }
+}
+
+function renderSuperAdminAssinaturas(assinaturas) {
+  const tbody = document.getElementById('sa-assinaturas-body');
+  if (!assinaturas || assinaturas.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10" class="py-6 text-center text-slate-400">Nenhuma assinatura encontrada</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = assinaturas.map(a => {
+    const statusClass = SA_STATUS_COR[a.status] || SA_STATUS_COR.inativa;
+    const statusLabel = PLANO_LABELS[a.status] || a.status;
+    const planoLabel = PLANO_LABELS[a.plano] || a.plano;
+    const valorFormatado = `R$ ${(a.valor_centavos / 100).toFixed(2).replace('.', ',')}`;
+    const inicio = a.inicio_vigencia ? new Date(a.inicio_vigencia).toLocaleDateString('pt-BR') : '—';
+    const fim = a.fim_vigencia ? new Date(a.fim_vigencia).toLocaleDateString('pt-BR') : '—';
+
+    return `
+      <tr class="hover:bg-slate-800/50">
+        <td class="py-3 px-4 text-white font-medium">${escaparHtml(a.empresa_nome)}</td>
+        <td class="py-3 px-4 text-slate-300">${planoLabel}</td>
+        <td class="py-3 px-4 text-slate-300 capitalize">${a.ciclo}</td>
+        <td class="py-3 px-4 text-white">${valorFormatado}</td>
+        <td class="py-3 px-4">
+          <span class="px-2 py-1 text-[10px] font-bold border rounded ${statusClass}">${statusLabel}</span>
+        </td>
+        <td class="py-3 px-4 text-slate-300">${inicio}</td>
+        <td class="py-3 px-4 text-slate-300">${fim}</td>
+        <td class="py-3 px-4 text-slate-400 font-mono text-xs">${a.asaas_customer_id || '—'}</td>
+        <td class="py-3 px-4 text-slate-400 font-mono text-xs">${a.asaas_subscription_id || '—'}</td>
+        <td class="py-3 px-4">
+          <div class="flex items-center gap-2">
+            <button disabled class="px-3 py-1.5 text-[11px] font-medium bg-slate-700/50 text-slate-400 border border-slate-600/50 rounded hover:bg-slate-700 cursor-not-allowed"
+                    title="Disponível na Fase Backend">
+              <i class="fa-solid fa-pen mr-1"></i> Editar
+            </button>
+            <button disabled class="px-3 py-1.5 text-[11px] font-medium bg-rose-500/10 text-rose-400 border border-rose-500/30 rounded hover:bg-rose-500/20 cursor-not-allowed"
+                    title="Disponível na Fase Backend">
+              <i class="fa-solid fa-ban mr-1"></i> Cancelar
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderSuperAdminWebhooks(webhooks) {
+  const tbody = document.getElementById('sa-webhooks-body');
+  if (!webhooks || webhooks.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="py-6 text-center text-slate-400">Nenhum evento encontrado</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = webhooks.map(e => {
+    const processado = e.processado_em
+      ? '<span class="px-2 py-0.5 text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded">OK</span>'
+      : '<span class="px-2 py-0.5 text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded">Pendente</span>';
+    const erro = e.erro ? `<span class="text-rose-400">${escaparHtml(e.erro)}</span>` : '<span class="text-slate-500">—</span>';
+    const payloadResumo = e.payload_jsonb
+      ? JSON.stringify(e.payload_jsonb).substring(0, 80) + (JSON.stringify(e.payload_jsonb).length > 80 ? '...' : '')
+      : '—';
+
+    return `
+      <tr class="hover:bg-slate-800/50">
+        <td class="py-3 px-4 text-slate-300 font-mono text-xs">${e.id}</td>
+        <td class="py-3 px-4 text-slate-300">${new Date(e.criado_em).toLocaleString('pt-BR')}</td>
+        <td class="py-3 px-4 text-white">${e.event_type}</td>
+        <td class="py-3 px-4 text-slate-400 font-mono text-xs">${e.asaas_event_id}</td>
+        <td class="py-3 px-4">${processado}</td>
+        <td class="py-3 px-4">${erro}</td>
+        <td class="py-3 px-4 text-slate-400 max-w-xs truncate font-mono text-xs">${escaparHtml(payloadResumo)}</td>
+      </tr>
+    `;
+  }).join('');
 }
 
 // Integração com navegação existente
