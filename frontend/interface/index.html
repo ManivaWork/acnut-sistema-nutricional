@@ -3047,7 +3047,6 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         <button onclick="trocarAbaProntuario('checkin')" id="tab-checkin" class="aba-item px-3 py-2.5 rounded-xl text-xs md:text-sm font-semibold bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-all flex items-center gap-2"><i class="fa-solid fa-calendar-check"></i>Check-in</button>
         <button onclick="trocarAbaProntuario('evolucao')" id="tab-evolucao" class="aba-item px-3 py-2.5 rounded-xl text-xs md:text-sm font-semibold bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-all flex items-center gap-2"><i class="fa-solid fa-chart-line"></i>Evolução</button>
         <button onclick="trocarAbaProntuario('observacoes')" id="tab-observacoes" class="aba-item px-3 py-2.5 rounded-xl text-xs md:text-sm font-semibold bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-all flex items-center gap-2"><i class="fa-solid fa-note-sticky"></i>Observações</button>
-        <button onclick="trocarAbaProntuario('historico')" id="tab-historico" class="aba-item px-3 py-2.5 rounded-xl text-xs md:text-sm font-semibold bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-all flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left"></i>Histórico</button>
         </nav>
         </div>
 <!-- ===================================================== CONTEÚDO DAS ABAS ===================================================== -->
@@ -3347,22 +3346,6 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         <div class="bg-slate-900/50 border border-slate-700/60 rounded-xl p-5">
         <p class="text-sm text-slate-400">Abra o prontuário de um paciente para ver as observações.</p>
         </div>
-        </div>
-        </div>
-<!-- ================================================= 12. HISTÓRICO UNIFICADO ================================================= -->
-        <div id="sub-historico" class="aba-conteudo hidden space-y-5">
-        <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-slate-700/40 flex items-center justify-center">
-        <i class="fa-solid fa-clock-rotate-left text-slate-300"></i>
-        </div>
-        <div>
-        <h3 class="text-lg font-bold text-white">Histórico</h3>
-        <p class="text-xs text-slate-500 mt-1">Tudo que aconteceu com este paciente, do mais recente ao mais antigo</p>
-        </div>
-        </div>
-        <div id="hist-filtros" class="flex flex-wrap gap-2"></div>
-        <div id="hist-lista" class="relative">
-        <p class="text-sm text-slate-400">Abra o prontuário de um paciente para ver o histórico.</p>
         </div>
         </div>
 <!-- ================================================= 13. METAS ================================================= -->
@@ -3878,8 +3861,6 @@ function fazerLogout() {
     window.formExame = { id: null, arquivos: [] };
     window.obsAtuais = { semana: [], geral: [] };
     window.formObs = { id: null, tipo: "semana" };
-    window.historicoAtual = [];
-    window.filtroHist = "todos";
     window.meuGraficoEvolucao = null;
     window.checkins = [];
     window.dadosPaciente = null;

@@ -65,10 +65,6 @@ Authorization: Bearer {{tokenB}}
 GET {{baseUrl}}/api/acessos/{{pacienteA}}
 Authorization: Bearer {{tokenB}}
 
-###
-# Esperado: 404 (recurso não encontrado - isolamento multi-tenant)
-GET {{baseUrl}}/api/historico/{{pacienteA}}
-Authorization: Bearer {{tokenB}}
 
 ###
 # Esperado: 404 (recurso não encontrado - isolamento multi-tenant)

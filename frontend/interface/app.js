@@ -1224,7 +1224,6 @@ function trocarAbaProntuario(nomeAba) {
         btnTab.classList.add("bg-emerald-600", "text-white");
         }
         if (nomeAba === "evolucao" && graficoEvolucaoDetalhe) graficoEvolucaoDetalhe.resize();
-                if (nomeAba === "historico" && window.pacienteIdAtivo) carregarHistorico(window.pacienteIdAtivo);
         }
 // ===== BUSCA DE PACIENTES NO PRONTUÁRIO =====
 let buscaDebounceTimer = null;
@@ -3674,110 +3673,6 @@ async function excluirObs(id) {
         if (res.ok) await carregarObservacoes(window.pacienteIdAtivo);
         else mostrarToast(await lerErro(res), "erro");
         }
-        // =====================================================
-// HISTÓRICO UNIFICADO
-// =====================================================
-const TIPOS_HIST = {
-    plano:      { rotulo: "Plano",       icone: "fa-bowl-food",     cor: "#a78bfa", aba: "planos" },
-    evolucao:   { rotulo: "Evolução",    icone: "fa-chart-line",    cor: "#60a5fa", aba: "evolucao" },
-    checkin:    { rotulo: "Check-in",    icone: "fa-calendar-check", cor: "#f472b6", aba: "checkin" },
-    obs_semana: { rotulo: "Obs. semana", icone: "fa-note-sticky",   cor: "#fbbf24", aba: "checkin" },
-    obs_geral:  { rotulo: "Observação",  icone: "fa-note-sticky",   cor: "#fbbf24", aba: "observacoes" },
-    meta_acomp: { rotulo: "Meta",        icone: "fa-bullseye",      cor: "#4ade80", aba: "metas" },
-    meta_nova:  { rotulo: "Meta",        icone: "fa-bullseye",      cor: "#4ade80", aba: "metas" },
-    exame:      { rotulo: "Exame",       icone: "fa-flask",         cor: "#f87171", aba: "exames" }
-};
-const FILTROS_HIST = [
-    ["todos", "Tudo", null],
-    ["plano", "Plano", ["plano"]],
-    ["evolucao", "Evolução", ["evolucao"]],
-    ["checkin", "Check-ins", ["checkin", "obs_semana"]],
-    ["obs", "Observações", ["obs_geral", "obs_semana"]],
-    ["metas", "Metas", ["meta_acomp", "meta_nova"]],
-    ["exame", "Exames", ["exame"]]
-];
-
-let historicoAtual = [];
-let filtroHist = "todos";
-
-async function carregarHistorico(pacienteId) {
-    const el = document.getElementById("hist-lista");
-    if (!el) return;
-    el.innerHTML = `<p class="text-sm text-slate-400">Carregando...</p>`;
-    try {
-        const res = await fetch(`${API_URL}/historico/${pacienteId}`);
-        if (!res.ok) throw new Error(res.status);
-        historicoAtual = await res.json();
-        renderizarHistorico();
-    } catch (err) {
-        console.error("Erro ao carregar histórico:", err);
-        el.innerHTML = `<p class="text-rose-400 text-sm">Não foi possível carregar o histórico.</p>`;
-    }
-}
-
-function definirFiltroHist(chave) {
-    filtroHist = chave;
-    renderizarHistorico();
-}
-
-function renderizarHistorico() {
-    const fil = document.getElementById("hist-filtros");
-    const el = document.getElementById("hist-lista");
-    if (!fil || !el) return;
-
-    fil.innerHTML = FILTROS_HIST.map(([chave, rotulo]) => {
-        const ativo = chave === filtroHist;
-        return `<button onclick="definirFiltroHist('${chave}')"
-            class="px-3 py-1.5 rounded-lg text-xs font-semibold transition ${ativo ? "text-white" : "text-slate-400 hover:text-white"}"
-            style="background:${ativo ? "linear-gradient(90deg,#4c1d95,#be185d)" : "#181430"}">${rotulo}</button>`;
-    }).join("");
-
-    const tipos = FILTROS_HIST.find(f => f[0] === filtroHist)[2];
-    const itens = tipos ? historicoAtual.filter(h => tipos.includes(h.tipo)) : historicoAtual;
-
-    if (!itens.length) {
-        el.innerHTML = `<div class="bg-slate-900/50 border border-slate-700/60 rounded-xl p-5">
-            <p class="text-sm text-slate-400">Nada registrado${tipos ? " neste filtro" : " ainda"}.</p></div>`;
-        return;
-    }
-
-    let mesAtual = "";
-    el.innerHTML = `<div class="relative pl-6" style="border-left:2px solid rgba(255,255,255,.08)">` +
-        itens.map(h => {
-            const t = TIPOS_HIST[h.tipo] || TIPOS_HIST.obs_geral;
-            const [a, m] = h.data.split("-");
-            const mes = new Date(+a, +m - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
-            let cab = "";
-            if (mes !== mesAtual) {
-                mesAtual = mes;
-                cab = `<p class="text-xs font-bold uppercase tracking-wider text-slate-500 mt-6 mb-3 first:mt-0 -ml-6 pl-6">${mes}</p>`;
-            }
-
-            let extra = escaparHtml(h.extra);
-            let corExtra = "#c3bedd";
-            if (h.tipo === "meta_acomp" && RESULTADOS_META[h.extra]) {
-                extra = RESULTADOS_META[h.extra].rotulo;
-                corExtra = { mantida: "#4ade80", parcial: "#fbbf24", nao_mantida: "#fb7185" }[h.extra];
-            }
-
-            return `${cab}
-            <div class="relative mb-3">
-                <span class="absolute -left-[31px] top-4 w-3 h-3 rounded-full" style="background:${t.cor};box-shadow:0 0 0 4px #181430"></span>
-                <button onclick="trocarAbaProntuario('${t.aba}')"
-                    class="w-full text-left bg-slate-900/60 border border-slate-700/60 hover:border-slate-500 rounded-xl p-4 transition">
-                    <div class="flex flex-wrap items-center justify-between gap-2">
-                        <div class="flex items-center gap-2 min-w-0">
-                            <i class="fa-solid ${t.icone} text-xs" style="color:${t.cor}"></i>
-                            <span class="text-sm font-semibold text-white truncate">${escaparHtml(h.titulo)}</span>
-                        </div>
-                        <span class="text-xs text-slate-500 shrink-0">${formatarData(h.data)}</span>
-                    </div>
-                    ${extra ? `<p class="text-xs font-semibold mt-1" style="color:${corExtra}">${extra}</p>` : ""}
-                    ${h.detalhe ? `<p class="text-sm text-slate-400 mt-1 whitespace-pre-wrap line-clamp-3">${escaparHtml(h.detalhe)}</p>` : ""}
-                </button>
-            </div>`;
-        }).join("") + `</div>`;
-}
 // 18. GRÁFICO DE EVOLUÇÃO DE PESO
 let meuGraficoEvolucao = null;
 async function carregarGraficoEvolucao(pacienteId) {

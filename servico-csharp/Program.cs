@@ -5630,75 +5630,6 @@ app.MapPatch("/api/empresa/solicitacoes/{id:long}/atender", async (long id, Http
     return Results.Ok(new { id, status = novoStatus });
 });
 
-// =====================================================================
-// HISTÃ“RICO UNIFICADO (linha do tempo do paciente)
-// =====================================================================
-app.MapGet("/api/historico/{pacienteId}", async (int pacienteId, ClaimsPrincipal user) =>
-{
-    int emp = Auth.Empresa(user);
-    // Validar se paciente pertence Ã  empresa (defesa em profundidade)
-    if (!await TenantValidation.ValidarPacienteEmpresaAsync(connString, pacienteId, emp))
-        return Results.NotFound(new { mensagem = "Paciente nÃ£o encontrado." });
-
-    var lista = new List<object>();
-    using var conn = new NpgsqlConnection(connString);
-    await conn.OpenAsync();
-    using var cmd = new NpgsqlCommand(@"
-        SELECT * FROM (
-            SELECT 'plano' AS tipo, criado_em::date AS data, criado_em AS ordem,
-                   'VersÃ£o ' || numero || ' do plano' AS titulo,
-                   COALESCE(descricao, '') AS detalhe, '' AS extra
-            FROM planos_versoes WHERE paciente_id = @p
-
-            UNION ALL
-            SELECT 'evolucao', data_registro, criado_em, 'Registro de evoluÃ§Ã£o',
-                   COALESCE(observacao, ''),
-                   CASE WHEN peso_kg IS NULL THEN '' ELSE replace(peso_kg::text, '.', ',') || ' kg' END
-            FROM evolucao_registros WHERE paciente_id = @p
-
-            UNION ALL
-            SELECT 'checkin', data_checkin, criado_em, 'Check-in semanal',
-                   COALESCE(observacoes_paciente, ''),
-                   replace(peso_atual_kg::text, '.', ',') || ' kg Â· adesÃ£o ' || COALESCE(adesao_plano_porcentagem, 0) || '%'
-            FROM checkins_semanais WHERE paciente_id = @p
-
-            UNION ALL
-            SELECT CASE WHEN tipo = 'semana' THEN 'obs_semana' ELSE 'obs_geral' END,
-                   data_ref, criado_em,
-                   CASE WHEN tipo = 'semana' THEN 'ObservaÃ§Ã£o da semana' ELSE 'ObservaÃ§Ã£o geral' END,
-                   texto, ''
-            FROM observacoes_paciente WHERE paciente_id = @p
-
-            UNION ALL
-            SELECT 'meta_acomp', a.data_acompanhamento, a.criado_em, m.titulo,
-                   COALESCE(a.observacao, ''), a.resultado
-            FROM metas_acompanhamento a JOIN metas_paciente m ON m.id = a.meta_id
-            WHERE m.paciente_id = @p
-
-            UNION ALL
-            SELECT 'meta_nova', criado_em::date, criado_em, 'Nova meta: ' || titulo,
-                   COALESCE(descricao, ''), ''
-            FROM metas_paciente WHERE paciente_id = @p
-
-            UNION ALL
-            SELECT 'exame', data_exame, criado_em, titulo_exame, COALESCE(observacao, ''), ''
-            FROM exames_paciente WHERE paciente_id = @p
-        ) h
-        ORDER BY data DESC, ordem DESC
-        LIMIT 500;", conn);
-    cmd.Parameters.AddWithValue("p", pacienteId);
-    using var rd = await cmd.ExecuteReaderAsync();
-    while (await rd.ReadAsync())
-        lista.Add(new
-        {
-            tipo = rd.GetString(0),
-            data = rd.GetDateTime(1).ToString("yyyy-MM-dd"),
-            titulo = rd.GetString(3),
-            detalhe = rd.GetString(4),
-            extra = rd.GetString(5)
-        });
-    return Results.Ok(lista);
-}).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 // ===========================EXECUÃ‡ÃƒO DA APLICAÃ‡ÃƒO=========================================
 app.Run();
@@ -6229,7 +6160,7 @@ static class Escopo
 
         switch (seg[1])
         {
-            case "checkins": case "anamnese": case "orientacoes": case "avaliacoes": case "historico":
+            case "checkins": case "anamnese": case "orientacoes": case "avaliacoes":
                 Add("paciente", get ? id : await Corpo(ctx, "pacienteId")); break;
 
             case "acessos":

@@ -1077,45 +1077,6 @@ public class IsolamentoMultiTenantTests : IClassFixture<WebApplicationFactory<Pr
 
     // ============================================
     // 9. HISTÓRICO UNIFICADO
-    // ============================================
-    [Fact]
-    public async Task GET_Historico_EmpresaA_NaoPodeLerPacienteDaEmpresaB_DeveRetornar404()
-    {
-        var testName = nameof(GET_Historico_EmpresaA_NaoPodeLerPacienteDaEmpresaB_DeveRetornar404);
-        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
-        try
-        {
-            var tokenEmpresaA = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "leitura" } });
-            var client = CriarCliente(tokenEmpresaA);
-
-            var response = await client.GetAsync("/api/historico/999");
-            response.StatusCode.Should().Be(HttpStatusCode.NotFound);
-        }
-        finally
-        {
-            await LimparDadosTesteAsync(empresaId);
-        }
-    }
-
-    [Fact]
-    public async Task GET_Historico_EmpresaMesma_PodeLer_DeveRetornar200()
-    {
-        var testName = nameof(GET_Historico_EmpresaMesma_PodeLer_DeveRetornar200);
-        var (empresaId, usuarioId) = await CriarEmpresaEUsuariosTesteAsync(testName);
-        var pacienteId = await CriarPacienteTesteAsync(empresaId, testName);
-        try
-        {
-            var token = GerarTokenEquipe(uid: usuarioId, empresa: empresaId, perfil: "profissional", modulos: new() { { "nutricao", "leitura" } });
-            var client = CriarCliente(token);
-
-            var response = await client.GetAsync($"/api/historico/{pacienteId}");
-            response.StatusCode.Should().Be(HttpStatusCode.OK);
-        }
-        finally
-        {
-            await LimparDadosTesteAsync(empresaId);
-        }
-    }
 
     // ============================================
     // 10. LIMITE DE PACIENTES - sem_plano (plano gratuito)
