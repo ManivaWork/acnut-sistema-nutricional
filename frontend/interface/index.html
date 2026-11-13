@@ -3842,12 +3842,54 @@ function entrarNoSistema(nome) {
 </script>
 <script>
 function fazerLogout() {
-    // encerra a sessão de verdade
+    // 1. Limpa storage
     sessionStorage.removeItem("bybar_token");
     sessionStorage.removeItem("bybar_user");
-
-    window.pacienteIdAtivo = null;
+    sessionStorage.removeItem("convite_paciente_token");
     try { localStorage.removeItem("acnut_paciente_ativo"); } catch (e) {}
+
+    // 2. Remove banner de plano se existir
+    const banner = document.getElementById("banner-plano");
+    if (banner) banner.remove();
+
+    // 3. Limpa variáveis globais de estado (app.js)
+    window.pacienteIdAtivo = null;
+    window.pacienteEmEdicaoId = null;
+    window.listaPacientes = [];
+    window.dashFiltro = "";
+    window.planoAtual = { planoId: null, refeicoes: [] };
+    window.formItem = {};
+    window.formRefeicao = { id: null };
+    window.unidadeAtual = 'g';
+    window.medidaCaseiraCache = new Map();
+    window.metasAtuais = [];
+    window.formMeta = { id: null };
+    window.acompanhamentoCtx = { pacienteId: null };
+    window.evolucaoAtual = [];
+    window.formEvolucao = { id: null, fotos: [] };
+    window.graficoEvolucaoDetalhe = null;
+    window.examesAtuais = [];
+    window.formExame = { id: null, arquivos: [] };
+    window.obsAtuais = { semana: [], geral: [] };
+    window.formObs = { id: null, tipo: "semana" };
+    window.historicoAtual = [];
+    window.filtroHist = "todos";
+    window.meuGraficoEvolucao = null;
+    window.checkins = [];
+    window.dadosPaciente = null;
+    window.consentimentoAceito = false;
+    window.acessosAtualAba = 'pendentes';
+    window.acessosAprovarId = null;
+    window.acessosRecusarId = null;
+    window.acessosExcluirId = null;
+    window.acessosExcluirStatus = null;
+    window.anamneseState = null;
+    window.conviteAcaoAtual = null;
+    window._consentResolve = null;
+    window._consentCallback = null;
+    window._recalcListenerAdded = false;
+    window.sessaoEncerrando = false;
+
     const campoPront = document.getElementById("prontuario-paciente-id");
     if (campoPront) campoPront.value = "";
 
@@ -3865,6 +3907,9 @@ function fazerLogout() {
 
     // volta o login para a aba "equipe"
     if (typeof modoLogin === "function") modoLogin("equipe");
+
+    // 4. Recarrega a página para resetar todo estado JS
+    location.reload();
 }
         </script>
 <script>

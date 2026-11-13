@@ -4566,20 +4566,24 @@ async function definirSenha(e) {
 async function verificarBannerPlano() {
     try {
         const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
-        if (user.perfil !== 'profissional') return;
+        // Não mostrar banner para super_admin, admin ou atendente — apenas profissional
+        if (!['profissional'].includes(user.perfil)) return;
 
         const res = await fetch(`${API_URL}/assinatura/status`);
         if (!res.ok) return;
         const data = await res.json();
 
-        // Se for sem_plano, mostrar banner
-        if (data.status === 'sem_plano') {
+        // Se for sem_plano E houver limite finito, mostrar banner
+        // limite_pacientes null/0/undefined = ilimitado
+        const limite = data.limite_pacientes;
+        const temLimiteFinito = limite != null && limite > 0;
+        if (data.status === 'sem_plano' && temLimiteFinito) {
             mostrarBannerPlano(data);
         }
 
         // Atualizar contador de pacientes se estiver na tela de pacientes
         if (typeof listaPacientes !== 'undefined' && listaPacientes.length !== undefined) {
-            atualizarContadorPacientes(data.limite_pacientes || 3, listaPacientes.length);
+            atualizarContadorPacientes(limite || 3, listaPacientes.length);
         }
     } catch {
         console.warn('Não foi possível verificar status do plano');
