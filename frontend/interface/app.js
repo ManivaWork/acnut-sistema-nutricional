@@ -5186,8 +5186,8 @@ async function carregarAreaPaciente() {
             return;
         }
         if (!consentimentoAceito) {
+            window._consentCallback = () => abaPaciente("plano");
             await mostrarModalConsentimento();
-            // Após aceitar, o callback já abre a aba "plano"
             return;
         }
 
