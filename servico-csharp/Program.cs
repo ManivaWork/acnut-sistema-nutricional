@@ -148,7 +148,7 @@ if (app.Environment.IsProduction())
     {
         ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
         ForwardLimit = 1, // Pega apenas o Ãºltimo IP da cadeia (o do cliente real apÃ³s o proxy do Render)
-        KnownNetworks = { }, // Vazio = confia em todos (necessÃ¡rio no Render onde proxy nÃ£o Ã© loopback/known)
+        KnownIPNetworks = { }, // Vazio = confia em todos (necessÃ¡rio no Render onde proxy nÃ£o Ã© loopback/known)
         KnownProxies = { }
     });
 }
@@ -1244,9 +1244,9 @@ async Task<object> BuscarUltimosValoresPaciente(int pacienteId)
 
     // Determinar o valor mais recente geral (para sugestÃ£o rÃ¡pida)
     var todasFontes = new List<dynamic>();
-    if (result.ContainsKey("avaliacao_fisica")) todasFontes.Add(result["avaliacao_fisica"]);
-    if (result.ContainsKey("evolucao")) todasFontes.Add(result["evolucao"]);
-    if (result.ContainsKey("checkin")) todasFontes.Add(result["checkin"]);
+    if (result.ContainsKey("avaliacao_fisica") && result["avaliacao_fisica"] != null) todasFontes.Add(result["avaliacao_fisica"]);
+    if (result.ContainsKey("evolucao") && result["evolucao"] != null) todasFontes.Add(result["evolucao"]);
+    if (result.ContainsKey("checkin") && result["checkin"] != null) todasFontes.Add(result["checkin"]);
 
     dynamic? maisRecente = null;
     if (todasFontes.Count > 0)
@@ -6077,7 +6077,7 @@ static class PlanoEnforcement
 
         // Tem assinatura ativa - desserializar limites
         var limites = string.IsNullOrEmpty(limitesJson)
-            ? Planos.Limites.GetValueOrDefault(plano)
+            ? Planos.ObterLimites(plano)
             : ACNutri.Billing.PlanoLimites.FromJson(limitesJson);
 
         // Verificar aÃ§Ã£o especÃ­fica
