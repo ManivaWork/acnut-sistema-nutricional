@@ -4573,6 +4573,7 @@ let checkoutState = {
 /**
  * Inicializa os cards de períodos na tela de login
  * Mostra 3 cards: Mensal, Semestral, Anual com preços e limites por período
+ * Resiliente: erro em um card não derruba os outros
  */
 function inicializarPlanosLogin() {
     const container = document.getElementById('planos-cards');
@@ -4582,70 +4583,87 @@ function inicializarPlanosLogin() {
     const ciclos = ['mensal', 'semestral', 'anual'];
     container.innerHTML = '';
 
-    ciclos.forEach((ciclo, index) => {
-        const preco = PLANOS_CONFIG.precos[ciclo];
-        const precoMensalEquiv = getPrecoMensalEquivalente(ciclo);
-        const limites = getLimitesCiclo(ciclo);
-        const destaque = getDestaqueCiclo(ciclo);
-        const labelCiclo = getCicloLabel(ciclo);
-        const periodo = PLANOS_CONFIG.cicloPeriodo[ciclo];
+    ciclos.forEach((ciclo) => {
+        try {
+            const preco = PLANOS_CONFIG.precos[ciclo];
+            const precoMensalEquiv = getPrecoMensalEquivalente(ciclo);
+            const limites = getLimitesCiclo(ciclo);
+            const destaque = getDestaqueCiclo(ciclo);
+            const labelCiclo = getCicloLabel(ciclo);
+            const periodo = PLANOS_CONFIG.cicloPeriodo[ciclo];
 
-        const card = document.createElement('article');
-        card.className = 'plano-card';
-        if (destaque) card.classList.add('destaque');
-        card.setAttribute('role', 'listitem');
-        card.dataset.ciclo = ciclo;
+            const card = document.createElement('article');
+            card.className = 'plano-card';
+            if (destaque) card.classList.add('destaque');
+            card.setAttribute('role', 'listitem');
+            card.dataset.ciclo = ciclo;
 
-        // Preço equivalente mensal para comparação
-        const equivMensal = precoMensalEquiv.toFixed(2).replace('.', ',');
-        // Valor formatado sem o sufixo de período (o CSS mostra o período separado)
-        const valorFormatado = `R$ ${preco.toFixed(2).replace('.', ',')}`;
-        const periodoFormatado = `/${periodo}`;
+            // Preço equivalente mensal para comparação (não mostra no mensal)
+            const equivMensal = precoMensalEquiv.toFixed(2).replace('.', ',');
+            // Valor formatado sem o sufixo de período (o CSS mostra o período separado)
+            const valorFormatado = `R$ ${preco.toFixed(2).replace('.', ',')}`;
+            const periodoFormatado = `/${periodo}`;
+            // Equivalente mensal apenas para semestral e anual
+            const mostrarEquiv = ciclo !== 'mensal';
 
-        card.innerHTML = `
-            <div class="plano-header">
-                <h3 class="plano-nome">${labelCiclo}</h3>
-                <p class="plano-desc">${getDescricaoCiclo(ciclo)}</p>
-                <div class="plano-preco">
-                    <span class="plano-valor" data-ciclo="${ciclo}">${valorFormatado}</span>
-                    <span class="plano-periodo">${periodoFormatado}</span>
-                    ${destaque ? `<span class="plano-economia ${ciclo}">${destaque.label}</span>` : ''}
-                    <span class="plano-equiv">equiv. R$ ${equivMensal}/mês</span>
+            card.innerHTML = `
+                <div class="plano-header">
+                    <h3 class="plano-nome">${labelCiclo}</h3>
+                    <p class="plano-desc">${getDescricaoCiclo(ciclo)}</p>
+                    <div class="plano-preco">
+                        <span class="plano-valor" data-ciclo="${ciclo}">${valorFormatado}</span>
+                        <span class="plano-periodo">${periodoFormatado}</span>
+                        ${destaque ? `<span class="plano-economia ${ciclo}">${destaque.label}</span>` : ''}
+                        ${mostrarEquiv ? `<span class="plano-equiv">equiv. R$ ${equivMensal}/mês</span>` : ''}
+                    </div>
                 </div>
-            </div>
-            <div class="plano-limites">
-                <div class="plano-limite-item">
-                    <i class="fa-solid fa-users"></i>
-                    <span>${getLabelPacientes(ciclo)}</span>
+                <div class="plano-limites">
+                    <div class="plano-limite-item">
+                        <i class="fa-solid fa-users"></i>
+                        <span>${getLabelPacientes(ciclo)}</span>
+                    </div>
+                    <div class="plano-limite-item">
+                        <i class="fa-solid fa-user-tie"></i>
+                        <span>${getLabelAcessos(ciclo)}</span>
+                    </div>
                 </div>
-                <div class="plano-limite-item">
-                    <i class="fa-solid fa-user-tie"></i>
-                    <span>${getLabelAcessos(ciclo)}</span>
-                </div>
-            </div>
-            <button type="button" class="lg-btn plano-btn" onclick="iniciarCheckout('${ciclo}')">
-                <span>Assinar ${labelCiclo}</span>
-                <i class="fa-solid fa-arrow-right"></i>
-            </button>
-        `;
+                <button type="button" class="lg-btn plano-btn" onclick="iniciarCheckout('${ciclo}')">
+                    <span>Assinar ${labelCiclo}</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            `;
 
-        container.appendChild(card);
+            container.appendChild(card);
+        } catch (err) {
+            console.error(`[inicializarPlanosLogin] Erro ao criar card para "${ciclo}":`, err);
+            // Criar card de fallback mínimo para não quebrar layout
+            const fallback = document.createElement('article');
+            fallback.className = 'plano-card';
+            fallback.dataset.ciclo = ciclo;
+            fallback.innerHTML = `
+                <div class="plano-header">
+                    <h3 class="plano-nome">${ciclo.charAt(0).toUpperCase() + ciclo.slice(1)}</h3>
+                    <p class="plano-desc">Erro ao carregar detalhes</p>
+                </div>
+            `;
+            container.appendChild(fallback);
+        }
     });
 
-    // Mostrar atalho se não estiver visível (mobile)
+    // Mostrar atalho se não estiver visível (mobile/tablet < 1024px)
     if (atalho) {
-        const isMobile = window.innerWidth < 768;
+        const isMobile = window.innerWidth < 1024;
         atalho.style.display = isMobile ? 'block' : 'none';
     }
 }
 
 /**
- * Retorna descrição amigável para cada ciclo
+ * Retorna descrição amigável para cada ciclo (conforme requisitos)
  */
 function getDescricaoCiclo(ciclo) {
     const descricoes = {
-        mensal: 'Flexibilidade total',
-        semestral: 'Ideal para uso contínuo',
+        mensal: 'Pague mês a mês',
+        semestral: 'Pague a cada 6 meses e economize',
         anual: 'Melhor custo-benefício'
     };
     return descricoes[ciclo] || '';

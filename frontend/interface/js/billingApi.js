@@ -325,7 +325,7 @@
   };
 
   // ============================================================
-  // Faixa visual "MODO SIMULAÇÃO"
+  // Faixa visual "MODO SIMULAÇÃO" - FIXA no topo da viewport
   // ============================================================
   function criarFaixaSimulacao() {
     if (!getModoSimulacao()) return;
@@ -335,19 +335,11 @@
 
     const faixa = document.createElement('div');
     faixa.id = 'faixa-simulacao';
-    // CSS agora trata do posicionamento e estilo
     faixa.innerHTML = '⚠ MODO SIMULAÇÃO ATIVO - Nenhum pagamento real é processado';
 
-    // Inserir no lg-screen (tela de login/checkout) em vez do body
-    const lgScreen = document.querySelector('.lg-screen');
-    if (lgScreen) {
-      lgScreen.insertBefore(faixa, lgScreen.firstChild);
-      lgScreen.classList.add('has-faixa-simulacao');
-    } else {
-      // Fallback: inserir no body se não houver lg-screen
-      document.body.insertBefore(faixa, document.body.firstChild);
-      document.body.classList.add('has-faixa-simulacao');
-    }
+    // Inserir no body (fixed position, fora do layout)
+    document.body.insertBefore(faixa, document.body.firstChild);
+    document.body.classList.add('modo-simulacao');
   }
 
   // Auto-inicializar faixa quando DOM pronto

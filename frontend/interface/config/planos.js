@@ -61,24 +61,26 @@ window.PLANOS_CONFIG = {
   // ============================================================
   // Helpers de cálculo de economia (dinâmico, sem valores hardcoded)
   // ============================================================
-  // Preço base de referência = mensal
+  // Preço base de referência = mensal (R$ 27,90)
   _precoBaseMensal: 27.90,
 
   /**
-   * Calcula porcentagem de economia do ciclo vs mensal
-   * @returns {number} porcentagem (ex: 4.5 para 4.5%)
+   * Calcula porcentagem de economia do ciclo vs plano mensal
+   * Compara o equivalente mensal do ciclo com o preço do plano mensal
+   * Arredonda PARA BAIXO (floor): 4.5% -> 4%, 10.4% -> 10%
+   * @returns {number} porcentagem inteira (ex: 4 para 4%)
    */
   getEconomiaPercentual: function(ciclo) {
-    const precoMensal = PLANOS_CONFIG.precos[ciclo] ?? 0;
+    const precoMensalPlano = PLANOS_CONFIG.precos.mensal ?? 27.90;
     const equivMensal = PLANOS_CONFIG.getPrecoMensalEquivalente(ciclo);
-    if (precoMensal <= 0 || equivMensal <= 0) return 0;
-    const economia = ((precoMensal - equivMensal) / precoMensal) * 100;
-    return Math.round(economia * 10) / 10; // 1 casa decimal
+    if (precoMensalPlano <= 0 || equivMensal <= 0) return 0;
+    const economia = ((precoMensalPlano - equivMensal) / precoMensalPlano) * 100;
+    return Math.floor(economia); // Arredonda para baixo (floor)
   },
 
   /**
    * Retorna label de economia formatado
-   * @returns {string} ex: "Economia de 4.5%"
+   * @returns {string} ex: "Economia de 4%"
    */
   getEconomiaLabel: function(ciclo) {
     const pct = PLANOS_CONFIG.getEconomiaPercentual(ciclo);
@@ -103,9 +105,27 @@ window.PLANOS_CONFIG = {
   MODO_SIMULACAO: true
 };
 
+// Tornar PLANOS_CONFIG disponível como variável global (para compatibilidade browser/Node)
+var PLANOS_CONFIG = window.PLANOS_CONFIG;
+
 // ============================================================
-// Helpers expostos globalmente
+// Helpers expostos globalmente E métodos do PLANOS_CONFIG
 // ============================================================
+
+/**
+ * Retorna preço mensal equivalente para comparação
+ * Disponível como PLANOS_CONFIG.getPrecoMensalEquivalente() e window.getPrecoMensalEquivalente()
+ */
+PLANOS_CONFIG.getPrecoMensalEquivalente = function(ciclo) {
+  const valor = this.precos[ciclo] ?? 0;
+  switch (ciclo) {
+    case 'mensal': return valor;
+    case 'semestral': return valor / 6;
+    case 'anual': return valor / 12;
+    default: return valor;
+  }
+};
+window.getPrecoMensalEquivalente = PLANOS_CONFIG.getPrecoMensalEquivalente.bind(PLANOS_CONFIG);
 
 /**
  * Retorna preço formatado (ex: "R$ 27,90/mês")
@@ -114,19 +134,6 @@ window.formatarPreco = function(ciclo) {
   const valor = PLANOS_CONFIG.precos[ciclo] ?? 0;
   const periodo = PLANOS_CONFIG.cicloPeriodo[ciclo] || 'mês';
   return `R$ ${valor.toFixed(2).replace('.', ',')}/${periodo}`;
-};
-
-/**
- * Retorna preço mensal equivalente para comparação
- */
-window.getPrecoMensalEquivalente = function(ciclo) {
-  const valor = PLANOS_CONFIG.precos[ciclo] ?? 0;
-  switch (ciclo) {
-    case 'mensal': return valor;
-    case 'semestral': return valor / 6;
-    case 'anual': return valor / 12;
-    default: return valor;
-  }
 };
 
 /**

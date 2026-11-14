@@ -1028,11 +1028,11 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 6px; /* respiro entre preço e período */
 }
 
 .plano-valor {
-  font-size: 2.5rem;
+  font-size: 2rem; /* reduzido de 2.5rem */
   font-weight: 800;
   color: #fff;
   line-height: 1;
@@ -1041,7 +1041,7 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
 .plano-periodo {
   font-size: 0.8rem;
   color: #9199b3;
-  margin-top: -4px;
+  margin-top: 0; /* gap no container cuida do espaçamento */
 }
 
 .plano-economia {
@@ -1050,6 +1050,7 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
   padding: 2px 8px;
   border-radius: 999px;
   margin-top: 8px;
+  white-space: nowrap;
 }
 
 .plano-economia.semestral {
@@ -1060,6 +1061,14 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
 .plano-economia.anual {
   background: rgba(228,44,132,.2);
   color: #e42c84;
+}
+
+/* Equivalente mensal (apenas semestral/anual) */
+.plano-equiv {
+  font-size: 0.65rem;
+  color: #6c758e;
+  margin-top: 4px;
+  white-space: nowrap;
 }
 
 .plano-limites {
@@ -1123,8 +1132,8 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
   }
 }
 
-/* Desktop: planos sobre a ilustração (lado direito) */
-@media (min-width: 901px) {
+/* Desktop: planos sobre a ilustração (lado direito) - 3 cards lado a lado */
+@media (min-width: 1024px) {
   .lg-screen {
     display: grid;
     grid-template-columns: 1fr 64%;
@@ -1141,25 +1150,106 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
   .planos-section {
     grid-column: 2;
     grid-row: 1;
-    align-self: start;
-    margin-top: 120px;
-    padding-right: 56px;
-    max-width: 520px;
-    justify-self: end;
+    align-self: center; /* centralizada verticalmente na coluna */
+    width: min(920px, calc(100% - 64px)); /* largura suficiente para 3 cards */
+    margin: 0 auto; /* centralizado horizontalmente */
+    padding: 0;
+    max-width: none;
+  }
+
+  .planos-atalho {
+    display: none !important;
   }
 
   .planos-grid {
-    grid-template-columns: 1fr;
-    gap: 12px;
-    max-width: 100%;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    width: 100%;
   }
 
   .plano-card {
-    padding: 18px;
+    padding: 17px; /* ~15% menos que 20px */
+    min-height: 380px;
+    display: flex;
+    flex-direction: column;
+    min-width: 220px; /* cada card com pelo menos 220px */
   }
 
   .plano-valor {
-    font-size: 2.25rem;
+    font-size: 2rem; /* consistente com base */
+  }
+
+  .plano-periodo {
+    font-size: 0.85rem;
+  }
+
+  .plano-header {
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+  }
+
+  /* Reservar espaço da etiqueta de economia no card Mensal (altura invisível) */
+  .plano-header:not(:has(.plano-economia)) .plano-preco::after {
+    content: '';
+    display: block;
+    height: 22px; /* altura aproximada da etiqueta de economia */
+    width: 0;
+    overflow: hidden;
+  }
+
+  .plano-limites {
+    flex: 1;
+    margin: 12px 0;
+    padding-top: 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start; /* alinha itens ao topo, mesma altura nos 3 cards */
+  }
+
+  .plano-btn {
+    margin-top: auto;
+  }
+}
+
+/* Tablet: 2 cards por linha, planos abaixo do formulário */
+@media (max-width: 1023px) and (min-width: 600px) {
+  .lg-screen {
+    display: block;
+  }
+  .planos-section {
+    margin-top: 32px;
+    max-width: 100%;
+    padding: 0 24px;
+  }
+  .planos-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+  .plano-card {
+    min-height: auto;
+  }
+}
+
+/* Mobile: cards empilhados, planos abaixo do formulário */
+@media (max-width: 599px) {
+  .lg-screen {
+    display: block;
+  }
+  .planos-section {
+    margin-top: 24px;
+    max-width: 100%;
+    padding: 0 16px;
+  }
+  .planos-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .plano-card {
+    padding: 16px;
+    min-height: auto;
+  }
+  .plano-valor {
+    font-size: 2rem;
   }
 }
 
@@ -1189,49 +1279,39 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
     background: #3a3f5c !important;
 }
 
-/* Faixa simulação (adicionada via JS) - agora no fluxo normal, empurra conteúdo para baixo */
+/* Faixa simulação - FIXA no topo da janela (viewport), fora do layout do login */
 #faixa-simulacao {
-  position: relative;
-  top: auto;
-  left: auto;
-  right: auto;
-  z-index: auto;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10000;
   background: linear-gradient(90deg, #f59e0b, #fbbf24);
   color: #1f2937;
   text-align: center;
-  padding: 8px 12px;
-  font-size: 12px;
+  padding: 6px 12px;
+  font-size: 11px;
   font-weight: 700;
   font-family: inherit;
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
   animation: slideDown .3s ease;
   width: 100%;
   box-sizing: border-box;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-/* Garantir que a faixa apareça no topo do login screen */
-.lg-screen #faixa-simulacao {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  border-radius: 0;
+/* Quando modo simulação ativo, empurra o body para baixo */
+body.modo-simulacao {
+  padding-top: 28px;
 }
 
-/* Checkout screens - faixa no topo */
-.lg-screen #faixa-simulacao {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  border-radius: 0;
-}
-
-/* Ajuste do lg-screen quando faixa ativa */
-.lg-screen.has-faixa-simulacao {
-  padding-top: 40px;
+/* Animação da faixa */
+@keyframes slideDown {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
 /* Input checkbox custom */
@@ -1370,27 +1450,27 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         <button type="submit" class="lg-btn"><span>Ver meu plano</span><i class="fa-solid fa-arrow-right"></i></button>
         </form>
 
-        <!-- ====================================================== PLANOS (Checkout) ======================================================= -->
-        <section id="planos-checkout" class="planos-section" aria-labelledby="planos-titulo">
-          <div class="planos-header">
-            <h2 id="planos-titulo" class="planos-title">Escolha seu plano</h2>
-            <p class="planos-subtitle">Acesso completo ao sistema. Escolha o período ideal para você.</p>
-          </div>
-          <div id="planos-cards" class="planos-grid" role="list">
-            <!-- Cards gerados via JS em app.js -->
-          </div>
-          <p class="planos-note"><i class="fa-solid fa-shield-halved"></i> Seus dados são criptografados e protegidos.</p>
-        </section>
-
-        <!-- Atalho "Quero assinar" (aparece se cards não estiverem visíveis) -->
-        <div id="planos-atalho" class="planos-atalho" style="display: none;">
-          <a href="#planos-checkout" onclick="event.preventDefault(); document.getElementById('planos-checkout').scrollIntoView({behavior: 'smooth'});" class="lg-link">
-            <i class="fa-solid fa-arrow-down"></i> Quero assinar um plano
-          </a>
-        </div>
-
             <p class="lg-foot"><i class="fa-solid fa-shield-halved"></i>Acesso restrito à equipe AC System </p>
         </div>
+    </div>
+
+    <!-- ====================================================== PLANOS (Checkout) - FORA do lg-panel ======================================================= -->
+    <section id="planos-checkout" class="planos-section" aria-labelledby="planos-titulo">
+      <div class="planos-header">
+        <h2 id="planos-titulo" class="planos-title">Escolha seu plano</h2>
+        <p class="planos-subtitle">Acesso completo ao sistema. Escolha o período ideal para você.</p>
+      </div>
+      <div id="planos-cards" class="planos-grid" role="list">
+        <!-- Cards gerados via JS em app.js -->
+      </div>
+      <p class="planos-note"><i class="fa-solid fa-shield-halved"></i> Seus dados são criptografados e protegidos.</p>
+    </section>
+
+    <!-- Atalho "Quero assinar" (aparece se cards não estiverem visíveis) -->
+    <div id="planos-atalho" class="planos-atalho" style="display: none;">
+      <a href="#planos-checkout" onclick="event.preventDefault(); document.getElementById('planos-checkout').scrollIntoView({behavior: 'smooth'});" class="lg-link">
+        <i class="fa-solid fa-arrow-down"></i> Quero assinar um plano
+      </a>
     </div>
 </div>
 
