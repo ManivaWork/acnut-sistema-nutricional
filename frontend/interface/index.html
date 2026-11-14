@@ -1007,7 +1007,6 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
   text-align: center;
   margin-bottom: 16px;
   padding-bottom: 16px;
-  border-bottom: 1px solid rgba(255,255,255,.06);
 }
 
 .plano-nome {
@@ -1029,7 +1028,6 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
   flex-direction: column;
   align-items: center;
   gap: 6px; /* respiro entre preço e período */
-  min-height: 96px; /* reserva espaço para: valor + período + economia + equiv (mesmo no Mensal) */
 }
 
 .plano-valor {
@@ -1073,8 +1071,7 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
 }
 
 .plano-limites {
-  flex: 1;
-  margin: 16px 0;
+  margin-top: auto; /* empurra para a base do card, alinha nos 3 */
   padding-top: 16px;
   border-top: 1px solid rgba(255,255,255,.06);
 }
@@ -1190,12 +1187,10 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
   }
 
   .plano-limites {
-    flex: 1;
-    margin: 12px 0;
+    margin-top: auto; /* empurra para a base do card, alinha nos 3 */
     padding-top: 12px;
     display: flex;
     flex-direction: column;
-    justify-content: flex-start; /* alinha itens ao topo, mesma altura nos 3 cards */
   }
 
   .plano-btn {
