@@ -937,191 +937,230 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
     margin-bottom: 6px;
 }
 
+/* =====================================================
+   PLANOS (Cards de períodos)
+   ===================================================== */
+.planos-section {
+  position: relative;
+  z-index: 10;
+}
+
+.planos-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.planos-title {
+  font-size: clamp(24px, 3vw, 32px);
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 8px;
+}
+
 .planos-subtitle {
-    font-size: 0.8rem;
-    color: #9199b3;
-    max-width: 600px;
-    margin: 0 auto;
+  font-size: 0.9rem;
+  color: #9199b3;
+  max-width: 600px;
+  margin: 0 auto;
 }
 
 .planos-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
-    max-width: 900px;
-    margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  max-width: 900px;
+  margin: 0 auto;
 }
 
 .plano-card {
-    background: #1e2235;
-    border: 1px solid rgba(255,255,255,.08);
-    border-radius: 16px;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    transition: transform .2s, box-shadow .2s, border-color .2s;
-    position: relative;
-    overflow: hidden;
+  background: #1e2235;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 16px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  transition: transform .2s, box-shadow .2s, border-color .2s;
+  position: relative;
+  overflow: hidden;
 }
 
 .plano-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 12px 32px -8px rgba(0,0,0,.4);
-    border-color: rgba(108,52,235,.3);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px -8px rgba(0,0,0,.4);
+  border-color: rgba(108,52,235,.3);
 }
 
 .plano-card.destaque {
-    border-color: rgba(108,52,235,.5);
-    box-shadow: 0 0 0 1px rgba(108,52,235,.2);
+  border-color: rgba(108,52,235,.5);
+  box-shadow: 0 0 0 1px rgba(108,52,235,.2);
 }
 
 .plano-card.destaque::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 3px;
-    background: linear-gradient(90deg, #6c34eb, #b731b4, #e42c84);
-}
-
-.plano-badge {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-    font-size: 0.65rem;
-    font-weight: 700;
-    padding: 3px 8px;
-    border-radius: 999px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.plano-badge.semestral {
-    background: rgba(34,184,160,.2);
-    color: #22b8a0;
-}
-
-.plano-badge.anual {
-    background: rgba(228,44,132,.2);
-    color: #e42c84;
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #6c34eb, #b731b4, #e42c84);
 }
 
 .plano-header {
-    text-align: center;
-    margin-bottom: 16px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid rgba(255,255,255,.06);
+  text-align: center;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255,255,255,.06);
 }
 
 .plano-nome {
-    font-size: 1rem;
-    font-weight: 700;
-    color: #fff;
-    margin-bottom: 4px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 4px;
 }
 
 .plano-desc {
-    font-size: 0.75rem;
-    color: #9199b3;
-    margin-bottom: 12px;
-    min-height: 36px;
+  font-size: 0.75rem;
+  color: #9199b3;
+  margin-bottom: 12px;
+  min-height: 36px;
 }
 
 .plano-preco {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
 }
 
 .plano-valor {
-    font-size: 2rem;
-    font-weight: 800;
-    color: #fff;
-    line-height: 1;
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
 }
 
 .plano-periodo {
-    font-size: 0.75rem;
-    color: #9199b3;
+  font-size: 0.8rem;
+  color: #9199b3;
+  margin-top: -4px;
 }
 
 .plano-economia {
-    font-size: 0.7rem;
-    font-weight: 700;
-    padding: 2px 8px;
-    border-radius: 999px;
-    margin-top: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-top: 8px;
 }
 
 .plano-economia.semestral {
-    background: rgba(34,184,160,.2);
-    color: #22b8a0;
+  background: rgba(34,184,160,.2);
+  color: #22b8a0;
 }
 
 .plano-economia.anual {
-    background: rgba(228,44,132,.2);
-    color: #e42c84;
+  background: rgba(228,44,132,.2);
+  color: #e42c84;
 }
 
 .plano-limites {
-    flex: 1;
-    margin: 16px 0;
-    padding-top: 16px;
-    border-top: 1px solid rgba(255,255,255,.06);
+  flex: 1;
+  margin: 16px 0;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255,255,255,.06);
 }
 
 .plano-limite-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 0.75rem;
-    color: #b4bbd1;
-    margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: #b4bbd1;
+  margin-bottom: 8px;
 }
 
 .plano-limite-item i {
-    width: 16px;
-    height: 16px;
-    color: #6c34eb;
-    flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: #6c34eb;
+  flex-shrink: 0;
 }
 
 .plano-btn {
-    width: 100%;
-    margin-top: auto;
+  width: 100%;
+  margin-top: auto;
 }
 
 .planos-atalho {
-    text-align: center;
-    margin-top: 16px;
-    padding-top: 16px;
-    border-top: 1px dashed rgba(255,255,255,.1);
+  text-align: center;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed rgba(255,255,255,.1);
 }
 
 .planos-note {
-    text-align: center;
-    margin-top: 20px;
-    font-size: 0.75rem;
-    color: #6c758e;
+  text-align: center;
+  margin-top: 20px;
+  font-size: 0.75rem;
+  color: #6c758e;
 }
 
 .planos-note i {
-    color: #9a6df5;
-    margin-right: 6px;
+  color: #9a6df5;
+  margin-right: 6px;
 }
 
 /* Responsivo: mobile - cards empilhados */
 @media (max-width: 768px) {
-    .planos-grid {
-        grid-template-columns: 1fr;
-        gap: 12px;
-    }
-    .plano-card {
-        padding: 16px;
-    }
-    .plano-valor {
-        font-size: 1.75rem;
-    }
+  .planos-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .plano-card {
+    padding: 16px;
+  }
+  .plano-valor {
+    font-size: 2rem;
+  }
+}
+
+/* Desktop: planos sobre a ilustração (lado direito) */
+@media (min-width: 901px) {
+  .lg-screen {
+    display: grid;
+    grid-template-columns: 1fr 64%;
+  }
+
+  .lg-panel {
+    position: relative;
+    z-index: 10;
+    grid-column: 1;
+    min-height: 100vh;
+    padding: 220px 56px 48px;
+  }
+
+  .planos-section {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+    margin-top: 120px;
+    padding-right: 56px;
+    max-width: 520px;
+    justify-self: end;
+  }
+
+  .planos-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    max-width: 100%;
+  }
+
+  .plano-card {
+    padding: 18px;
+  }
+
+  .plano-valor {
+    font-size: 2.25rem;
+  }
 }
 
 /* Checkout flow screens */
@@ -1150,19 +1189,49 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
     background: #3a3f5c !important;
 }
 
-/* Faixa simulação (adicionada via JS) */
+/* Faixa simulação (adicionada via JS) - agora no fluxo normal, empurra conteúdo para baixo */
 #faixa-simulacao {
-    animation: slideDown .3s ease;
+  position: relative;
+  top: auto;
+  left: auto;
+  right: auto;
+  z-index: auto;
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+  color: #1f2937;
+  text-align: center;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  animation: slideDown .3s ease;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-@keyframes slideDown {
-    from { transform: translateY(-100%); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
+/* Garantir que a faixa apareça no topo do login screen */
+.lg-screen #faixa-simulacao {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  border-radius: 0;
 }
 
-/* Ajuste body quando faixa ativa */
-body.has-faixa-simulacao {
-    padding-top: 32px;
+/* Checkout screens - faixa no topo */
+.lg-screen #faixa-simulacao {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  border-radius: 0;
+}
+
+/* Ajuste do lg-screen quando faixa ativa */
+.lg-screen.has-faixa-simulacao {
+  padding-top: 40px;
 }
 
 /* Input checkbox custom */
@@ -1305,12 +1374,12 @@ body.has-faixa-simulacao {
         <section id="planos-checkout" class="planos-section" aria-labelledby="planos-titulo">
           <div class="planos-header">
             <h2 id="planos-titulo" class="planos-title">Escolha seu plano</h2>
-            <p class="planos-subtitle">Todos os planos incluem: pacientes ilimitados no trial, suporte por e-mail, LGPD ready</p>
+            <p class="planos-subtitle">Acesso completo ao sistema. Escolha o período ideal para você.</p>
           </div>
           <div id="planos-cards" class="planos-grid" role="list">
             <!-- Cards gerados via JS em app.js -->
           </div>
-          <p class="planos-note"><i class="fa-solid fa-shield-halved"></i> Seus dados são criptografados. Cancelamento a qualquer momento.</p>
+          <p class="planos-note"><i class="fa-solid fa-shield-halved"></i> Seus dados são criptografados e protegidos.</p>
         </section>
 
         <!-- Atalho "Quero assinar" (aparece se cards não estiverem visíveis) -->
@@ -4753,6 +4822,7 @@ function mostrarLogin() {
 }
 </script>
         <!-- ========================================================= SEÇÃO: BILLING (Plano & Assinatura) ========================================================= -->
+        <!-- Super Admin Panel (mock data) + Regular Billing Status -->
         <section id="sec-billing" class="hidden space-y-6">
           <!-- Cabeçalho -->
           <header class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
@@ -4770,7 +4840,7 @@ function mostrarLogin() {
             </div>
           </header>
 
-          <!-- Status Atual -->
+          <!-- Status Atual (para admin/profissional) -->
           <div id="billing-status" class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
             <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
@@ -4779,9 +4849,6 @@ function mostrarLogin() {
               </div>
               <div class="flex items-center gap-3">
                 <span id="bill-badge" class="px-3 py-1 rounded-full text-xs font-bold border">Carregando…</span>
-                <button id="btn-mudar-plano" class="hidden h-11 px-5 rounded-xl text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 transition flex items-center gap-2">
-                  <i class="fa-solid fa-arrows-rotate text-xs"></i> Mudar plano
-                </button>
               </div>
             </div>
 
@@ -4796,53 +4863,74 @@ function mostrarLogin() {
             </div>
           </div>
 
-          <!-- Catálogo de Planos -->
-          <div class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
-            <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2"><i class="fa-solid fa-list-check text-emerald-400"></i> Escolha seu plano</h3>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="bill-catalogo">
-              <!-- preenchido por JS com Planos.Catalogo -->
-            </div>
-          </div>
-
-          <!-- Modal Mudar Plano -->
-          <div id="modal-billing" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-            <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md mx-4 p-6 space-y-5">
-              <div class="flex items-center justify-between">
-                <h4 class="text-lg font-bold text-white" id="modal-bill-title">Alterar plano</h4>
-                <button onclick="fecharModal('modal-billing')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+          <!-- ============================================================ -->
+          <!-- PAINEL SUPER ADMIN (APENAS LEITURA - MOCKS) -->
+          <!-- Visível apenas para super_admin via JS -->
+          <!-- ============================================================ -->
+          <div id="billing-superadmin" class="hidden space-y-6" data-superadmin-only="true">
+            <!-- Empresas / Assinaturas -->
+            <div class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                  <i class="fa-solid fa-building text-blue-400"></i> Empresas / Assinaturas
+                </h3>
+                <span class="px-3 py-1 text-xs font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-full">
+                  MODO SIMULAÇÃO
+                </span>
               </div>
-              <p class="text-sm text-slate-300">Selecione o novo plano. A alteração entra na próxima cobrança.</p>
-              <select id="bill-novo-plano" class="acnut-input">
-                <option value="basico">Básico — R$ 97/mês</option>
-                <option value="profissional">Profissional — R$ 297/mês</option>
-                <option value="enterprise">Enterprise — R$ 797/mês</option>
-              </select>
-              <div id="bill-preview" class="text-sm text-slate-400 space-y-1"></div>
-              <div id="modal-bill-erro" class="hidden lg-error"><i class="fa-solid fa-circle-exclamation"></i><span></span></div>
-              <div class="flex gap-3 pt-2">
-                <button onclick="fecharModal('modal-billing')" class="flex-1 acnut-btn-secondary">Cancelar</button>
-                <button onclick="confirmarMudancaPlano()" class="flex-1 acnut-btn-primary" id="btn-confirmar-plano">Confirmar</button>
+              <p class="text-sm text-slate-400 mb-4">Visualização de todas as assinaturas do sistema (apenas leitura).</p>
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm" id="sa-tabela-assinaturas">
+                  <thead>
+                    <tr class="text-left text-[11px] font-bold uppercase text-slate-500 border-b border-slate-700/50">
+                      <th class="py-3 px-4">Empresa</th>
+                      <th class="py-3 px-4">Plano</th>
+                      <th class="py-3 px-4">Ciclo</th>
+                      <th class="py-3 px-4">Valor</th>
+                      <th class="py-3 px-4">Status</th>
+                      <th class="py-3 px-4">Início vigência</th>
+                      <th class="py-3 px-4">Fim vigência</th>
+                      <th class="py-3 px-4">Asaas Customer</th>
+                      <th class="py-3 px-4">Asaas Subscription</th>
+                      <th class="py-3 px-4">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-700/40" id="sa-assinaturas-body">
+                    <tr><td colspan="10" class="py-6 text-center text-slate-400">Carregando…</td></tr>
+                  </tbody>
+                </table>
               </div>
             </div>
-          </div>
 
-          <!-- Histórico de Pagamentos (super_admin) -->
-          <div class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
-            <h3 class="text-lg font-bold text-white mb-4">Eventos recentes (webhook Asaas)</h3>
-            <div class="overflow-x-auto">
-              <table class="w-full text-sm">
-                <thead>
-                  <tr class="text-left text-[11px] font-bold uppercase text-slate-500 border-b border-slate-700/50">
-                    <th class="py-3 px-4">Data</th>
-                    <th class="py-3 px-4">Evento</th>
-                    <th class="py-3 px-4">Status</th>
-                    <th class="py-3 px-4">Detalhe</th>
-                  </tr>
-                </thead>
-                <tbody id="bill-webhook-log" class="divide-y divide-slate-700/40">
-                  <tr><td colspan="4" class="py-6 text-center text-slate-400">Carregando…</td></tr>
-                </tbody>
-              </table>
+            <!-- Webhook Log -->
+            <div class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                  <i class="fa-solid fa-bolt text-purple-400"></i> Log de Webhooks Asaas
+                </h3>
+                <span class="px-3 py-1 text-xs font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-full">
+                  MODO SIMULAÇÃO
+                </span>
+              </div>
+              <p class="text-sm text-slate-400 mb-4">Eventos recebidos do Asaas (apenas leitura).</p>
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm" id="sa-tabela-webhooks">
+                  <thead>
+                    <tr class="text-left text-[11px] font-bold uppercase text-slate-500 border-b border-slate-700/50">
+                      <th class="py-3 px-4">ID</th>
+                      <th class="py-3 px-4">Data</th>
+                      <th class="py-3 px-4">Tipo Evento</th>
+                      <th class="py-3 px-4">Asaas Event ID</th>
+                      <th class="py-3 px-4">Processado</th>
+                      <th class="py-3 px-4">Erro</th>
+                      <th class="py-3 px-4">Payload (resumo)</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-700/40" id="sa-webhooks-body">
+                    <tr><td colspan="7" class="py-6 text-center text-slate-400">Carregando…</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </section>
@@ -5350,200 +5438,6 @@ function mostrarLogin() {
         </section>
         <!-- Importa o app.js apenas no fim, com defer ou logo antes de fechar -->
 <script src="/interface/app.js"></script>
-        <!-- Billing JavaScript -->
-<script>
-// ===== Catálogo de planos (espelha o backend) =====
-const PLANOS_CATALOGO = {
-  basico:       { valor: 97,   limites: { max_pacientes: 50,  max_profissionais: 2,  storage_mb: 500,   max_versoes_plano: 5 }  },
-  profissional: { valor: 297,  limites: { max_pacientes: 200, max_profissionais: 10, storage_mb: 2000,  max_versoes_plano: 20 } },
-  enterprise:   { valor: 797,  limites: { max_pacientes: 1000, max_profissionais: 50, storage_mb: 10000, max_versoes_plano: 100 } }
-};
-
-const PLANO_LABELS = {
-  basico: 'Básico', profissional: 'Profissional', enterprise: 'Enterprise',
-  inativa: 'Inativa', ativa: 'Ativa', trial: 'Trial', past_due: 'Atrasado', cancelada: 'Cancelada'
-};
-const STATUS_COR = {
-  ativa: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
-  trial: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
-  past_due: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
-  cancelada: 'bg-rose-500/15 text-rose-400 border-rose-500/30',
-  inativa: 'bg-slate-500/15 text-slate-400 border-slate-500/30'
-};
-
-// Verifica se usuário logado é admin ou super_admin
-async function exigirAdmin() {
-  const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
-  if (!user.perfil || !['admin', 'super_admin'].includes(user.perfil)) {
-    mostrarToast('Acesso restrito a administradores.', 'erro');
-    return false;
-  }
-  return true;
-}
-
-async function carregarBilling() {
-  if (!await exigirAdmin()) return;
-
-  // Status + limites
-  try {
-    const [stRes, limRes] = await Promise.all([
-      fetch(`${API_URL}/billing/assinatura`),
-      fetch(`${API_URL}/billing/limites`)
-    ]);
-
-    if (stRes.ok) {
-      const st = await stRes.json();
-      renderStatus(st);
-    } else if (stRes.status === 404) {
-      // Sem assinatura ainda
-      document.getElementById('bill-plano').innerText = 'Sem assinatura';
-      document.getElementById('bill-badge').innerText = 'Inativa';
-      document.getElementById('bill-badge').className = 'px-3 py-1 rounded-full text-xs font-bold border bg-slate-500/15 text-slate-400 border-slate-500/30';
-      document.getElementById('btn-mudar-plano').classList.remove('hidden');
-    }
-
-    if (limRes.ok) {
-      const lim = await limRes.json();
-      renderLimites(lim.limites || lim);
-    }
-  } catch (e) { console.error(e); }
-
-  // Catálogo
-  renderCatalogo();
-
-  // Webhook log (apenas super_admin)
-  const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
-  if (user.perfil === 'super_admin') carregarWebhookLog();
-}
-
-function renderStatus(st) {
-  document.getElementById('bill-plano').innerText = PLANO_LABELS[st.plano] || st.plano;
-  const badge = document.getElementById('bill-badge');
-  badge.innerText = PLANO_LABELS[st.status] || st.status;
-  badge.className = `px-3 py-1 rounded-full text-xs font-bold border ${STATUS_COR[st.status] || STATUS_COR.inativa}`;
-
-  document.getElementById('bill-renovacao').innerText = st.ciclo === 'yearly' ? 'Anual' : 'Mensal';
-  document.getElementById('bill-proximo').innerText = st.fim_vigencia ? new Date(st.fim_vigencia).toLocaleDateString('pt-BR') : '—';
-
-  const trialDiv = document.getElementById('bill-trial');
-  if (st.trial_fim) {
-    trialDiv.classList.remove('hidden');
-    document.getElementById('bill-trial-fim').innerText = new Date(st.trial_fim).toLocaleDateString('pt-BR');
-  }
-
-  // Botão mudar plano aparece se ativa/trial
-  if (['ativa','trial'].includes(st.status)) {
-    document.getElementById('btn-mudar-plano').classList.remove('hidden');
-    document.getElementById('btn-mudar-plano').onclick = () => abrirMudarPlano(st.plano);
-  }
-}
-
-function renderLimites(l) {
-  const box = (rotulo, valor, cor = 'text-emerald-400') => `
-    <div class="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
-      <p class="text-[10px] uppercase tracking-wider text-slate-500">${rotulo}</p>
-      <p class="text-2xl font-extrabold ${cor}">${valor}</p>
-    </div>`;
-  document.getElementById('bill-limites').innerHTML = `
-    ${box('Pacientes', l.max_pacientes)}
-    ${box('Profissionais', l.max_profissionais, 'text-blue-400')}
-    ${box('Armazenamento', `${l.storage_mb} MB`, 'text-purple-400')}
-    ${box('Versões de plano', l.max_versoes_plano, 'text-amber-400')}
-  `;
-}
-
-function renderCatalogo() {
-  const el = document.getElementById('bill-catalogo');
-  el.innerHTML = Object.entries(PLANOS_CATALOGO).map(([key, p]) => `
-    <div class="bg-slate-900/60 border border-slate-700/60 rounded-2xl p-5 space-y-3 relative">
-      <div class="flex items-baseline gap-2">
-        <span class="text-3xl font-extrabold text-white">R$ ${p.valor}</span>
-        <span class="text-slate-400">/mês</span>
-      </div>
-      <h4 class="text-lg font-bold text-white">${PLANO_LABELS[key]}</h4>
-      <ul class="space-y-2 text-sm text-slate-300">
-        <li><i class="fa-solid fa-check text-emerald-400 mr-2 w-4"></i>${p.limites.max_pacientes} pacientes</li>
-        <li><i class="fa-solid fa-check text-emerald-400 mr-2 w-4"></i>${p.limites.max_profissionais} profissionais</li>
-        <li><i class="fa-solid fa-check text-emerald-400 mr-2 w-4"></i>${p.limites.storage_mb} MB armazenamento</li>
-        <li><i class="fa-solid fa-check text-emerald-400 mr-2 w-4"></i>${p.limites.max_versoes_plano} versões de plano</li>
-      </ul>
-      <button onclick="abrirMudarPlano('${key}')" class="w-full mt-4 h-11 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-500 transition">
-        ${key === 'basico' ? 'Plano atual' : 'Selecionar'}
-      </button>
-    </div>
-  `).join('');
-}
-
-function abrirMudarPlano(atual) {
-  document.getElementById('bill-novo-plano').value = atual;
-  atualizarPreviewPlano();
-  abrirModal('modal-billing');
-}
-
-function atualizarPreviewPlano() {
-  const key = document.getElementById('bill-novo-plano').value;
-  const p = PLANOS_CATALOGO[key];
-  document.getElementById('bill-preview').innerHTML = `
-    <strong>Novo valor:</strong> R$ ${p.valor}/mês<br>
-    <strong>Pacientes:</strong> ${p.limites.max_pacientes} • <strong>Profissionais:</strong> ${p.limites.max_profissionais}<br>
-    <strong>Storage:</strong> ${p.limites.storage_mb} MB • <strong>Versões:</strong> ${p.limites.max_versoes_plano}
-  `;
-}
-
-async function confirmarMudancaPlano() {
-  const plano = document.getElementById('bill-novo-plano').value;
-  const btn = document.getElementById('btn-confirmar-plano');
-  const erroDiv = document.getElementById('modal-bill-erro');
-  erroDiv.style.display = 'none';
-  btn.disabled = true;
-  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processando…';
-
-  try {
-    const res = await fetch(`${API_URL}/billing/assinatura/iniciar`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ plano, trialDias: 0 })
-    });
-    if (!res.ok) throw new Error((await res.json()).mensagem || 'Erro ao alterar plano');
-
-    fecharModal('modal-billing');
-    mostrarToast('Plano alterado com sucesso! A cobrança será ajustada no próximo ciclo.', 'sucesso');
-    carregarBilling();
-  } catch (e) {
-    erroDiv.querySelector('span').innerText = e.message;
-    erroDiv.style.display = 'flex';
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = 'Confirmar';
-  }
-}
-
-async function carregarWebhookLog() {
-  try {
-    const res = await fetch(`${API_URL}/billing/webhook-log`); // endpoint opcional p/ super_admin
-    if (!res.ok) return;
-    const eventos = await res.json();
-    const tbody = document.getElementById('bill-webhook-log');
-    tbody.innerHTML = eventos.slice(0, 20).map(e => `
-      <tr class="hover:bg-slate-800/50">
-        <td class="py-3 px-4 text-slate-300">${new Date(e.criado_em).toLocaleString('pt-BR')}</td>
-        <td class="py-3 px-4 text-white">${e.event_type}</td>
-        <td class="py-3 px-4">${e.processado_em
-          ? '<span class="px-2 py-0.5 text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded">OK</span>'
-          : '<span class="px-2 py-0.5 text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded">Pendente</span>'}</td>
-        <td class="py-3 px-4 text-slate-400 max-w-xs truncate">${e.erro || (e.payload_jsonb?.subscription?.id || '')}</td>
-      </tr>
-    `).join('');
-  } catch { /* ignora */ }
-}
-
-// Integração com navegação existente
-const origNavegar = window.navegar;
-window.navegar = function(secao) {
-  origNavegar(secao);
-  if (secao === 'billing') carregarBilling();
-};
-</script>
         </main>
         </div>
         </body>

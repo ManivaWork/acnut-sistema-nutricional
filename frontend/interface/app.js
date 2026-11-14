@@ -362,13 +362,15 @@ function atualizarBotaoFormulario(editando) {
         if (btnCancelar) btnCancelar.classList.toggle('hidden', !editando);
         }
 function navegar(secao) {
-        // Bloquear acesso a 'billing' para não super_admin
+        // Billing: apenas admin e super_admin podem acessar
         if (secao === 'billing') {
             const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
-            if (user.perfil !== 'super_admin') {
-                mostrarToast('Acesso restrito: apenas super administradores podem acessar o painel de billing.', 'erro');
+            if (!user.perfil || !['admin', 'super_admin'].includes(user.perfil)) {
+                mostrarToast('Acesso restrito: apenas administradores podem acessar o painel de billing.', 'erro');
                 return;
             }
+            // Carregar billing (super_admin vê mocks, admin vê status próprio)
+            carregarSuperAdminBilling();
         }
 
         document.querySelectorAll("main > section").forEach(s => s.classList.add("hidden"));
@@ -4569,64 +4571,60 @@ let checkoutState = {
 };
 
 /**
- * Inicializa os cards de planos na tela de login
+ * Inicializa os cards de períodos na tela de login
+ * Mostra 3 cards: Mensal, Semestral, Anual com preços e limites por período
  */
 function inicializarPlanosLogin() {
     const container = document.getElementById('planos-cards');
     const atalho = document.getElementById('planos-atalho');
     if (!container || !window.PLANOS_CONFIG) return;
 
-    const planos = PLANOS_CONFIG.planosOrdem;
+    const ciclos = ['mensal', 'semestral', 'anual'];
     container.innerHTML = '';
 
-    planos.forEach((planoId, index) => {
-        const plano = {
-            id: planoId,
-            nome: PLANOS_CONFIG.nomes[planoId],
-            descricao: PLANOS_CONFIG.descricoes[planoId],
-            limites: PLANOS_CONFIG.limites[planoId]
-        };
+    ciclos.forEach((ciclo, index) => {
+        const preco = PLANOS_CONFIG.precos[ciclo];
+        const precoMensalEquiv = getPrecoMensalEquivalente(ciclo);
+        const limites = getLimitesCiclo(ciclo);
+        const destaque = getDestaqueCiclo(ciclo);
+        const labelCiclo = getCicloLabel(ciclo);
+        const periodo = PLANOS_CONFIG.cicloPeriodo[ciclo];
 
-        // Determinar destaque (semestral e anual têm badge)
         const card = document.createElement('article');
         card.className = 'plano-card';
+        if (destaque) card.classList.add('destaque');
         card.setAttribute('role', 'listitem');
-        card.dataset.plano = planoId;
+        card.dataset.ciclo = ciclo;
 
-        // Badge de destaque no ciclo padrão (anual)
-        const destaqueAnual = PLANOS_CONFIG.destaque.anual;
-        const destaqueSemestral = PLANOS_CONFIG.destaque.semestral;
+        // Preço equivalente mensal para comparação
+        const equivMensal = precoMensalEquiv.toFixed(2).replace('.', ',');
+        // Valor formatado sem o sufixo de período (o CSS mostra o período separado)
+        const valorFormatado = `R$ ${preco.toFixed(2).replace('.', ',')}`;
+        const periodoFormatado = `/${periodo}`;
 
         card.innerHTML = `
             <div class="plano-header">
-                <h3 class="plano-nome">${plano.nome}</h3>
-                <p class="plano-desc">${plano.descricao}</p>
+                <h3 class="plano-nome">${labelCiclo}</h3>
+                <p class="plano-desc">${getDescricaoCiclo(ciclo)}</p>
                 <div class="plano-preco">
-                    <span class="plano-valor" data-plano="${planoId}" data-ciclo="anual">${formatarPreco(planoId, 'anual')}</span>
-                    <span class="plano-periodo">/ano</span>
-                    <span class="plano-economia anual">${destaqueAnual.label}</span>
+                    <span class="plano-valor" data-ciclo="${ciclo}">${valorFormatado}</span>
+                    <span class="plano-periodo">${periodoFormatado}</span>
+                    ${destaque ? `<span class="plano-economia ${ciclo}">${destaque.label}</span>` : ''}
+                    <span class="plano-equiv">equiv. R$ ${equivMensal}/mês</span>
                 </div>
             </div>
             <div class="plano-limites">
                 <div class="plano-limite-item">
                     <i class="fa-solid fa-users"></i>
-                    <span>${plano.limites.max_pacientes} pacientes</span>
+                    <span>${getLabelPacientes(ciclo)}</span>
                 </div>
                 <div class="plano-limite-item">
                     <i class="fa-solid fa-user-tie"></i>
-                    <span>${plano.limites.max_profissionais} profissionais</span>
-                </div>
-                <div class="plano-limite-item">
-                    <i class="fa-solid fa-database"></i>
-                    <span>${plano.limites.storage_mb} MB armazenamento</span>
-                </div>
-                <div class="plano-limite-item">
-                    <i class="fa-solid fa-file-lines"></i>
-                    <span>${plano.limites.max_versoes_plano} versões de plano</span>
+                    <span>${getLabelAcessos(ciclo)}</span>
                 </div>
             </div>
-            <button type="button" class="lg-btn plano-btn" onclick="iniciarCheckout('${planoId}')">
-                <span>Assinar ${plano.nome}</span>
+            <button type="button" class="lg-btn plano-btn" onclick="iniciarCheckout('${ciclo}')">
+                <span>Assinar ${labelCiclo}</span>
                 <i class="fa-solid fa-arrow-right"></i>
             </button>
         `;
@@ -4642,25 +4640,38 @@ function inicializarPlanosLogin() {
 }
 
 /**
- * Inicia o checkout para um plano específico
- * Abre o Estado 1: Dados Cadastrais
+ * Retorna descrição amigável para cada ciclo
  */
-function iniciarCheckout(planoId) {
-    if (!PLANOS_CONFIG.precos[planoId]) {
-        mostrarToast('Plano inválido', 'erro');
+function getDescricaoCiclo(ciclo) {
+    const descricoes = {
+        mensal: 'Flexibilidade total',
+        semestral: 'Ideal para uso contínuo',
+        anual: 'Melhor custo-benefício'
+    };
+    return descricoes[ciclo] || '';
+}
+
+/**
+ * Inicia o checkout para um ciclo específico
+ * Abre o Estado 1: Dados Cadastrais
+ * O plano interno padrão é 'profissional' (compatível com backend)
+ */
+function iniciarCheckout(ciclo) {
+    if (!PLANOS_CONFIG.precos[ciclo]) {
+        mostrarToast('Período inválido', 'erro');
         return;
     }
 
-    // Default para anual (melhor custo-benefício)
-    const ciclo = 'anual';
+    // Plano interno padrão (enviado ao backend para compatibilidade)
+    const planoInterno = 'profissional';
 
-    checkoutState.plano = planoId;
+    checkoutState.plano = planoInterno;
     checkoutState.ciclo = ciclo;
     checkoutState.ref = null;
     checkoutState.invoiceUrl = null;
 
     // Preencher hidden inputs
-    document.getElementById('checkout-plano-selecionado').value = planoId;
+    document.getElementById('checkout-plano-selecionado').value = planoInterno;
     document.getElementById('checkout-ciclo-selecionado').value = ciclo;
 
     // Reset form
@@ -4804,9 +4815,9 @@ async function enviarDadosCheckout(event) {
         checkoutState.invoiceUrl = resultado.invoiceUrl;
 
         // Atualizar resumo no Estado 2
-        const planoNome = PLANOS_CONFIG.nomes[checkoutState.plano];
+        const planoNome = PLANOS_CONFIG.nomesInternos[checkoutState.plano];
         const cicloLabel = PLANOS_CONFIG.cicloLabels[checkoutState.ciclo];
-        const valor = formatarPreco(checkoutState.plano, checkoutState.ciclo);
+        const valor = formatarPreco(checkoutState.ciclo);
         document.getElementById('cp-resumo-plano').textContent = `${planoNome} • ${cicloLabel} • ${valor}`;
 
         // Mostrar Estado 2
@@ -4943,9 +4954,9 @@ function mostrarConfirmado(definirSenhaToken) {
         sessionStorage.setItem('checkout_definir_senha_token', definirSenhaToken);
     }
 
-    const planoNome = PLANOS_CONFIG.nomes[checkoutState.plano];
+    const planoNome = PLANOS_CONFIG.nomesInternos[checkoutState.plano];
     const cicloLabel = PLANOS_CONFIG.cicloLabels[checkoutState.ciclo];
-    const valor = formatarPreco(checkoutState.plano, checkoutState.ciclo);
+    const valor = formatarPreco(checkoutState.ciclo);
 
     document.getElementById('cc-resumo').textContent = `Plano ${planoNome} (${cicloLabel}) • ${valor}`;
 
@@ -5140,6 +5151,223 @@ function mascararCpfCnpj(input) {
     }
 
     input.value = valor;
+}
+
+// ============================================================
+// PAINEL SUPER ADMIN (Billing) - Carregamento de mocks
+// ============================================================
+
+/**
+ * Carrega o painel super admin (chamado ao navegar para 'billing')
+ * Verifica se é super_admin e carrega mocks via billingApi
+ */
+async function carregarSuperAdminBilling() {
+    const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
+    const isSuperAdmin = user.perfil === 'super_admin';
+
+    const superAdminPanel = document.getElementById('billing-superadmin');
+    const billingStatus = document.getElementById('billing-status');
+
+    if (isSuperAdmin) {
+        // Super admin: esconder status próprio, mostrar painel de mocks
+        if (billingStatus) billingStatus.style.display = 'none';
+        if (superAdminPanel) {
+            superAdminPanel.classList.remove('hidden');
+            await carregarSuperAdminMocks();
+        }
+    } else {
+        // Admin/Profissional: mostrar status próprio, esconder painel super admin
+        if (superAdminPanel) superAdminPanel.classList.add('hidden');
+        if (billingStatus) billingStatus.style.display = 'block';
+        await carregarBillingStatus();
+    }
+}
+
+/**
+ * Carrega status de assinatura para admin/profissional
+ * Trata 404 como estado vazio (sem erro no console)
+ */
+async function carregarBillingStatus() {
+    try {
+        const [stRes, limRes] = await Promise.all([
+            fetch(`${API_URL}/billing/assinatura`),
+            fetch(`${API_URL}/billing/limites`)
+        ]);
+
+        // Tratar 404 como estado vazio sem erro
+        if (stRes.status === 404) {
+            document.getElementById('bill-plano').innerText = 'Sem assinatura';
+            document.getElementById('bill-badge').innerText = 'Inativa';
+            document.getElementById('bill-badge').className = 'px-3 py-1 rounded-full text-xs font-bold border bg-slate-500/15 text-slate-400 border-slate-500/30';
+            return;
+        }
+
+        if (!stRes.ok) return;
+        const st = await stRes.json();
+        renderBillingStatus(st);
+
+        if (limRes.ok) {
+            const lim = await limRes.json();
+            renderBillingLimites(lim.limites || lim);
+        }
+    } catch (e) {
+        console.warn('Erro ao carregar status de billing:', e);
+    }
+}
+
+function renderBillingStatus(st) {
+    const PLANO_LABELS = {
+        basico: 'Básico', profissional: 'Profissional', enterprise: 'Enterprise',
+        inativa: 'Inativa', ativa: 'Ativa', trial: 'Trial', past_due: 'Atrasado', cancelada: 'Cancelada'
+    };
+    const STATUS_COR = {
+        ativa: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+        trial: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+        past_due: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+        cancelada: 'bg-rose-500/15 text-rose-400 border-rose-500/30',
+        inativa: 'bg-slate-500/15 text-slate-400 border-slate-500/30'
+    };
+
+    document.getElementById('bill-plano').innerText = PLANO_LABELS[st.plano] || st.plano;
+    const badge = document.getElementById('bill-badge');
+    badge.innerText = PLANO_LABELS[st.status] || st.status;
+    badge.className = `px-3 py-1 rounded-full text-xs font-bold border ${STATUS_COR[st.status] || STATUS_COR.inativa}`;
+
+    const cicloLabel = { mensal: 'Mensal', semestral: 'Semestral', anual: 'Anual', monthly: 'Mensal', yearly: 'Anual' };
+    document.getElementById('bill-renovacao').innerText = cicloLabel[st.ciclo] || st.ciclo;
+    document.getElementById('bill-proximo').innerText = st.fim_vigencia ? new Date(st.fim_vigencia).toLocaleDateString('pt-BR') : '—';
+
+    const trialDiv = document.getElementById('bill-trial');
+    if (st.trial_fim) {
+        trialDiv.classList.remove('hidden');
+        document.getElementById('bill-trial-fim').innerText = new Date(st.trial_fim).toLocaleDateString('pt-BR');
+    }
+}
+
+function renderBillingLimites(l) {
+    const box = (rotulo, valor, cor = 'text-emerald-400') => `
+        <div class="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
+            <p class="text-[10px] uppercase tracking-wider text-slate-500">${rotulo}</p>
+            <p class="text-2xl font-extrabold ${cor}">${valor}</p>
+        </div>`;
+    document.getElementById('bill-limites').innerHTML = `
+        ${box('Pacientes', l.max_pacientes)}
+        ${box('Profissionais', l.max_profissionais, 'text-blue-400')}
+        ${box('Armazenamento', `${l.storage_mb} MB`, 'text-purple-400')}
+        ${box('Versões de plano', l.max_versoes_plano, 'text-amber-400')}
+    `;
+}
+
+/**
+ * Carrega mocks do super admin via billingApi
+ */
+async function carregarSuperAdminMocks() {
+    // Carregar assinaturas mock
+    try {
+        const assinaturas = await billingApi.listarAssinaturas();
+        renderSuperAdminAssinaturas(assinaturas);
+    } catch (e) {
+        console.error('Erro ao carregar assinaturas mock:', e);
+        document.getElementById('sa-assinaturas-body').innerHTML =
+            '<tr><td colspan="10" class="py-6 text-center text-rose-400">Erro ao carregar dados de simulação</td></tr>';
+    }
+
+    // Carregar webhooks mock
+    try {
+        const webhooks = await billingApi.listarWebhookEvents();
+        renderSuperAdminWebhooks(webhooks);
+    } catch (e) {
+        console.error('Erro ao carregar webhooks mock:', e);
+        document.getElementById('sa-webhooks-body').innerHTML =
+            '<tr><td colspan="7" class="py-6 text-center text-rose-400">Erro ao carregar dados de simulação</td></tr>';
+    }
+}
+
+function renderSuperAdminAssinaturas(assinaturas) {
+    const tbody = document.getElementById('sa-assinaturas-body');
+    if (!assinaturas || assinaturas.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" class="py-6 text-center text-slate-400">Nenhuma assinatura encontrada</td></tr>';
+        return;
+    }
+
+    const PLANO_LABELS = {
+        basico: 'Básico', profissional: 'Profissional', enterprise: 'Enterprise',
+        inativa: 'Inativa', ativa: 'Ativa', trial: 'Trial', past_due: 'Atrasado', cancelada: 'Cancelada'
+    };
+    const SA_STATUS_COR = {
+        ativa: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+        trial: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+        past_due: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+        cancelada: 'bg-rose-500/15 text-rose-400 border-rose-500/30',
+        inativa: 'bg-slate-500/15 text-slate-400 border-slate-500/30'
+    };
+
+    tbody.innerHTML = assinaturas.map(a => {
+        const statusClass = SA_STATUS_COR[a.status] || SA_STATUS_COR.inativa;
+        const statusLabel = PLANO_LABELS[a.status] || a.status;
+        const planoLabel = PLANO_LABELS[a.plano] || a.plano;
+        const valorFormatado = `R$ ${(a.valor_centavos / 100).toFixed(2).replace('.', ',')}`;
+        const inicio = a.inicio_vigencia ? new Date(a.inicio_vigencia).toLocaleDateString('pt-BR') : '—';
+        const fim = a.fim_vigencia ? new Date(a.fim_vigencia).toLocaleDateString('pt-BR') : '—';
+
+        return `
+            <tr class="hover:bg-slate-800/50">
+                <td class="py-3 px-4 text-white font-medium">${escaparHtml(a.empresa_nome)}</td>
+                <td class="py-3 px-4 text-slate-300">${planoLabel}</td>
+                <td class="py-3 px-4 text-slate-300 capitalize">${a.ciclo}</td>
+                <td class="py-3 px-4 text-white">${valorFormatado}</td>
+                <td class="py-3 px-4">
+                    <span class="px-2 py-1 text-[10px] font-bold border rounded ${statusClass}">${statusLabel}</span>
+                </td>
+                <td class="py-3 px-4 text-slate-300">${inicio}</td>
+                <td class="py-3 px-4 text-slate-300">${fim}</td>
+                <td class="py-3 px-4 text-slate-400 font-mono text-xs">${a.asaas_customer_id || '—'}</td>
+                <td class="py-3 px-4 text-slate-400 font-mono text-xs">${a.asaas_subscription_id || '—'}</td>
+                <td class="py-3 px-4">
+                    <div class="flex items-center gap-2">
+                        <button disabled class="px-3 py-1.5 text-[11px] font-medium bg-slate-700/50 text-slate-400 border border-slate-600/50 rounded hover:bg-slate-700 cursor-not-allowed"
+                                title="Disponível na Fase Backend">
+                            <i class="fa-solid fa-pen mr-1"></i> Editar
+                        </button>
+                        <button disabled class="px-3 py-1.5 text-[11px] font-medium bg-rose-500/10 text-rose-400 border border-rose-500/30 rounded hover:bg-rose-500/20 cursor-not-allowed"
+                                title="Disponível na Fase Backend">
+                            <i class="fa-solid fa-ban mr-1"></i> Cancelar
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderSuperAdminWebhooks(webhooks) {
+    const tbody = document.getElementById('sa-webhooks-body');
+    if (!webhooks || webhooks.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="py-6 text-center text-slate-400">Nenhum evento encontrado</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = webhooks.map(e => {
+        const processado = e.processado_em
+            ? '<span class="px-2 py-0.5 text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded">OK</span>'
+            : '<span class="px-2 py-0.5 text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded">Pendente</span>';
+        const erro = e.erro ? `<span class="text-rose-400">${escaparHtml(e.erro)}</span>` : '<span class="text-slate-500">—</span>';
+        const payloadResumo = e.payload_jsonb
+            ? JSON.stringify(e.payload_jsonb).substring(0, 80) + (JSON.stringify(e.payload_jsonb).length > 80 ? '...' : '')
+            : '—';
+
+        return `
+            <tr class="hover:bg-slate-800/50">
+                <td class="py-3 px-4 text-slate-300 font-mono text-xs">${e.id}</td>
+                <td class="py-3 px-4 text-slate-300">${new Date(e.criado_em).toLocaleString('pt-BR')}</td>
+                <td class="py-3 px-4 text-white">${e.event_type}</td>
+                <td class="py-3 px-4 text-slate-400 font-mono text-xs">${e.asaas_event_id}</td>
+                <td class="py-3 px-4">${processado}</td>
+                <td class="py-3 px-4">${erro}</td>
+                <td class="py-3 px-4 text-slate-400 max-w-xs truncate font-mono text-xs">${escaparHtml(payloadResumo)}</td>
+            </tr>
+        `;
+    }).join('');
 }
 
 // ---------- Área do paciente (somente leitura) ----------

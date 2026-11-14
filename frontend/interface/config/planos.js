@@ -1,95 +1,98 @@
 // ============================================================
 // PLANOS_CONFIG - Fonte única de verdade para preços, limites e ciclos
-// VALORES DEVEM ESPELHAR EXATAMENTE BillingModule.cs (Planos.Precos + Planos.Limites)
-// Mensal: 27,90 | Semestral: 159,90 | Anual: 299,90
+// MODELO NOVO: limites POR PERÍODO (não por plano)
+// Mensal (MONTHLY): R$ 27,90 - 100 pacientes, 1 acesso
+// Semestral (SEMIANNUALLY): R$ 159,90 - 300 pacientes, 2 acessos
+// Anual (YEARLY): R$ 299,90 - Pacientes ilimitado (uso justo), 5 acessos
 // ============================================================
 
 window.PLANOS_CONFIG = {
-  // Preços por plano e ciclo (em reais)
+  // Preços por ciclo (em reais) - mesmo valor para todos os "planos" internos
+  // O backend ainda usa chaves basico/profissional/enterprise, mas o preço é por ciclo
   precos: {
-    basico: {
-      mensal: 27.90,
-      semestral: 159.90,
-      anual: 299.90
-    },
-    profissional: {
-      mensal: 27.90,
-      semestral: 159.90,
-      anual: 299.90
-    },
-    enterprise: {
-      mensal: 27.90,
-      semestral: 159.90,
-      anual: 299.90
-    }
+    mensal: 27.90,
+    semestral: 159.90,
+    anual: 299.90
   },
 
-  // Limites por plano (compatível com snake_case do backend)
+  // Limites POR PERÍODO (novo modelo)
   limites: {
-    basico: {
-      max_pacientes: 50,
-      max_profissionais: 2,
-      storage_mb: 500,
-      max_versoes_plano: 5
+    mensal: {
+      max_pacientes: 100,
+      max_acessos: 1,
+      label_pacientes: "100 pacientes",
+      label_acessos: "1 acesso"
     },
-    profissional: {
-      max_pacientes: 200,
-      max_profissionais: 10,
-      storage_mb: 2000,
-      max_versoes_plano: 20
-    },
-    enterprise: {
-      max_pacientes: 1000,
-      max_profissionais: 50,
-      storage_mb: 10000,
-      max_versoes_plano: 100
-    }
-  },
-
-  // Destaques visuais para ciclos anuais/semestrais
-  destaque: {
     semestral: {
-      economia: "15%",
-      label: "Economia de 15%"
+      max_pacientes: 300,
+      max_acessos: 2,
+      label_pacientes: "300 pacientes",
+      label_acessos: "2 acessos"
     },
     anual: {
-      economia: "25%",
-      label: "Melhor custo-benefício"
+      max_pacientes: -1, // -1 = ilimitado (uso justo)
+      max_acessos: 5,
+      label_pacientes: "Pacientes ilimitados (uso justo)",
+      label_acessos: "5 acessos"
     }
   },
 
-  // Ordem de exibição dos cards
-  planosOrdem: ['basico', 'profissional', 'enterprise'],
-
-  // Nomes amigáveis
-  nomes: {
-    basico: 'Básico',
-    profissional: 'Profissional',
-    enterprise: 'Enterprise'
+  // Mapeamento ciclo -> label para Asaas
+  cicloAsaas: {
+    mensal: "MONTHLY",
+    semestral: "SEMIANNUALLY",
+    anual: "YEARLY"
   },
 
-  // Descrições curtas
-  descricoes: {
-    basico: 'Ideal para nutricionistas individuais começando',
-    profissional: 'Para clínicas em crescimento com equipe',
-    enterprise: 'Para grandes clínicas e redes de atendimento'
-  },
-
-  // Ciclos válidos
-  ciclos: ['mensal', 'semestral', 'anual'],
-
-  // Mapeamento ciclo -> label
+  // Mapeamento ciclo -> label amigável
   cicloLabels: {
-    mensal: 'Mensal',
-    semestral: 'Semestral',
-    anual: 'Anual'
+    mensal: "Mensal",
+    semestral: "Semestral",
+    anual: "Anual"
   },
 
   // Mapeamento ciclo -> sufixo período
   cicloPeriodo: {
-    mensal: 'mês',
-    semestral: 'semestre',
-    anual: 'ano'
+    mensal: "mês",
+    semestral: "semestre",
+    anual: "ano"
+  },
+
+  // ============================================================
+  // Helpers de cálculo de economia (dinâmico, sem valores hardcoded)
+  // ============================================================
+  // Preço base de referência = mensal
+  _precoBaseMensal: 27.90,
+
+  /**
+   * Calcula porcentagem de economia do ciclo vs mensal
+   * @returns {number} porcentagem (ex: 4.5 para 4.5%)
+   */
+  getEconomiaPercentual: function(ciclo) {
+    const precoMensal = PLANOS_CONFIG.precos[ciclo] ?? 0;
+    const equivMensal = PLANOS_CONFIG.getPrecoMensalEquivalente(ciclo);
+    if (precoMensal <= 0 || equivMensal <= 0) return 0;
+    const economia = ((precoMensal - equivMensal) / precoMensal) * 100;
+    return Math.round(economia * 10) / 10; // 1 casa decimal
+  },
+
+  /**
+   * Retorna label de economia formatado
+   * @returns {string} ex: "Economia de 4.5%"
+   */
+  getEconomiaLabel: function(ciclo) {
+    const pct = PLANOS_CONFIG.getEconomiaPercentual(ciclo);
+    if (pct <= 0) return '';
+    return `Economia de ${pct}%`;
+  },
+
+  // Planos internos (mantidos para compatibilidade com backend)
+  // Estes NÃO são mostrados ao usuário final - apenas enviados ao backend
+  planosInternos: ['basico', 'profissional', 'enterprise'],
+  nomesInternos: {
+    basico: 'Básico',
+    profissional: 'Profissional',
+    enterprise: 'Enterprise'
   },
 
   // ============================================================
@@ -107,8 +110,8 @@ window.PLANOS_CONFIG = {
 /**
  * Retorna preço formatado (ex: "R$ 27,90/mês")
  */
-window.formatarPreco = function(plano, ciclo) {
-  const valor = PLANOS_CONFIG.precos[plano]?.[ciclo] ?? 0;
+window.formatarPreco = function(ciclo) {
+  const valor = PLANOS_CONFIG.precos[ciclo] ?? 0;
   const periodo = PLANOS_CONFIG.cicloPeriodo[ciclo] || 'mês';
   return `R$ ${valor.toFixed(2).replace('.', ',')}/${periodo}`;
 };
@@ -116,8 +119,8 @@ window.formatarPreco = function(plano, ciclo) {
 /**
  * Retorna preço mensal equivalente para comparação
  */
-window.getPrecoMensalEquivalente = function(plano, ciclo) {
-  const valor = PLANOS_CONFIG.precos[plano]?.[ciclo] ?? 0;
+window.getPrecoMensalEquivalente = function(ciclo) {
+  const valor = PLANOS_CONFIG.precos[ciclo] ?? 0;
   switch (ciclo) {
     case 'mensal': return valor;
     case 'semestral': return valor / 6;
@@ -127,10 +130,10 @@ window.getPrecoMensalEquivalente = function(plano, ciclo) {
 };
 
 /**
- * Retorna limites do plano
+ * Retorna limites do ciclo
  */
-window.getLimitesPlano = function(plano) {
-  return PLANOS_CONFIG.limites[plano] || PLANOS_CONFIG.limites.basico;
+window.getLimitesCiclo = function(ciclo) {
+  return PLANOS_CONFIG.limites[ciclo] || PLANOS_CONFIG.limites.mensal;
 };
 
 /**
@@ -148,8 +151,28 @@ window.getCicloLabel = function(ciclo) {
 };
 
 /**
- * Retorna destaque do ciclo (economia, label)
+ * Retorna destaque do ciclo (economia, label) - calculado dinamicamente
  */
 window.getDestaqueCiclo = function(ciclo) {
-  return PLANOS_CONFIG.destaque[ciclo] || null;
+  const economiaLabel = PLANOS_CONFIG.getEconomiaLabel(ciclo);
+  if (!economiaLabel) return null;
+  return {
+    label: economiaLabel
+  };
+};
+
+/**
+ * Retorna label de pacientes (trata ilimitado)
+ */
+window.getLabelPacientes = function(ciclo) {
+  const limites = PLANOS_CONFIG.limites[ciclo];
+  return limites?.label_pacientes || `${limites?.max_pacientes || 0} pacientes`;
+};
+
+/**
+ * Retorna label de acessos
+ */
+window.getLabelAcessos = function(ciclo) {
+  const limites = PLANOS_CONFIG.limites[ciclo];
+  return limites?.label_acessos || `${limites?.max_acessos || 0} acessos`;
 };
