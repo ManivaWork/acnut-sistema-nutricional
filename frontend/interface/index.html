@@ -1523,12 +1523,6 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         <i class="fa-solid fa-shield-halved"></i>
         <span class="acnut-rail-label">LGPD / Solicitações</span>
         </button>
-        <button type="button" data-nav="empresas" data-tip="Empresas"
-        onclick="navegar('empresas'); fecharMenuMobile();"
-        class="acnut-rail-item" id="nav-empresas" style="display:none;">
-        <i class="fa-solid fa-building"></i>
-        <span class="acnut-rail-label">Empresas</span>
-        </button>
         </nav>
 <!-- RODAPÉ -->
         <div class="acnut-rail-footer">
@@ -4137,7 +4131,7 @@ function mostrarLogin() {
               </div>
               <div>
                 <h2 class="text-2xl font-extrabold text-white tracking-tight">Acessos</h2>
-                <p class="text-sm text-slate-400 mt-1">Gerencie solicitações de acesso ao sistema.</p>
+                <p class="text-sm text-slate-400 mt-1">Gerencie solicitações de acesso e empresas do sistema.</p>
               </div>
             </div>
           </header>
@@ -4153,6 +4147,9 @@ function mostrarLogin() {
               </button>
               <button type="button" role="tab" id="tab-acessos-recusados" class="aba-item flex-1 py-3 px-4 rounded-xl text-sm font-semibold transition" onclick="trocarAbaAcessos('recusados')">
                 <i class="fa-solid fa-xmark-circle mr-2"></i>Recusados
+              </button>
+              <button type="button" role="tab" id="tab-acessos-empresas" class="aba-item flex-1 py-3 px-4 rounded-xl text-sm font-semibold transition" onclick="trocarAbaAcessos('empresas')">
+                <i class="fa-solid fa-building mr-2"></i>Empresas
               </button>
             </div>
           </div>
@@ -4220,6 +4217,69 @@ function mostrarLogin() {
                     <tr><td colspan="5" class="py-6 text-center text-slate-400">Carregando…</td></tr>
                   </tbody>
                 </table>
+              </div>
+            </div>
+
+            <!-- Empresas -->
+            <div id="acessos-tab-empresas" class="aba-conteudo hidden">
+              <!-- Formulário Nova Empresa -->
+              <div class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl mb-6">
+                <div class="flex items-center gap-3 mb-6">
+                  <div class="w-10 h-10 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center">
+                    <i class="fa-solid fa-plus"></i>
+                  </div>
+                  <div>
+                    <h3 class="text-base font-bold text-white">Nova empresa</h3>
+                    <p class="text-xs text-slate-400">Cadastre uma nova empresa no sistema</p>
+                  </div>
+                </div>
+                <form id="form-empresa" onsubmit="cadastrarEmpresa(event)" class="max-w-md">
+                  <div class="space-y-2">
+                    <label class="text-xs font-semibold text-slate-400">Nome da empresa</label>
+                    <div class="relative">
+                      <i class="fa-solid fa-building absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
+                      <input type="text" id="emp-nome" placeholder="Ex: Clínica Nutrição & Saúde" required
+                      class="w-full h-12 pl-11 pr-4 bg-slate-900/70 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-600 outline-none transition-all focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10">
+                    </div>
+                  </div>
+                  <div class="mt-4">
+                    <button type="submit" class="w-full h-12 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-sm shadow-lg shadow-emerald-600/20 transition-all hover:-translate-y-0.5 active:scale-[0.98]">
+                      <i class="fa-solid fa-plus mr-2"></i>Cadastrar Empresa
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              <!-- Lista de Empresas -->
+              <div class="bg-slate-800/70 backdrop-blur-xl rounded-3xl border border-slate-700/60 shadow-xl overflow-hidden">
+                <div class="px-6 py-5 border-b border-slate-700/60 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center">
+                      <i class="fa-solid fa-list"></i>
+                    </div>
+                    <div>
+                      <h3 class="text-base font-bold text-white">Empresas cadastradas</h3>
+                      <p class="text-xs text-slate-400">Lista completa das empresas do sistema</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="w-full overflow-x-auto">
+                  <table class="w-full">
+                    <thead class="bg-slate-900/60 border-b border-slate-700/70">
+                      <tr>
+                        <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">ID</th>
+                        <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Nome</th>
+                        <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Criada em</th>
+                        <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Plano</th>
+                        <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Limite Ilimitado</th>
+                        <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody id="tabela-empresas" class="divide-y divide-slate-700/40">
+                      <tr><td colspan="6" class="py-6 text-center text-slate-400">Carregando…</td></tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
@@ -4540,85 +4600,6 @@ function mostrarLogin() {
               </p>
             </div>
           </div>
-        </section>
-
-        <!-- =========================================================SEÇÃO: EMPRESAS (super_admin)========================================================= -->
-        <section id="sec-empresas" class="hidden space-y-6">
-        <!-- Cabeçalho -->
-        <header class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
-          <button type="button" onclick="abrirMenuMobile()" class="btn-menu-mobile lg:hidden p-2 rounded-xl bg-slate-800 border border-white/10 text-slate-300 hover:text-white hover:bg-white/5 transition" aria-label="Abrir menu">
-              <i class="fa-solid fa-bars text-lg"></i>
-          </button>
-          <div class="flex items-center gap-4">
-            <div class="w-12 h-12 rounded-2xl bg-purple-500/15 border border-purple-500/20 flex items-center justify-center">
-              <i class="fa-solid fa-building text-purple-400 text-lg"></i>
-            </div>
-            <div>
-              <h2 class="text-2xl font-extrabold text-white tracking-tight">Empresas</h2>
-              <p class="text-sm text-slate-400 mt-1">Gerencie as empresas do sistema (apenas super administrador)</p>
-            </div>
-          </div>
-        </header>
-
-        <!-- Formulário Nova Empresa -->
-        <div class="bg-slate-800/70 backdrop-blur-xl p-6 rounded-3xl border border-slate-700/60 shadow-xl">
-          <div class="flex items-center gap-3 mb-6">
-            <div class="w-10 h-10 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center">
-              <i class="fa-solid fa-plus"></i>
-            </div>
-            <div>
-              <h3 class="text-base font-bold text-white">Nova empresa</h3>
-              <p class="text-xs text-slate-400">Cadastre uma nova empresa no sistema</p>
-            </div>
-          </div>
-          <form id="form-empresa" onsubmit="cadastrarEmpresa(event)" class="max-w-md">
-            <div class="space-y-2">
-              <label class="text-xs font-semibold text-slate-400">Nome da empresa</label>
-              <div class="relative">
-                <i class="fa-solid fa-building absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
-                <input type="text" id="emp-nome" placeholder="Ex: Clínica Nutrição & Saúde" required
-                class="w-full h-12 pl-11 pr-4 bg-slate-900/70 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-600 outline-none transition-all focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10">
-              </div>
-            </div>
-            <div class="mt-4">
-              <button type="submit" class="w-full h-12 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-sm shadow-lg shadow-emerald-600/20 transition-all hover:-translate-y-0.5 active:scale-[0.98]">
-                <i class="fa-solid fa-plus mr-2"></i>Cadastrar Empresa
-              </button>
-            </div>
-          </form>
-        </div>
-
-        <!-- Lista de Empresas -->
-        <div class="bg-slate-800/70 backdrop-blur-xl rounded-3xl border border-slate-700/60 shadow-xl overflow-hidden">
-          <div class="px-6 py-5 border-b border-slate-700/60 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center">
-                <i class="fa-solid fa-list"></i>
-              </div>
-              <div>
-                <h3 class="text-base font-bold text-white">Empresas cadastradas</h3>
-                <p class="text-xs text-slate-400">Lista completa das empresas do sistema</p>
-              </div>
-            </div>
-          </div>
-          <div class="w-full overflow-x-auto">
-            <table class="w-full">
-              <thead class="bg-slate-900/60 border-b border-slate-700/70">
-                <tr>
-                  <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">ID</th>
-                  <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Nome</th>
-                  <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Criada em</th>
-                  <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Plano</th>
-                  <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Limite Ilimitado</th>
-                  <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Ações</th>
-                </tr>
-              </thead>
-              <tbody id="tabela-empresas" class="divide-y divide-slate-700/40">
-                <tr><td colspan="6" class="py-6 text-center text-slate-400">Carregando…</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
         </section>
 
         <!-- =========================================================SEÇÃO: LGPD / SOLICITAÇÕES========================================================= -->

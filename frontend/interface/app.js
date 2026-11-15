@@ -362,6 +362,12 @@ function atualizarBotaoFormulario(editando) {
         if (btnCancelar) btnCancelar.classList.toggle('hidden', !editando);
         }
 function navegar(secao) {
+        // Redirecionar 'empresas' para 'acessos' com a aba empresas
+        if (secao === 'empresas') {
+            secao = 'acessos';
+            // Aguardar o DOM atualizar e depois trocar para a aba empresas
+            setTimeout(() => trocarAbaAcessos('empresas'), 0);
+        }
         document.querySelectorAll("main > section").forEach(s => s.classList.add("hidden"));
         const secaoAlvo = document.getElementById(`sec-${secao}`);
         if (secaoAlvo) {
@@ -374,20 +380,17 @@ function navegar(secao) {
         restaurarProntuarioAtivo();
         inicializarBuscaProntuario();
         }
-        if (secao === 'empresas') carregarEmpresas();
         if (secao === 'lgpd') renderSecaoLgpd();
         if (secao === 'acessos') carregarAcessos();
         document.querySelectorAll(".acnut-rail-item[data-nav]").forEach(btn => {
         btn.classList.toggle("ativo", btn.dataset.nav === secao);
         });
         // Mostrar/ocultar itens conforme perfil (apenas super_admin vê)
-        const navEmpresas = document.getElementById('nav-empresas');
         const navLgpd = document.getElementById('nav-lgpd');
         const navAcessos = document.getElementById('nav-acessos');
         const navConvites = document.getElementById('nav-convites');
         const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
         const ehSuperAdmin = user.perfil === 'super_admin';
-        if (navEmpresas) navEmpresas.style.display = ehSuperAdmin ? 'flex' : 'none';
         if (navLgpd) navLgpd.style.display = ehSuperAdmin ? 'flex' : 'none';
         if (navAcessos) navAcessos.style.display = ehSuperAdmin ? 'flex' : 'none';
         if (navConvites) navConvites.style.display = ehSuperAdmin ? 'flex' : 'none';
@@ -4184,6 +4187,11 @@ function trocarAbaAcessos(aba) {
     });
     const tabAtiva = document.getElementById(`acessos-tab-${aba}`);
     if (tabAtiva) tabAtiva.classList.remove('hidden');
+
+    // Carregar empresas ao ativar a aba empresas
+    if (aba === 'empresas') {
+        carregarEmpresas();
+    }
 }
 
 // Modal Aprovar
