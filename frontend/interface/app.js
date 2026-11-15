@@ -4129,8 +4129,8 @@ function renderTabelaAcessos(lista, tbodyId, status) {
                     <td class="py-3 px-4 text-white">${escaparHtml(s.nome)}</td>
                     <td class="py-3 px-4 text-slate-300">${escaparHtml(s.email)}</td>
                     <td class="py-3 px-4 text-slate-300">${escaparHtml(s.telefone) || '-'}</td>
-                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.registro_profissional) || '-'}</td>
-                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.clinica_nome) || '-'}</td>
+                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.registroProfissional) || '-'}</td>
+                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.clinicaNome) || '-'}</td>
                     <td class="py-3 px-4 text-slate-300">${dataFormatada}</td>
                     <td class="py-3 px-4 flex items-center gap-2">
                         <button onclick="abrirModalAprovarAcesso(${s.id})" class="bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600 hover:text-white px-3 py-1 rounded text-xs font-semibold transition">Aprovar</button>
@@ -4143,9 +4143,9 @@ function renderTabelaAcessos(lista, tbodyId, status) {
                 <tr class="border-b border-slate-700 hover:bg-slate-800/50">
                     <td class="py-3 px-4 text-white">${escaparHtml(s.nome)}</td>
                     <td class="py-3 px-4 text-slate-300">${escaparHtml(s.email)}</td>
-                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.clinica_nome) || '-'}</td>
-                    <td class="py-3 px-4 text-slate-300">${s.empresa_id || '-'}</td>
-                    <td class="py-3 px-4 text-slate-300">${s.usuario_id || '-'}</td>
+                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.clinicaNome) || '-'}</td>
+                    <td class="py-3 px-4 text-slate-300">${s.empresaId || '-'}</td>
+                    <td class="py-3 px-4 text-slate-300">${s.usuarioId || '-'}</td>
                     <td class="py-3 px-4 text-slate-300">${dataAtualizada}</td>
                     <td class="py-3 px-4 flex items-center gap-2">
                         <button onclick="reenviarEmailDefinicaoSenha(${s.id})" class="bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white px-3 py-1 rounded text-xs font-semibold transition" title="Reenviar e-mail de definição de senha">
@@ -4159,7 +4159,7 @@ function renderTabelaAcessos(lista, tbodyId, status) {
                 <tr class="border-b border-slate-700 hover:bg-slate-800/50">
                     <td class="py-3 px-4 text-white">${escaparHtml(s.nome)}</td>
                     <td class="py-3 px-4 text-slate-300">${escaparHtml(s.email)}</td>
-                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.clinica_nome) || '-'}</td>
+                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.clinicaNome) || '-'}</td>
                     <td class="py-3 px-4 text-slate-300">${dataAtualizada}</td>
                     <td class="py-3 px-4 flex items-center gap-2">
                         <button onclick="abrirModalExcluirAcesso(${s.id}, 'recusado')" class="bg-slate-600/20 text-slate-400 hover:bg-slate-600 hover:text-white px-3 py-1 rounded text-xs font-semibold transition">Excluir</button>

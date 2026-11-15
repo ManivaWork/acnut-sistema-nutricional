@@ -245,10 +245,20 @@ await Seed.Garantir(connString, builder.Configuration);
         }
 
         // VersÃ£o para uso dentro de transaÃ§Ã£o existente
-        async Task RegistrarAuditoriaDetalhada(NpgsqlConnection conn, NpgsqlTransaction tx, int emp, int uid, string acao, string rota, long? registroId, string detalhes)
+        async Task RegistrarAuditoriaDetalhada(NpgsqlConnection conn, NpgsqlTransaction? tx, int emp, int uid, string acao, string rota, long? registroId, string detalhes, ILogger? logger = null)
         {
+            var useSavepoint = tx != null;
+            var savepointName = useSavepoint ? $"audit_sp_{Guid.NewGuid():N}" : null;
             try
             {
+                if (useSavepoint)
+                {
+                    await using (var cmdSp = new NpgsqlCommand($"SAVEPOINT {savepointName};", conn, tx!))
+                    {
+                        await cmdSp.ExecuteNonQueryAsync();
+                    }
+                }
+
                 using var cmd = new NpgsqlCommand(@"
                     INSERT INTO auditoria (empresa_id, usuario_id, acao, rota, registro_id, ip, user_agent)
                     VALUES (@emp, @uid, @acao, @rota, @reg, NULL, @detalhes)", conn, tx);
@@ -259,8 +269,32 @@ await Seed.Garantir(connString, builder.Configuration);
                 cmd.Parameters.AddWithValue("reg", (object?)registroId ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("detalhes", detalhes);
                 await cmd.ExecuteNonQueryAsync();
+
+                if (useSavepoint)
+                {
+                    await using (var cmdRelease = new NpgsqlCommand($"RELEASE SAVEPOINT {savepointName};", conn, tx!))
+                    {
+                        await cmdRelease.ExecuteNonQueryAsync();
+                    }
+                }
             }
-            catch { /* auditoria nÃ£o deve quebrar a request */ }
+            catch (Exception ex)
+            {
+                if (useSavepoint)
+                {
+                    // Rollback apenas ao savepoint, não a transação inteira
+                    try
+                    {
+                        await using (var cmdRollback = new NpgsqlCommand($"ROLLBACK TO SAVEPOINT {savepointName};", conn, tx!))
+                        {
+                            await cmdRollback.ExecuteNonQueryAsync();
+                        }
+                    }
+                    catch { /* ignore */ }
+                }
+                // Log warning mas não quebrar a request
+                logger?.LogWarning(ex, "Falha ao registrar auditoria: acao={Acao}, rota={Rota}, emp={Emp}, uid={Uid}", acao, rota, emp, uid);
+            }
         }
 
         // Qualquer erro vira JSON { mensagem } (o front mostra no alert) - SEM DADOS PESSOAIS NOS LOGS
@@ -623,7 +657,7 @@ app.MapDelete("/api/pacientes/{id}", async (int id, ClaimsPrincipal user) =>
 }).AddEndpointFilter(new TenantIsolationFilter(connString));
 
 // 5. ANONIMIZAR PACIENTE (LGPD) - apenas admin e super_admin
-app.MapPost("/api/pacientes/{id}/anonimizar", async (int id, ClaimsPrincipal user) =>
+app.MapPost("/api/pacientes/{id}/anonimizar", async (int id, ClaimsPrincipal user, ILogger<Program> logger) =>
 {
     var perfil = user.FindFirst("perfil")?.Value;
     if (perfil != "super_admin" && perfil != "admin")
@@ -770,7 +804,7 @@ app.MapPost("/api/pacientes/{id}/anonimizar", async (int id, ClaimsPrincipal use
         // 3. Registrar na auditoria
         await RegistrarAuditoriaDetalhada(conn, tx, Auth.Empresa(user), Auth.UsuarioId(user),
             "anonimizacao", $"/api/pacientes/{id}/anonimizar", id,
-            $"Paciente anonimizado por {Auth.Nome(user) ?? "usuÃ¡rio"}. Dados clÃ­nicos removidos, PII substituÃ­da por valores anÃ´nimos.");
+            $"Paciente anonimizado por {Auth.Nome(user) ?? "usuÃ¡rio"}. Dados clÃ­nicos removidos, PII substituÃ­da por valores anÃ´nimos.", logger);
 
         await tx.CommitAsync();
         return Results.Ok(new { mensagem = "Paciente anonimizado com sucesso. Dados clÃ­nicos removidos e PII substituÃ­da.", anonimizado_em = agora });
@@ -4242,7 +4276,7 @@ app.MapPost("/api/acessos/{id:long}/aprovar", async (long id, AprovarAcessoInput
 
         // Auditoria
         await RegistrarAuditoriaDetalhada(conn, tx, empresaId, adminId, "aprovacao_acesso", $"/api/acessos/{id}/aprovar", solicitacaoId,
-            $"SolicitaÃ§Ã£o de {nome} ({email}) aprovada. Empresa criada: {empresaNome} (ID: {empresaId}), UsuÃ¡rio: {usuarioId}");
+            $"SolicitaÃ§Ã£o de {nome} ({email}) aprovada. Empresa criada: {empresaNome} (ID: {empresaId}), UsuÃ¡rio: {usuarioId}", logger);
 
         await tx.CommitAsync();
 
@@ -4405,9 +4439,10 @@ app.MapPost("/api/acessos/{id:long}/reenviar-email", async (long id, ClaimsPrinc
             await cmd.ExecuteNonQueryAsync();
         }
 
-        // Auditoria
-        await RegistrarAuditoriaDetalhada(conn, tx, 0, adminId, "reenviar_email_definicao_senha", $"/api/acessos/{id}/reenviar-email", solicitacaoId,
-            $"Reenvio de e-mail de definiÃ§Ã£o de senha para {nome} ({email}) - solicitaÃ§Ã£o {solicitacaoId}");
+        // Auditoria (usar empresa do token do super_admin)
+        var adminEmpresaId = Auth.Empresa(user);
+        await RegistrarAuditoriaDetalhada(conn, tx, adminEmpresaId, adminId, "reenviar_email_definicao_senha", $"/api/acessos/{id}/reenviar-email", solicitacaoId,
+            $"Reenvio de e-mail de definiÃ§Ã£o de senha para {nome} ({email}) - solicitaÃ§Ã£o {solicitacaoId}", logger);
 
         await tx.CommitAsync();
 
@@ -4497,7 +4532,7 @@ app.MapPost("/api/acessos/{id:long}/reenviar-email", async (long id, ClaimsPrinc
 .RequireAuthorization();
 
 // POST /api/acessos/{id}/recusar - Super admin recusa solicitaÃ§Ã£o
-app.MapPost("/api/acessos/{id:long}/recusar", async (long id, ClaimsPrincipal user) =>
+app.MapPost("/api/acessos/{id:long}/recusar", async (long id, ClaimsPrincipal user, ILogger<Program> logger) =>
 {
     if (user.FindFirst("perfil")?.Value != "super_admin")
         return Results.Forbid();
@@ -4535,9 +4570,10 @@ app.MapPost("/api/acessos/{id:long}/recusar", async (long id, ClaimsPrincipal us
             await cmd.ExecuteNonQueryAsync();
         }
 
-        // Auditoria
-        await RegistrarAuditoriaDetalhada(conn, tx, 0, adminId, "recusa_acesso", $"/api/acessos/{id}/recusar", id,
-            $"SolicitaÃ§Ã£o de {nome} ({email}) recusada.");
+        // Auditoria (usar empresa do token do super_admin)
+        var adminEmpresaId = Auth.Empresa(user);
+        await RegistrarAuditoriaDetalhada(conn, tx, adminEmpresaId, adminId, "recusa_acesso", $"/api/acessos/{id}/recusar", id,
+            $"SolicitaÃ§Ã£o de {nome} ({email}) recusada.", logger);
 
         await tx.CommitAsync();
 
@@ -4552,7 +4588,7 @@ app.MapPost("/api/acessos/{id:long}/recusar", async (long id, ClaimsPrincipal us
 .RequireAuthorization();
 
 // DELETE /api/acessos/{id} - Super admin exclui solicitaÃ§Ã£o
-app.MapDelete("/api/acessos/{id:long}", async (long id, ClaimsPrincipal user) =>
+app.MapDelete("/api/acessos/{id:long}", async (long id, ClaimsPrincipal user, ILogger<Program> logger) =>
 {
     if (user.FindFirst("perfil")?.Value != "super_admin")
         return Results.Forbid();
@@ -4605,7 +4641,7 @@ app.MapDelete("/api/acessos/{id:long}", async (long id, ClaimsPrincipal user) =>
 
             // Auditoria
             await RegistrarAuditoriaDetalhada(conn, tx, (int)empresaId.Value, adminId, "exclusao_acesso", $"/api/acessos/{id}", id,
-                $"Acesso aprovado de {nome} ({email}) excluÃ­do (soft delete). UsuÃ¡rio {usuarioId} desativado, empresa {empresaId} mantida.");
+                $"Acesso aprovado de {nome} ({email}) excluÃ­do (soft delete). UsuÃ¡rio {usuarioId} desativado, empresa {empresaId} mantida.", logger);
         }
         else
         {
@@ -4613,12 +4649,18 @@ app.MapDelete("/api/acessos/{id:long}", async (long id, ClaimsPrincipal user) =>
             using (var cmd = new NpgsqlCommand("DELETE FROM solicitacoes_acesso WHERE id = @id;", conn, tx))
             {
                 cmd.Parameters.AddWithValue("@id", id);
-                await cmd.ExecuteNonQueryAsync();
+                int rowsAffected = await cmd.ExecuteNonQueryAsync();
+                if (rowsAffected == 0)
+                {
+                    await tx.RollbackAsync();
+                    return Results.NotFound(new { mensagem = "SolicitaÃ§Ã£o nÃ£o encontrada ou jÃ¡ excluÃ­da." });
+                }
             }
 
-            // Auditoria (empresa_id = 0 pois nÃ£o hÃ¡ empresa associada)
-            await RegistrarAuditoriaDetalhada(conn, tx, 0, adminId, "exclusao_acesso", $"/api/acessos/{id}", id,
-                $"SolicitaÃ§Ã£o {status} de {nome} ({email}) excluÃ­da permanentemente.");
+            // Auditoria (usar empresa do token do super_admin)
+            var adminEmpresaId = Auth.Empresa(user);
+            await RegistrarAuditoriaDetalhada(conn, tx, adminEmpresaId, adminId, "exclusao_acesso", $"/api/acessos/{id}", id,
+                $"SolicitaÃ§Ã£o {status} de {nome} ({email}) excluÃ­da permanentemente.", logger);
         }
 
         await tx.CommitAsync();
@@ -5936,7 +5978,14 @@ static class ArquivoHelper
 static class Auth
 {
     public static int Peso(string? n) => n switch { "leitura" => 1, "edicao" => 2, "total" => 3, _ => 0 };
-    public static int Empresa(ClaimsPrincipal u) => int.Parse(u.FindFirst("empresa")!.Value);
+    public static int Empresa(ClaimsPrincipal u)
+    {
+        var claim = u.FindFirst("empresa");
+        if (claim != null && int.TryParse(claim.Value, out var emp) && emp > 0)
+            return emp;
+        // Fallback: retornar 1 (empresa padrÃ£o) para nÃ£o quebrar auditoria
+        return 1;
+    }
     public static int UsuarioId(ClaimsPrincipal u) => int.Parse(u.FindFirst("uid")!.Value);
     public static string? Nome(ClaimsPrincipal u) => u.FindFirst("nome")?.Value;
     public static bool EhSuperAdmin(ClaimsPrincipal u) => u.FindFirst("perfil")?.Value == "super_admin";
