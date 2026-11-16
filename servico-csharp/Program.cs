@@ -4584,8 +4584,9 @@ app.MapPost("/api/acessos/{id:long}/recusar", async (long id, ClaimsPrincipal us
             await cmd.ExecuteNonQueryAsync();
         }
 
-        // Auditoria (usar empresa da solicitação afetada - pode ser null para pendente sem empresa)
-        await RegistrarAuditoriaDetalhada(conn, tx, (int?)empresaId, adminId, "recusa_acesso", $"/api/acessos/{id}/recusar", id,
+        // Auditoria: usar empresa da solicitação; se não houver, usar empresa do usuário autenticado (super_admin)
+        int empresaIdAuditoria = (int)(empresaId ?? Auth.Empresa(user));
+        await RegistrarAuditoriaDetalhada(conn, tx, empresaIdAuditoria, adminId, "recusa_acesso", $"/api/acessos/{id}/recusar", id,
             $"Solicitação de {nome} ({email}) recusada.", logger);
 
         await tx.CommitAsync();
@@ -4670,9 +4671,9 @@ app.MapDelete("/api/acessos/{id:long}", async (long id, ClaimsPrincipal user, IL
                 }
             }
 
-            // Auditoria (usar empresa do token do super_admin)
-        // Auditoria (usar empresa da solicitação afetada - pode ser null para pendente sem empresa)
-        await RegistrarAuditoriaDetalhada(conn, tx, (int?)empresaId, adminId, "exclusao_acesso", $"/api/acessos/{id}", id,
+            // Auditoria: usar empresa da solicitação; se não houver, usar empresa do usuário autenticado (super_admin)
+        int empresaIdAuditoria = (int)(empresaId ?? Auth.Empresa(user));
+        await RegistrarAuditoriaDetalhada(conn, tx, empresaIdAuditoria, adminId, "exclusao_acesso", $"/api/acessos/{id}", id,
             $"Solicitação {status} de {nome} ({email}) excluída permanentemente.", logger);
         }
 

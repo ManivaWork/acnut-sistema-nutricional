@@ -557,11 +557,11 @@ public class AcessosApiTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
-    public async Task DELETE_Acessos_Auditoria_NaoGravada_QuandoSolicitacaoSemEmpresa()
+    public async Task DELETE_Acessos_Auditoria_Gravada_QuandoSolicitacaoSemEmpresa_UsaEmpresaDoToken()
     {
         // Arrange - criar solicitacao pendente SEM empresa_id
         var solicitacaoId = await CriarSolicitacaoPendenteAsync(empresaId: null, usuarioId: null);
-        var token = GerarTokenSuperAdmin();
+        var token = GerarTokenSuperAdmin(); // super_admin tem empresa=1 no token
         var client = CriarCliente(token);
 
         try
@@ -572,17 +572,17 @@ public class AcessosApiTests : IClassFixture<WebApplicationFactory<Program>>
             // Assert - deve retornar 200 (operacao principal nao deve falhar)
             response.StatusCode.Should().Be(HttpStatusCode.OK);
 
-            // Verificar que a auditoria NAO foi gravada (empresa_id invalido)
+            // Verificar que a auditoria FOI gravada (fallback para empresa do token do super_admin = 1)
             var connString = GetConnectionString();
             await using var conn = new NpgsqlConnection(connString);
             await conn.OpenAsync();
 
             await using var cmdAudit = new NpgsqlCommand(@"
                 SELECT COUNT(*) FROM auditoria
-                WHERE registro_id = @id AND acao = 'exclusao_acesso';", conn);
+                WHERE registro_id = @id AND acao = 'exclusao_acesso' AND empresa_id = 1;", conn);
             cmdAudit.Parameters.AddWithValue("id", solicitacaoId);
             var count = Convert.ToInt32(await cmdAudit.ExecuteScalarAsync());
-            count.Should().Be(0, "auditoria NAO deve ser gravada quando solicitacao nao tem empresa_id");
+            count.Should().Be(1, "auditoria deve ser gravada com empresa_id=1 (fallback para empresa do token do super_admin)");
         }
         finally
         {
@@ -661,11 +661,11 @@ public class AcessosApiTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
-    public async Task RECUSAR_Acessos_Auditoria_NaoGravada_QuandoSolicitacaoSemEmpresa()
+    public async Task RECUSAR_Acessos_Auditoria_Gravada_QuandoSolicitacaoSemEmpresa_UsaEmpresaDoToken()
     {
         // Arrange - criar solicitacao pendente SEM empresa_id
         var solicitacaoId = await CriarSolicitacaoPendenteAsync(empresaId: null, usuarioId: null);
-        var token = GerarTokenSuperAdmin();
+        var token = GerarTokenSuperAdmin(); // super_admin tem empresa=1 no token
         var client = CriarCliente(token);
 
         try
@@ -676,17 +676,17 @@ public class AcessosApiTests : IClassFixture<WebApplicationFactory<Program>>
             // Assert - deve retornar 200 (operacao principal nao deve falhar)
             response.StatusCode.Should().Be(HttpStatusCode.OK);
 
-            // Verificar que a auditoria NAO foi gravada (empresa_id invalido)
+            // Verificar que a auditoria FOI gravada (fallback para empresa do token do super_admin = 1)
             var connString = GetConnectionString();
             await using var conn = new NpgsqlConnection(connString);
             await conn.OpenAsync();
 
             await using var cmdAudit = new NpgsqlCommand(@"
                 SELECT COUNT(*) FROM auditoria
-                WHERE registro_id = @id AND acao = 'recusa_acesso';", conn);
+                WHERE registro_id = @id AND acao = 'recusa_acesso' AND empresa_id = 1;", conn);
             cmdAudit.Parameters.AddWithValue("id", solicitacaoId);
             var count = Convert.ToInt32(await cmdAudit.ExecuteScalarAsync());
-            count.Should().Be(0, "auditoria NAO deve ser gravada quando solicitacao nao tem empresa_id");
+            count.Should().Be(1, "auditoria deve ser gravada com empresa_id=1 (fallback para empresa do token do super_admin)");
         }
         finally
         {
