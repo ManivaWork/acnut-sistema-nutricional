@@ -245,8 +245,18 @@ await Seed.Garantir(connString, builder.Configuration);
         }
 
         // VersÃ£o para uso dentro de transaÃ§Ã£o existente
-        async Task RegistrarAuditoriaDetalhada(NpgsqlConnection conn, NpgsqlTransaction? tx, int emp, int uid, string acao, string rota, long? registroId, string detalhes, ILogger? logger = null)
+        // Versão para uso dentro de transação existente
+        // empresaId pode ser null (ex.: solicitação pendente sem empresa) - nesse caso não grava auditoria e emite warning
+        async Task RegistrarAuditoriaDetalhada(NpgsqlConnection conn, NpgsqlTransaction? tx, int? empresaId, int usuarioId, string acao, string rota, long? registroId, string detalhes, ILogger? logger = null)
         {
+            // Validar empresa_id: deve ser > 0 e existir na tabela empresas (FK)
+            // Se não for válido, não grava auditoria e emite warning (não quebra a operação principal)
+            if (!empresaId.HasValue || empresaId.Value <= 0)
+            {
+                logger?.LogWarning("Auditoria não gravada: empresa_id inválido ou ausente. Acao={Acao}, Rota={Rota}, UsuarioId={UsuarioId}, RegistroId={RegistroId}", acao, rota, usuarioId, registroId);
+                return;
+            }
+
             var useSavepoint = tx != null;
             var savepointName = useSavepoint ? $"audit_sp_{Guid.NewGuid():N}" : null;
             try
@@ -262,8 +272,8 @@ await Seed.Garantir(connString, builder.Configuration);
                 using var cmd = new NpgsqlCommand(@"
                     INSERT INTO auditoria (empresa_id, usuario_id, acao, rota, registro_id, ip, user_agent)
                     VALUES (@emp, @uid, @acao, @rota, @reg, NULL, @detalhes)", conn, tx);
-                cmd.Parameters.AddWithValue("emp", emp);
-                cmd.Parameters.AddWithValue("uid", uid);
+                cmd.Parameters.AddWithValue("emp", empresaId.Value);
+                cmd.Parameters.AddWithValue("uid", usuarioId);
                 cmd.Parameters.AddWithValue("acao", acao);
                 cmd.Parameters.AddWithValue("rota", rota);
                 cmd.Parameters.AddWithValue("reg", (object?)registroId ?? DBNull.Value);
@@ -293,7 +303,7 @@ await Seed.Garantir(connString, builder.Configuration);
                     catch { /* ignore */ }
                 }
                 // Log warning mas não quebrar a request
-                logger?.LogWarning(ex, "Falha ao registrar auditoria: acao={Acao}, rota={Rota}, emp={Emp}, uid={Uid}", acao, rota, emp, uid);
+                logger?.LogWarning(ex, "Falha ao registrar auditoria: acao={Acao}, rota={Rota}, emp={Emp}, uid={Uid}", acao, rota, empresaId, usuarioId);
             }
         }
 
@@ -4384,9 +4394,10 @@ app.MapPost("/api/acessos/{id:long}/reenviar-email", async (long id, ClaimsPrinc
         long solicitacaoId = 0;
         string nome = "", email = "";
         int usuarioId = 0;
+        long? empresaId = null;
         string empresaNome = "";
         using (var cmd = new NpgsqlCommand(@"
-            SELECT sa.id, sa.nome, sa.email, sa.usuario_id, e.nome as empresa_nome
+            SELECT sa.id, sa.nome, sa.email, sa.usuario_id, sa.empresa_id, e.nome as empresa_nome
             FROM solicitacoes_acesso sa
             LEFT JOIN empresas e ON e.id = sa.empresa_id
             WHERE sa.id = @id AND sa.status = 'aprovado';", conn, tx))
@@ -4400,7 +4411,8 @@ app.MapPost("/api/acessos/{id:long}/reenviar-email", async (long id, ClaimsPrinc
             nome = rd.GetString(1);
             email = rd.GetString(2);
             usuarioId = rd.IsDBNull(3) ? 0 : rd.GetInt32(3);
-            empresaNome = rd.IsDBNull(4) ? "" : rd.GetString(4);
+            empresaId = rd.IsDBNull(4) ? null : rd.GetInt64(4);
+            empresaNome = rd.IsDBNull(5) ? "" : rd.GetString(5);
         }
 
         if (usuarioId == 0)
@@ -4440,9 +4452,9 @@ app.MapPost("/api/acessos/{id:long}/reenviar-email", async (long id, ClaimsPrinc
         }
 
         // Auditoria (usar empresa do token do super_admin)
-        var adminEmpresaId = Auth.Empresa(user);
-        await RegistrarAuditoriaDetalhada(conn, tx, adminEmpresaId, adminId, "reenviar_email_definicao_senha", $"/api/acessos/{id}/reenviar-email", solicitacaoId,
-            $"Reenvio de e-mail de definiÃ§Ã£o de senha para {nome} ({email}) - solicitaÃ§Ã£o {solicitacaoId}", logger);
+        // Auditoria (usar empresa da solicitação afetada)
+        await RegistrarAuditoriaDetalhada(conn, tx, (int?)empresaId, adminId, "reenviar_email_definicao_senha", $"/api/acessos/{id}/reenviar-email", solicitacaoId,
+            $"Reenvio de e-mail de definição de senha para {nome} ({email}) - solicitação {solicitacaoId}", logger);
 
         await tx.CommitAsync();
 
@@ -4545,19 +4557,21 @@ app.MapPost("/api/acessos/{id:long}/recusar", async (long id, ClaimsPrincipal us
 
     try
     {
-        // Buscar solicitaÃ§Ã£o pendente
+        // Buscar solicitação pendente
         string nome = "", email = "";
+        long? empresaId = null;
         using (var cmd = new NpgsqlCommand(@"
-            SELECT nome, email FROM solicitacoes_acesso
+            SELECT nome, email, empresa_id FROM solicitacoes_acesso
             WHERE id = @id AND status = 'pendente';", conn, tx))
         {
             cmd.Parameters.AddWithValue("@id", id);
             using var rd = await cmd.ExecuteReaderAsync();
             if (!await rd.ReadAsync())
-                return Results.NotFound(new { mensagem = "SolicitaÃ§Ã£o nÃ£o encontrada ou jÃ¡ processada." });
+                return Results.NotFound(new { mensagem = "Solicitação não encontrada ou já processada." });
 
             nome = rd.GetString(0);
             email = rd.GetString(1);
+            empresaId = rd.IsDBNull(2) ? null : rd.GetInt64(2);
         }
 
         // Atualizar status para recusado
@@ -4570,14 +4584,13 @@ app.MapPost("/api/acessos/{id:long}/recusar", async (long id, ClaimsPrincipal us
             await cmd.ExecuteNonQueryAsync();
         }
 
-        // Auditoria (usar empresa do token do super_admin)
-        var adminEmpresaId = Auth.Empresa(user);
-        await RegistrarAuditoriaDetalhada(conn, tx, adminEmpresaId, adminId, "recusa_acesso", $"/api/acessos/{id}/recusar", id,
-            $"SolicitaÃ§Ã£o de {nome} ({email}) recusada.", logger);
+        // Auditoria (usar empresa da solicitação afetada - pode ser null para pendente sem empresa)
+        await RegistrarAuditoriaDetalhada(conn, tx, (int?)empresaId, adminId, "recusa_acesso", $"/api/acessos/{id}/recusar", id,
+            $"Solicitação de {nome} ({email}) recusada.", logger);
 
         await tx.CommitAsync();
 
-        return Results.Ok(new { mensagem = "SolicitaÃ§Ã£o recusada." });
+        return Results.Ok(new { mensagem = "Solicitação recusada." });
     }
     catch (Exception ex)
     {
@@ -4658,9 +4671,9 @@ app.MapDelete("/api/acessos/{id:long}", async (long id, ClaimsPrincipal user, IL
             }
 
             // Auditoria (usar empresa do token do super_admin)
-            var adminEmpresaId = Auth.Empresa(user);
-            await RegistrarAuditoriaDetalhada(conn, tx, adminEmpresaId, adminId, "exclusao_acesso", $"/api/acessos/{id}", id,
-                $"SolicitaÃ§Ã£o {status} de {nome} ({email}) excluÃ­da permanentemente.", logger);
+        // Auditoria (usar empresa da solicitação afetada - pode ser null para pendente sem empresa)
+        await RegistrarAuditoriaDetalhada(conn, tx, (int?)empresaId, adminId, "exclusao_acesso", $"/api/acessos/{id}", id,
+            $"Solicitação {status} de {nome} ({email}) excluída permanentemente.", logger);
         }
 
         await tx.CommitAsync();
@@ -5978,14 +5991,7 @@ static class ArquivoHelper
 static class Auth
 {
     public static int Peso(string? n) => n switch { "leitura" => 1, "edicao" => 2, "total" => 3, _ => 0 };
-    public static int Empresa(ClaimsPrincipal u)
-    {
-        var claim = u.FindFirst("empresa");
-        if (claim != null && int.TryParse(claim.Value, out var emp) && emp > 0)
-            return emp;
-        // Fallback: retornar 1 (empresa padrÃ£o) para nÃ£o quebrar auditoria
-        return 1;
-    }
+    public static int Empresa(ClaimsPrincipal u) => int.Parse(u.FindFirst("empresa")!.Value);
     public static int UsuarioId(ClaimsPrincipal u) => int.Parse(u.FindFirst("uid")!.Value);
     public static string? Nome(ClaimsPrincipal u) => u.FindFirst("nome")?.Value;
     public static bool EhSuperAdmin(ClaimsPrincipal u) => u.FindFirst("perfil")?.Value == "super_admin";

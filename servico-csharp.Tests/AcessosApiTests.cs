@@ -463,4 +463,234 @@ public class AcessosApiTests : IClassFixture<WebApplicationFactory<Program>>
             await LimparSolicitacoesTesteAsync();
         }
     }
+// ============================================
+// TESTES DE AUDITORIA
+// ============================================
+
+    [Fact]
+    public async Task DELETE_Acessos_Auditoria_Gravada_QuandoSolicitacaoTemEmpresa()
+    {
+        // Arrange - criar solicitacao pendente COM empresa_id
+        var connString = GetConnectionString();
+        long empresaId;
+        long solicitacaoId;
+        await using (var conn = new NpgsqlConnection(connString))
+        {
+            await conn.OpenAsync();
+
+            // Garantir que usuario 1 existe (super_admin usa uid=1)
+            await using var cmdUser1 = new NpgsqlCommand(@"
+                INSERT INTO usuarios (id, empresa_id, nome, email, senha_hash, perfil, ativo)
+                VALUES (1, 1, 'Super Admin', 'admin@teste.com', 'hash', 'super_admin', true)
+                ON CONFLICT (id) DO NOTHING;", conn);
+            await cmdUser1.ExecuteNonQueryAsync();
+
+            await using var cmdEmp = new NpgsqlCommand("INSERT INTO empresas (nome) VALUES ('Empresa Auditoria') RETURNING id;", conn);
+            var empResult = await cmdEmp.ExecuteScalarAsync();
+            empresaId = Convert.ToInt64(empResult);
+
+            await using var cmdUser = new NpgsqlCommand(@"
+                INSERT INTO usuarios (id, empresa_id, nome, email, senha_hash, perfil, ativo)
+                VALUES (@uid, @emp, 'Usuario Auditoria', @email, 'hash', 'profissional', true)", conn);
+            cmdUser.Parameters.AddWithValue("uid", 888888);
+            cmdUser.Parameters.AddWithValue("emp", empresaId);
+            cmdUser.Parameters.AddWithValue("email", $"user_audit_{Guid.NewGuid():N}@teste.com".Replace("-", ""));
+            await cmdUser.ExecuteNonQueryAsync();
+
+            await using var cmdSol = new NpgsqlCommand(@"
+                INSERT INTO solicitacoes_acesso (nome, email, telefone, registro_profissional, clinica_nome, status, empresa_id, usuario_id)
+                VALUES (@nome, @email, '', '', '', 'pendente', @emp, @user)
+                RETURNING id;", conn);
+            cmdSol.Parameters.AddWithValue("nome", "Solicitante Auditoria");
+            cmdSol.Parameters.AddWithValue("email", $"solicitacao_audit_{Guid.NewGuid():N}@teste.com".Replace("-", ""));
+            cmdSol.Parameters.AddWithValue("emp", empresaId);
+            cmdSol.Parameters.AddWithValue("user", 888888);
+            var solResult = await cmdSol.ExecuteScalarAsync();
+            solicitacaoId = Convert.ToInt64(solResult);
+        }
+
+        var token = GerarTokenSuperAdmin();
+        var client = CriarCliente(token);
+
+        try
+        {
+            // Act
+            var response = await client.DeleteAsync($"/api/acessos/{solicitacaoId}");
+
+            // Assert - deve retornar 200
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            // Verificar que a auditoria foi gravada com a empresa correta
+            await using var conn = new NpgsqlConnection(connString);
+            await conn.OpenAsync();
+
+            await using var cmdAudit = new NpgsqlCommand(@"
+                SELECT empresa_id, usuario_id, acao, rota, registro_id, user_agent
+                FROM auditoria
+                WHERE registro_id = @id AND acao = 'exclusao_acesso'
+                ORDER BY id DESC LIMIT 1;", conn);
+            cmdAudit.Parameters.AddWithValue("id", solicitacaoId);
+            using var rdAudit = await cmdAudit.ExecuteReaderAsync();
+            rdAudit.Read().Should().BeTrue("auditoria deve ter sido gravada");
+
+            rdAudit.GetInt64(0).Should().Be(empresaId, "empresa_id na auditoria deve ser da solicitacao afetada");
+            rdAudit.GetInt32(1).Should().Be(1, "usuario_id na auditoria deve ser do super_admin (uid=1)");
+            rdAudit.GetString(2).Should().Be("exclusao_acesso");
+            rdAudit.GetString(3).Should().Be($"/api/acessos/{solicitacaoId}");
+            rdAudit.GetInt64(4).Should().Be(solicitacaoId);
+            rdAudit.GetString(5).Should().Contain("excluída permanentemente");
+
+            await rdAudit.CloseAsync();
+        }
+        finally
+        {
+            await LimparSolicitacoesTesteAsync();
+            // Limpar empresa e usuario de teste
+            await using var conn = new NpgsqlConnection(connString);
+            await conn.OpenAsync();
+            await using var cmdDelUser = new NpgsqlCommand("DELETE FROM usuarios WHERE id = 888888", conn);
+            await cmdDelUser.ExecuteNonQueryAsync();
+            await using var cmdDelEmp = new NpgsqlCommand("DELETE FROM empresas WHERE id = @id", conn);
+            cmdDelEmp.Parameters.AddWithValue("id", empresaId);
+            await cmdDelEmp.ExecuteNonQueryAsync();
+        }
+    }
+
+    [Fact]
+    public async Task DELETE_Acessos_Auditoria_NaoGravada_QuandoSolicitacaoSemEmpresa()
+    {
+        // Arrange - criar solicitacao pendente SEM empresa_id
+        var solicitacaoId = await CriarSolicitacaoPendenteAsync(empresaId: null, usuarioId: null);
+        var token = GerarTokenSuperAdmin();
+        var client = CriarCliente(token);
+
+        try
+        {
+            // Act
+            var response = await client.DeleteAsync($"/api/acessos/{solicitacaoId}");
+
+            // Assert - deve retornar 200 (operacao principal nao deve falhar)
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            // Verificar que a auditoria NAO foi gravada (empresa_id invalido)
+            var connString = GetConnectionString();
+            await using var conn = new NpgsqlConnection(connString);
+            await conn.OpenAsync();
+
+            await using var cmdAudit = new NpgsqlCommand(@"
+                SELECT COUNT(*) FROM auditoria
+                WHERE registro_id = @id AND acao = 'exclusao_acesso';", conn);
+            cmdAudit.Parameters.AddWithValue("id", solicitacaoId);
+            var count = Convert.ToInt32(await cmdAudit.ExecuteScalarAsync());
+            count.Should().Be(0, "auditoria NAO deve ser gravada quando solicitacao nao tem empresa_id");
+        }
+        finally
+        {
+            await LimparSolicitacoesTesteAsync();
+        }
+    }
+
+    [Fact]
+    public async Task RECUSAR_Acessos_Auditoria_Gravada_QuandoSolicitacaoTemEmpresa()
+    {
+        // Arrange - criar solicitacao pendente COM empresa_id
+        var connString = GetConnectionString();
+        long empresaId;
+        long solicitacaoId;
+        await using (var conn = new NpgsqlConnection(connString))
+        {
+            await conn.OpenAsync();
+            await using var cmdEmp = new NpgsqlCommand("INSERT INTO empresas (nome) VALUES ('Empresa Recusa') RETURNING id;", conn);
+            var empResult = await cmdEmp.ExecuteScalarAsync();
+            empresaId = Convert.ToInt64(empResult);
+
+            await using var cmdSol = new NpgsqlCommand(@"
+                INSERT INTO solicitacoes_acesso (nome, email, telefone, registro_profissional, clinica_nome, status, empresa_id)
+                VALUES (@nome, @email, '', '', '', 'pendente', @emp)
+                RETURNING id;", conn);
+            cmdSol.Parameters.AddWithValue("nome", "Solicitante Recusa");
+            cmdSol.Parameters.AddWithValue("email", $"solicitacao_recusa_{Guid.NewGuid():N}@teste.com".Replace("-", ""));
+            cmdSol.Parameters.AddWithValue("emp", empresaId);
+            var solResult = await cmdSol.ExecuteScalarAsync();
+            solicitacaoId = Convert.ToInt64(solResult);
+        }
+
+        var token = GerarTokenSuperAdmin();
+        var client = CriarCliente(token);
+
+        try
+        {
+            // Act
+            var response = await client.PostAsync($"/api/acessos/{solicitacaoId}/recusar", null);
+
+            // Assert - deve retornar 200
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            // Verificar que a auditoria foi gravada com a empresa correta
+            await using var conn = new NpgsqlConnection(connString);
+            await conn.OpenAsync();
+
+            await using var cmdAudit = new NpgsqlCommand(@"
+                SELECT empresa_id, usuario_id, acao, rota, registro_id, user_agent
+                FROM auditoria
+                WHERE registro_id = @id AND acao = 'recusa_acesso'
+                ORDER BY id DESC LIMIT 1;", conn);
+            cmdAudit.Parameters.AddWithValue("id", solicitacaoId);
+            using var rdAudit = await cmdAudit.ExecuteReaderAsync();
+            rdAudit.Read().Should().BeTrue("auditoria deve ter sido gravada");
+
+            rdAudit.GetInt64(0).Should().Be(empresaId, "empresa_id na auditoria deve ser da solicitacao afetada");
+            rdAudit.GetInt32(1).Should().Be(1, "usuario_id na auditoria deve ser do super_admin (uid=1)");
+            rdAudit.GetString(2).Should().Be("recusa_acesso");
+            rdAudit.GetString(3).Should().Be($"/api/acessos/{solicitacaoId}/recusar");
+            rdAudit.GetInt64(4).Should().Be(solicitacaoId);
+            rdAudit.GetString(5).Should().Contain("recusada");
+
+            await rdAudit.CloseAsync();
+        }
+        finally
+        {
+            await LimparSolicitacoesTesteAsync();
+            // Limpar empresa de teste
+            await using var conn = new NpgsqlConnection(connString);
+            await conn.OpenAsync();
+            await using var cmdDelEmp = new NpgsqlCommand("DELETE FROM empresas WHERE id = @id", conn);
+            cmdDelEmp.Parameters.AddWithValue("id", empresaId);
+            await cmdDelEmp.ExecuteNonQueryAsync();
+        }
+    }
+
+    [Fact]
+    public async Task RECUSAR_Acessos_Auditoria_NaoGravada_QuandoSolicitacaoSemEmpresa()
+    {
+        // Arrange - criar solicitacao pendente SEM empresa_id
+        var solicitacaoId = await CriarSolicitacaoPendenteAsync(empresaId: null, usuarioId: null);
+        var token = GerarTokenSuperAdmin();
+        var client = CriarCliente(token);
+
+        try
+        {
+            // Act
+            var response = await client.PostAsync($"/api/acessos/{solicitacaoId}/recusar", null);
+
+            // Assert - deve retornar 200 (operacao principal nao deve falhar)
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            // Verificar que a auditoria NAO foi gravada (empresa_id invalido)
+            var connString = GetConnectionString();
+            await using var conn = new NpgsqlConnection(connString);
+            await conn.OpenAsync();
+
+            await using var cmdAudit = new NpgsqlCommand(@"
+                SELECT COUNT(*) FROM auditoria
+                WHERE registro_id = @id AND acao = 'recusa_acesso';", conn);
+            cmdAudit.Parameters.AddWithValue("id", solicitacaoId);
+            var count = Convert.ToInt32(await cmdAudit.ExecuteScalarAsync());
+            count.Should().Be(0, "auditoria NAO deve ser gravada quando solicitacao nao tem empresa_id");
+        }
+        finally
+        {
+            await LimparSolicitacoesTesteAsync();
+        }
+    }
 }
