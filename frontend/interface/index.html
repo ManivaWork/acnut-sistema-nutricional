@@ -239,7 +239,31 @@ body {
         box-shadow: 0 8px 20px rgba(0,0,0,.45);
     }
 }
- 
+
+/* ---------- EMPRESAS TABLE @ 1366px (sidebar expanded/collapsed) ---------- */
+@media (max-width: 1366px) {
+    /* Ajusta tabela de empresas quando sidebar está expandida em telas ~1366px */
+    #acessos-tab-empresas .overflow-x-auto table {
+        font-size: 12px;
+    }
+    #acessos-tab-empresas th,
+    #acessos-tab-empresas td {
+        padding: 8px 10px;
+        white-space: nowrap;
+    }
+    /* Coluna Nome: permite quebra de linha se necessário */
+    #acessos-tab-empresas td:nth-child(2) {
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    /* Coluna Ações: botões mais compactos */
+    #acessos-tab-empresas td:last-child {
+        white-space: nowrap;
+    }
+}
+
 /* ---------- MENU (itens genéricos) ---------- */
 .acnut-menu-item:hover {
     background: rgba(255,255,255,.06);
