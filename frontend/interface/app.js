@@ -362,51 +362,57 @@ function atualizarBotaoFormulario(editando) {
         if (btnCancelar) btnCancelar.classList.toggle('hidden', !editando);
         }
 function navegar(secao) {
-        // Billing: apenas admin e super_admin podem acessar
+        // Redirecionar 'empresas' para 'acessos' com a aba empresas
+        if (secao === 'empresas') {
+            secao = 'acessos';
+            // Aguardar o DOM atualizar e depois trocar para a aba empresas
+            setTimeout(() => trocarAbaAcessos('empresas'), 0);
+        }
+
+        // Billing: apenas super_admin pode acessar
         if (secao === 'billing') {
             const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
-            if (!user.perfil || !['admin', 'super_admin'].includes(user.perfil)) {
-                mostrarToast('Acesso restrito: apenas administradores podem acessar o painel de billing.', 'erro');
+            if (!user.perfil || user.perfil !== 'super_admin') {
+                mostrarToast('Acesso restrito: apenas super administradores podem acessar o painel de billing.', 'erro');
                 return;
             }
-            // Carregar billing (super_admin vê mocks, admin vê status próprio)
+            // Carregar billing (super_admin vê mocks)
             carregarSuperAdminBilling();
         }
 
         document.querySelectorAll("main > section").forEach(s => s.classList.add("hidden"));
         const secaoAlvo = document.getElementById(`sec-${secao}`);
         if (secaoAlvo) {
-        secaoAlvo.classList.remove("hidden");
+            secaoAlvo.classList.remove("hidden");
         }
         if (secao === 'pacientes' || secao === 'dashboard') {
-        carregarPacientes();
+            carregarPacientes();
         }
         if (secao === 'prontuario') {
-        restaurarProntuarioAtivo();
-        inicializarBuscaProntuario();
+            restaurarProntuarioAtivo();
+            inicializarBuscaProntuario();
         }
-        if (secao === 'empresas') carregarEmpresas();
         if (secao === 'lgpd') renderSecaoLgpd();
         if (secao === 'acessos') carregarAcessos();
         document.querySelectorAll(".acnut-rail-item[data-nav]").forEach(btn => {
-        btn.classList.toggle("ativo", btn.dataset.nav === secao);
+            btn.classList.toggle("ativo", btn.dataset.nav === secao);
         });
         // Mostrar/ocultar itens conforme perfil (apenas super_admin vê)
-        const navEmpresas = document.getElementById('nav-empresas');
         const navLgpd = document.getElementById('nav-lgpd');
         const navAcessos = document.getElementById('nav-acessos');
         const navConvites = document.getElementById('nav-convites');
+        const navBilling = document.getElementById('nav-billing');
         const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
         const ehSuperAdmin = user.perfil === 'super_admin';
-        if (navEmpresas) navEmpresas.style.display = ehSuperAdmin ? 'flex' : 'none';
         if (navLgpd) navLgpd.style.display = ehSuperAdmin ? 'flex' : 'none';
         if (navAcessos) navAcessos.style.display = ehSuperAdmin ? 'flex' : 'none';
         if (navConvites) navConvites.style.display = ehSuperAdmin ? 'flex' : 'none';
+        if (navBilling) navBilling.style.display = ehSuperAdmin ? 'flex' : 'none';
         // Verificar banner de plano para profissionais
         if (secao !== 'login' && secao !== 'onboarding' && secao !== 'convite' && secao !== 'definir-senha') {
             verificarBannerPlano();
         }
-        }
+}
 async function carregarPacientes() {
         try {
         const response = await fetch(`${API_URL}/pacientes`);
@@ -4132,8 +4138,8 @@ function renderTabelaAcessos(lista, tbodyId, status) {
                     <td class="py-3 px-4 text-white">${escaparHtml(s.nome)}</td>
                     <td class="py-3 px-4 text-slate-300">${escaparHtml(s.email)}</td>
                     <td class="py-3 px-4 text-slate-300">${escaparHtml(s.telefone) || '-'}</td>
-                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.registro_profissional) || '-'}</td>
-                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.clinica_nome) || '-'}</td>
+                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.registroProfissional) || '-'}</td>
+                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.clinicaNome) || '-'}</td>
                     <td class="py-3 px-4 text-slate-300">${dataFormatada}</td>
                     <td class="py-3 px-4 flex items-center gap-2">
                         <button onclick="abrirModalAprovarAcesso(${s.id})" class="bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600 hover:text-white px-3 py-1 rounded text-xs font-semibold transition">Aprovar</button>
@@ -4146,9 +4152,9 @@ function renderTabelaAcessos(lista, tbodyId, status) {
                 <tr class="border-b border-slate-700 hover:bg-slate-800/50">
                     <td class="py-3 px-4 text-white">${escaparHtml(s.nome)}</td>
                     <td class="py-3 px-4 text-slate-300">${escaparHtml(s.email)}</td>
-                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.clinica_nome) || '-'}</td>
-                    <td class="py-3 px-4 text-slate-300">${s.empresa_id || '-'}</td>
-                    <td class="py-3 px-4 text-slate-300">${s.usuario_id || '-'}</td>
+                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.clinicaNome) || '-'}</td>
+                    <td class="py-3 px-4 text-slate-300">${s.empresaId || '-'}</td>
+                    <td class="py-3 px-4 text-slate-300">${s.usuarioId || '-'}</td>
                     <td class="py-3 px-4 text-slate-300">${dataAtualizada}</td>
                     <td class="py-3 px-4 flex items-center gap-2">
                         <button onclick="reenviarEmailDefinicaoSenha(${s.id})" class="bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white px-3 py-1 rounded text-xs font-semibold transition" title="Reenviar e-mail de definição de senha">
@@ -4162,7 +4168,7 @@ function renderTabelaAcessos(lista, tbodyId, status) {
                 <tr class="border-b border-slate-700 hover:bg-slate-800/50">
                     <td class="py-3 px-4 text-white">${escaparHtml(s.nome)}</td>
                     <td class="py-3 px-4 text-slate-300">${escaparHtml(s.email)}</td>
-                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.clinica_nome) || '-'}</td>
+                    <td class="py-3 px-4 text-slate-300">${escaparHtml(s.clinicaNome) || '-'}</td>
                     <td class="py-3 px-4 text-slate-300">${dataAtualizada}</td>
                     <td class="py-3 px-4 flex items-center gap-2">
                         <button onclick="abrirModalExcluirAcesso(${s.id}, 'recusado')" class="bg-slate-600/20 text-slate-400 hover:bg-slate-600 hover:text-white px-3 py-1 rounded text-xs font-semibold transition">Excluir</button>
@@ -4190,6 +4196,11 @@ function trocarAbaAcessos(aba) {
     });
     const tabAtiva = document.getElementById(`acessos-tab-${aba}`);
     if (tabAtiva) tabAtiva.classList.remove('hidden');
+
+    // Carregar empresas ao ativar a aba empresas
+    if (aba === 'empresas') {
+        carregarEmpresas();
+    }
 }
 
 // Modal Aprovar
@@ -8022,7 +8033,7 @@ async function aceitarConvitePaciente() {
     const cpf = document.getElementById("convite-cpf")?.value?.replace(/\D/g, '');
     const dataNascimento = document.getElementById("convite-data-nascimento")?.value;
     const telefone = document.getElementById("convite-telefone")?.value?.trim();
-    const erroDiv = document.getElementById("convite-erro");
+    const erroDiv = document.getElementById("convite-paciente-erro");
     const msg = erroDiv?.querySelector("span");
     const btn = document.getElementById("btn-aceitar-convite");
 
