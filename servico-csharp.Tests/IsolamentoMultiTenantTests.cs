@@ -3949,17 +3949,24 @@ public class RateLimitingTests : IDisposable
         var nascimento = new DateTime(1990, 1, 1);
         await CriarPacienteTesteAsync(empresaId, email, cpf, nascimento);
 
-        // 30 requests com credenciais CORRETAS devem passar (sucesso não incrementa contador de falhas no DB rate limiter)
-        for (int i = 0; i < 30; i++)
+        try
         {
-            var response = await client.PostAsJsonAsync("/api/auth/paciente", new { Cpf = cpf, Nascimento = nascimento.ToString("yyyy-MM-dd") });
-            response.StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests, $"Request {i+1} não deveria ser 429");
-            response.StatusCode.Should().Be(HttpStatusCode.OK, $"Request {i+1} deveria ser 200 OK");
-        }
+            // 30 requests com credenciais CORRETAS devem passar (sucesso não incrementa contador de falhas no DB rate limiter)
+            for (int i = 0; i < 30; i++)
+            {
+                var response = await client.PostAsJsonAsync("/api/auth/paciente", new { Cpf = cpf, Nascimento = nascimento.ToString("yyyy-MM-dd") });
+                response.StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests, $"Request {i+1} não deveria ser 429");
+                response.StatusCode.Should().Be(HttpStatusCode.OK, $"Request {i+1} deveria ser 200 OK");
+            }
 
-        // 31ª request (com nascimento errado) deve ser bloqueada por rate limit IP
-        var response31 = await client.PostAsJsonAsync("/api/auth/paciente", new { Cpf = cpf, Nascimento = "2000-01-01" });
-        response31.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+            // 31ª request (com nascimento errado) deve ser bloqueada por rate limit IP
+            var response31 = await client.PostAsJsonAsync("/api/auth/paciente", new { Cpf = cpf, Nascimento = "2000-01-01" });
+            response31.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
     }
 
     [Fact]
@@ -4065,16 +4072,23 @@ public class RateLimitingTests : IDisposable
         var nascimento = new DateTime(1990, 1, 1);
         await CriarPacienteTesteAsync(empresaId, email, cpf, nascimento);
 
-        // 5 falhas consecutivas (nascimento errado)
-        for (int i = 0; i < 5; i++)
+        try
         {
-            var response = await client.PostAsJsonAsync("/api/auth/paciente", new { Cpf = cpf, Nascimento = "2000-01-01" });
-            response.StatusCode.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.BadRequest);
-        }
+            // 5 falhas consecutivas (nascimento errado)
+            for (int i = 0; i < 5; i++)
+            {
+                var response = await client.PostAsJsonAsync("/api/auth/paciente", new { Cpf = cpf, Nascimento = "2000-01-01" });
+                response.StatusCode.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.BadRequest);
+            }
 
-        // 6ª tentativa deve ser bloqueada (429)
-        var response6 = await client.PostAsJsonAsync("/api/auth/paciente", new { Cpf = cpf, Nascimento = "2000-01-01" });
-        response6.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+            // 6ª tentativa deve ser bloqueada (429)
+            var response6 = await client.PostAsJsonAsync("/api/auth/paciente", new { Cpf = cpf, Nascimento = "2000-01-01" });
+            response6.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        }
+        finally
+        {
+            await LimparDadosTesteAsync(empresaId);
+        }
     }
 
     [Fact]
