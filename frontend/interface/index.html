@@ -1501,7 +1501,7 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         </button>
         <button type="button" data-nav="billing" data-tip="Plano & Assinatura"
         onclick="navegar('billing'); fecharMenuMobile();"
-        class="acnut-rail-item">
+        class="acnut-rail-item" id="nav-billing" style="display:none;">
         <i class="fa-solid fa-credit-card"></i>
         <span class="acnut-rail-label">Plano & Assinatura</span>
         </button>
@@ -1719,8 +1719,6 @@ button[class*="bg-emerald-600"]:not(.aba-item):hover,
         </div>
         </div>
         </header>
-<!-- Banner contador de pacientes (visível para profissionais sem_plano) -->
-<div id="contador-pacientes-banner" class="hidden"></div>
 <!-- ===================================================== FORMULÁRIO ====================================================== -->
         <div class="
         bg-slate-800/70
@@ -3831,11 +3829,7 @@ function fazerLogout() {
     try { localStorage.removeItem("acnut_sidebar_expandida"); } catch (e) {}
     try { localStorage.removeItem("token"); } catch (e) {}
 
-    // 2. Remove banner de plano se existir
-    const banner = document.getElementById("banner-plano");
-    if (banner) banner.remove();
-
-    // 3. Limpa variáveis globais de estado (app.js)
+    // 2. Limpa variáveis globais de estado (app.js)
     window.pacienteIdAtivo = null;
     window.pacienteEmEdicaoId = null;
     window.listaPacientes = [];
@@ -4608,6 +4602,7 @@ function mostrarLogin() {
         <div id="sec-lgpd-container"></div>
         </section>
         <!-- Importa o app.js apenas no fim, com defer ou logo antes de fechar -->
+<script type="module" src="/interface/js/plano-warnings.js"></script>
 <script src="/interface/app.js"></script>
         <!-- Billing JavaScript -->
 <script>
@@ -4800,7 +4795,10 @@ async function carregarWebhookLog() {
 const origNavegar = window.navegar;
 window.navegar = function(secao) {
   origNavegar(secao);
-  if (secao === 'billing') carregarBilling();
+  if (secao === 'billing') {
+    const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
+    if (user.perfil === 'super_admin') carregarBilling();
+  }
 };
 </script>
         </main>
