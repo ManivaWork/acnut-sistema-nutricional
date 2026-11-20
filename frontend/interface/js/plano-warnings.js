@@ -2,6 +2,57 @@
 // Função testável, sem efeitos colaterais (sem DOM, sem fetch, sem localStorage)
 
 /**
+ * Decodifica o payload de um JWT (base64url) e extrai empresaId e userId.
+ * Claims esperadas: "empresa" (empresaId) e "uid" (userId).
+ * @param {string|null|undefined} token - JWT token
+ * @returns {{empresaId: string, userId: string}|null} - IDs extraídos ou null se token inválido/ausente/sem claims
+ */
+export function lerIdsDoToken(token) {
+    if (!token || typeof token !== 'string') {
+        return null;
+    }
+
+    try {
+        // JWT tem 3 partes separadas por '.': header.payload.signature
+        const parts = token.split('.');
+        if (parts.length !== 3) {
+            return null;
+        }
+
+        // Decodificar payload (parte do meio) - base64url
+        let payload = parts[1];
+
+        // Base64url: substituir - por +, _ por /, adicionar padding
+        payload = payload.replace(/-/g, '+').replace(/_/g, '/');
+
+        // Adicionar padding se necessário
+        const padding = payload.length % 4;
+        if (padding > 0) {
+            payload += '='.repeat(4 - padding);
+        }
+
+        // Decodificar base64
+        const decoded = atob(payload);
+
+        // Parse JSON
+        const claims = JSON.parse(decoded);
+
+        // Extrair claims "empresa" e "uid"
+        const empresaId = claims?.empresa;
+        const userId = claims?.uid;
+
+        if (!empresaId || !userId) {
+            return null;
+        }
+
+        return { empresaId: String(empresaId), userId: String(userId) };
+    } catch {
+        // Qualquer erro (base64 inválido, JSON inválido, etc.) -> null
+        return null;
+    }
+}
+
+/**
  * Níveis de gravidade para comparação (maior = pior)
  */
 const GRAVIDADE = {
@@ -290,6 +341,67 @@ export function marcarDispensado(empresaId, userId, tipo, assinaturaDoEstado) {
     localStorage.setItem(chave, JSON.stringify(assinaturaDoEstado));
 }
 
+/**
+ * Cria um elemento toast para exibir um aviso com botão "Dispensar".
+ * Usa textContent para a mensagem (nunca innerHTML) e addEventListener no botão.
+ *
+ * @param {Object} aviso - Objeto do aviso retornado por obterAvisoPlano
+ *   { tipo, mensagem, severidade, assinaturaDoEstado }
+ * @param {Object} opts - Opções
+ * @param {string} opts.empresaId - ID da empresa
+ * @param {string} opts.userId - ID do usuário
+ * @param {Function} opts.onFechar - Callback chamado ao fechar (dispensar ou timeout)
+ * @returns {HTMLElement} - Elemento toast pronto para ser anexado ao DOM
+ */
+export function criarToastAviso(aviso, { empresaId, userId, onFechar }) {
+    // Mapear severidade para classes CSS
+    const cores = {
+        erro: 'bg-rose-600 text-white',
+        aviso: 'bg-amber-600 text-white'
+    };
+    const icones = {
+        erro: 'fa-circle-xmark',
+        aviso: 'fa-triangle-exclamation'
+    };
+
+    const toast = document.createElement('div');
+    toast.className = `flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg ${cores[aviso.severidade] || cores.aviso} animate-slide-in`;
+    toast.dataset.avisoTipo = aviso.tipo;
+
+    // Ícone
+    const icone = document.createElement('i');
+    icone.className = `fa-solid ${icones[aviso.severidade] || icones.aviso}`;
+    toast.appendChild(icone);
+
+    // Mensagem - usando textContent (nunca innerHTML)
+    const spanMensagem = document.createElement('span');
+    spanMensagem.className = 'text-sm font-medium flex-1 min-w-0';
+    spanMensagem.textContent = aviso.mensagem;
+    toast.appendChild(spanMensagem);
+
+    // Botão "Dispensar"
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/20 hover:bg-white/30 transition whitespace-nowrap flex-shrink-0';
+    btn.textContent = 'Dispensar';
+
+    // Event listener - sem JSON em atributo HTML
+    btn.addEventListener('click', () => {
+        // Marcar como dispensado
+        marcarDispensado(empresaId, userId, aviso.tipo, aviso.assinaturaDoEstado);
+        // Remover toast do DOM
+        toast.remove();
+        // Chamar callback de fechamento
+        if (typeof onFechar === 'function') {
+            onFechar();
+        }
+    });
+
+    toast.appendChild(btn);
+
+    return toast;
+}
+
 // Expor no window para uso no app.js (testes usam os exports nomeados)
 if (typeof window !== 'undefined') {
     Object.assign(window, {
@@ -297,6 +409,8 @@ if (typeof window !== 'undefined') {
         montarMensagemLimite,
         gerarChaveDismiss,
         lerDispensados,
-        marcarDispensado
+        marcarDispensado,
+        lerIdsDoToken,
+        criarToastAviso
     });
 }

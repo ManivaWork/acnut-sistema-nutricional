@@ -4504,9 +4504,13 @@ async function verificarAvisosPlano() {
         // dias_para_renovar pode vir da API no futuro; por enquanto null (não inventar)
         const diasParaRenovar = data.dias_para_renovar ?? null;
 
-        // Ler dispensados usando a nova API do módulo
-        const empresaId = user.empresa_id ?? 'unknown';
-        const userId = user.id ?? user.sub ?? 'unknown';
+        // Obter IDs do token JWT (claims "empresa" e "uid")
+        // Se não conseguir, fallback para bybar_user.empresa_id e bybar_user.id
+        const token = sessionStorage.getItem('bybar_token');
+        const idsDoToken = lerIdsDoToken(token);
+        const empresaId = idsDoToken?.empresaId ?? user.empresa_id ?? 'unknown';
+        const userId = idsDoToken?.userId ?? user.id ?? user.sub ?? 'unknown';
+
         const dispensados = lerDispensados(empresaId, userId);
 
         const aviso = obterAvisoPlano({
@@ -4549,9 +4553,6 @@ async function verificarAvisosPlano() {
 }
 
 function mostrarAvisoPlano(aviso, empresaId, userId) {
-    // Usar toast existente (não banner fixo, não cobre conteúdo)
-    const tipoToast = aviso.severidade === 'erro' ? 'erro' : 'aviso';
-
     // Verificar se já existe um toast do mesmo tipo na tela
     const container = document.getElementById('toast-container');
     if (container) {
@@ -4564,7 +4565,7 @@ function mostrarAvisoPlano(aviso, empresaId, userId) {
         }
     }
 
-    // Criar toast com botão "Dispensar" que usa a assinatura do estado
+    // Criar container de toasts se não existir
     const toastContainer = container || (() => {
         const div = document.createElement('div');
         div.id = 'toast-container';
@@ -4573,30 +4574,14 @@ function mostrarAvisoPlano(aviso, empresaId, userId) {
         return div;
     })();
 
-    const cores = {
-        erro: 'bg-rose-600 text-white',
-        aviso: 'bg-amber-600 text-white'
-    };
-
-    const icones = {
-        erro: 'fa-circle-xmark',
-        aviso: 'fa-triangle-exclamation'
-    };
-
-    const toast = document.createElement('div');
-    toast.className = `flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg ${cores[tipoToast]} animate-slide-in`;
-    toast.dataset.avisoTipo = aviso.tipo;
-
-    // A mensagem já vem formatada com suporteContato (via obterAvisoPlano -> montarMensagemLimite)
-    const mensagemCompleta = aviso.mensagem;
-
-    toast.innerHTML = `
-        <i class="fa-solid ${icones[tipoToast]}"></i>
-        <span class="text-sm font-medium flex-1 min-w-0">${mensagemCompleta}</span>
-        <button class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/20 hover:bg-white/30 transition whitespace-nowrap" onclick="dispensarAvisoPlano('${aviso.tipo}', '${JSON.stringify(aviso.assinaturaDoEstado).replace(/"/g, '"')}')">
-            Dispensar
-        </button>
-    `;
+    // Criar toast usando a função pura do módulo plano-warnings
+    const toast = criarToastAviso(aviso, {
+        empresaId,
+        userId,
+        onFechar: () => {
+            // Callback de fechamento - pode ser usado para limpeza futura se necessário
+        }
+    });
 
     toastContainer.appendChild(toast);
 
@@ -4608,21 +4593,6 @@ function mostrarAvisoPlano(aviso, empresaId, userId) {
         }
     }, 10000);
 }
-
-// Função global para o botão "Dispensar" do toast
-window.dispensarAvisoPlano = function(tipo, assinaturaDoEstadoStr) {
-    try {
-        const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
-        const empresaId = user.empresa_id ?? 'unknown';
-        const userId = user.id ?? user.sub ?? 'unknown';
-        const assinaturaDoEstado = JSON.parse(assinaturaDoEstadoStr);
-        // marcarDispensado já trata IDs inválidos (não grava se unknown)
-        marcarDispensado(empresaId, userId, tipo, assinaturaDoEstado);
-        mostrarToast('Aviso dispensado.', 'info', 2000);
-    } catch (e) {
-        console.warn('Erro ao dispensar aviso:', e);
-    }
-};
 
 // Verificar limite ao tentar cadastrar paciente
 async function verificarLimitePacientes() {

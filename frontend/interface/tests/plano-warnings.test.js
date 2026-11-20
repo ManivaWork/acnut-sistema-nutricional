@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { obterAvisoPlano, gerarChaveDismiss, lerDispensados, marcarDispensado, montarMensagemLimite } from '../js/plano-warnings.js'
+import { obterAvisoPlano, gerarChaveDismiss, lerDispensados, marcarDispensado, montarMensagemLimite, lerIdsDoToken, criarToastAviso } from '../js/plano-warnings.js'
 
 describe('obterAvisoPlano - Lógica pura de avisos de plano', () => {
     const baseParams = {
@@ -850,3 +850,272 @@ describe('obterAvisoPlano - strings exatas nível 1 e nível 2', () => {
         expect(result.mensagem).toBe('Você excedeu o limite de 5 pacientes do seu plano (6/5). Para cadastrar mais, fale com o suporte (suporte@teste.com).')
     })
 })
+
+describe('lerIdsDoToken - Extração de IDs do JWT', () => {
+    // Helper para criar JWT válido com claims específicas
+    const criarToken = (claims) => {
+        const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+        const payload = btoa(JSON.stringify(claims));
+        const signature = 'signature';
+        return `${header}.${payload}.${signature}`;
+    };
+
+    it('retorna {empresaId, userId} para token válido com claims "empresa" e "uid"', () => {
+        const token = criarToken({ empresa: 'emp123', uid: 'user456' });
+        const result = lerIdsDoToken(token);
+        expect(result).toEqual({ empresaId: 'emp123', userId: 'user456' });
+    });
+
+    it('funciona com base64url (substitui - por + e _ por /)', () => {
+        // Payload com caracteres base64url: - e _
+        const payload = { empresa: 'emp-123', uid: 'user_456' };
+        const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+        const payloadB64 = btoa(JSON.stringify(payload))
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_')
+            .replace(/=/g, '');
+        const token = `${header}.${payloadB64}.signature`;
+        const result = lerIdsDoToken(token);
+        expect(result).toEqual({ empresaId: 'emp-123', userId: 'user_456' });
+    });
+
+    it('funciona sem padding (=) no base64url', () => {
+        // Payload que resulta em base64 sem padding
+        const payload = { empresa: 'emp1', uid: 'user1' }; // Curto, sem padding
+        const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+        const payloadB64 = btoa(JSON.stringify(payload)).replace(/=/g, '');
+        const token = `${header}.${payloadB64}.signature`;
+        const result = lerIdsDoToken(token);
+        expect(result).toEqual({ empresaId: 'emp1', userId: 'user1' });
+    });
+
+    it('retorna null se token não tem claim "empresa"', () => {
+        const token = criarToken({ uid: 'user456' });
+        const result = lerIdsDoToken(token);
+        expect(result).toBeNull();
+    });
+
+    it('retorna null se token não tem claim "uid"', () => {
+        const token = criarToken({ empresa: 'emp123' });
+        const result = lerIdsDoToken(token);
+        expect(result).toBeNull();
+    });
+
+    it('retorna null para token com claims vazias (objeto vazio)', () => {
+        const token = criarToken({});
+        const result = lerIdsDoToken(token);
+        expect(result).toBeNull();
+    });
+
+    it('retorna null para string vazia', () => {
+        const result = lerIdsDoToken('');
+        expect(result).toBeNull();
+    });
+
+    it('retorna null para null', () => {
+        const result = lerIdsDoToken(null);
+        expect(result).toBeNull();
+    });
+
+    it('retorna null para undefined', () => {
+        const result = lerIdsDoToken(undefined);
+        expect(result).toBeNull();
+    });
+
+    it('retorna null para lixo (não é JWT válido)', () => {
+        const result = lerIdsDoToken('lixoqualquer');
+        expect(result).toBeNull();
+    });
+
+    it('retorna null para JWT malformado (menos de 3 partes)', () => {
+        const result = lerIdsDoToken('header.payload');
+        expect(result).toBeNull();
+    });
+
+    it('retorna null para JWT com payload JSON inválido', () => {
+        const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+        const payload = btoa('json invalido{');
+        const token = `${header}.${payload}.signature`;
+        const result = lerIdsDoToken(token);
+        expect(result).toBeNull();
+    });
+
+    it('retorna null para JWT com payload base64 inválido', () => {
+        const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+        const token = `${header}.!!!invalido!!!.signature`;
+        const result = lerIdsDoToken(token);
+        expect(result).toBeNull();
+    });
+
+    it('converte valores numéricos para string', () => {
+        const token = criarToken({ empresa: 123, uid: 456 });
+        const result = lerIdsDoToken(token);
+        expect(result).toEqual({ empresaId: '123', userId: '456' });
+    });
+})
+
+describe('criarToastAviso - Criação de toast DOM com botão Dispensar', () => {
+    const avisoBase = {
+        tipo: 'limite',
+        mensagem: 'Você atingiu o limite de 5 pacientes do seu plano.',
+        severidade: 'erro',
+        assinaturaDoEstado: { limite: 5, nivel: 1 }
+    };
+
+    beforeEach(() => {
+        vi.clearAllMocks()
+        localStorage.clear()
+        document.body.innerHTML = ''
+    })
+
+    it('cria elemento toast com estrutura correta', () => {
+        const toast = criarToastAviso(avisoBase, {
+            empresaId: 'emp1',
+            userId: 'user1',
+            onFechar: vi.fn()
+        })
+
+        expect(toast).toBeInstanceOf(HTMLElement)
+        expect(toast.dataset.avisoTipo).toBe('limite')
+        expect(toast.className).toContain('bg-rose-600') // severidade erro
+        expect(toast.className).toContain('animate-slide-in')
+    })
+
+    it('inclui ícone, mensagem e botão', () => {
+        const toast = criarToastAviso(avisoBase, {
+            empresaId: 'emp1',
+            userId: 'user1',
+            onFechar: vi.fn()
+        })
+
+        const icone = toast.querySelector('i.fa-solid')
+        expect(icone).not.toBeNull()
+        expect(icone.className).toContain('fa-circle-xmark')
+
+        const spanMensagem = toast.querySelector('span.text-sm')
+        expect(spanMensagem).not.toBeNull()
+        // textContent usado, não innerHTML
+        expect(spanMensagem.textContent).toBe(avisoBase.mensagem)
+
+        const btn = toast.querySelector('button')
+        expect(btn).not.toBeNull()
+        expect(btn.textContent).toBe('Dispensar')
+        expect(btn.type).toBe('button')
+    })
+
+    it('usa textContent para mensagem (não innerHTML) - aspas e <b> aparecem como texto', () => {
+        const avisoComHtml = {
+            ...avisoBase,
+            mensagem: 'Mensagem com "aspas" e <b>tag</b> & entidades'
+        }
+
+        const toast = criarToastAviso(avisoComHtml, {
+            empresaId: 'emp1',
+            userId: 'user1',
+            onFechar: vi.fn()
+        })
+
+        const spanMensagem = toast.querySelector('span.text-sm')
+        // Deve conter o texto literal, não HTML renderizado
+        expect(spanMensagem.textContent).toBe('Mensagem com "aspas" e <b>tag</b> & entidades')
+        // innerHTML não deve ter sido usado (span não deve ter filhos)
+        expect(spanMensagem.children.length).toBe(0)
+    })
+
+    it('botão NÃO tem atributo onclick', () => {
+        const toast = criarToastAviso(avisoBase, {
+            empresaId: 'emp1',
+            userId: 'user1',
+            onFechar: vi.fn()
+        })
+
+        const btn = toast.querySelector('button')
+        expect(btn.hasAttribute('onclick')).toBe(false)
+        // Não deve ter JSON em atributo
+        expect(btn.outerHTML).not.toContain('assinaturaDoEstado')
+        expect(btn.outerHTML).not.toContain('JSON')
+    })
+
+    it('clique em Dispensar com IDs válidos: grava plano_dismiss e remove toast', () => {
+        const onFechar = vi.fn()
+        const toast = criarToastAviso(avisoBase, {
+            empresaId: 'emp1',
+            userId: 'user1',
+            onFechar
+        })
+
+        document.body.appendChild(toast)
+
+        const btn = toast.querySelector('button')
+        btn.click()
+
+        // Deve ter gravado no localStorage
+        const chave = 'plano_dismiss_emp1_user1_limite'
+        const salvo = localStorage.getItem(chave)
+        expect(salvo).not.toBeNull()
+        expect(JSON.parse(salvo)).toEqual(avisoBase.assinaturaDoEstado)
+
+        // Toast deve ter sido removido do DOM
+        expect(toast.parentNode).toBeNull()
+
+        // onFechar deve ter sido chamado
+        expect(onFechar).toHaveBeenCalledTimes(1)
+    })
+
+    it('IDs "unknown": não grava no localStorage', () => {
+        const onFechar = vi.fn()
+        const toast = criarToastAviso(avisoBase, {
+            empresaId: 'unknown',
+            userId: 'user1',
+            onFechar
+        })
+
+        document.body.appendChild(toast)
+        const btn = toast.querySelector('button')
+        btn.click()
+
+        // Não deve ter gravado (marcarDispensado ignora IDs unknown)
+        expect(localStorage.getItem('plano_dismiss_unknown_user1_limite')).toBeNull()
+
+        // Toast ainda deve ser removido
+        expect(toast.parentNode).toBeNull()
+    })
+
+    it('userId "unknown": não grava no localStorage', () => {
+        const onFechar = vi.fn()
+        const toast = criarToastAviso(avisoBase, {
+            empresaId: 'emp1',
+            userId: 'unknown',
+            onFechar
+        })
+
+        document.body.appendChild(toast)
+        const btn = toast.querySelector('button')
+        btn.click()
+
+        expect(localStorage.getItem('plano_dismiss_emp1_unknown_limite')).toBeNull()
+        expect(toast.parentNode).toBeNull()
+    })
+
+    it('severidade "aviso" usa cor amarela', () => {
+        const avisoAviso = { ...avisoBase, severidade: 'aviso' }
+        const toast = criarToastAviso(avisoAviso, {
+            empresaId: 'emp1',
+            userId: 'user1',
+            onFechar: vi.fn()
+        })
+
+        expect(toast.className).toContain('bg-amber-600')
+    })
+
+    it('tipo do aviso é passado no dataset', () => {
+        const avisoAssinatura = { ...avisoBase, tipo: 'assinatura', assinaturaDoEstado: { status: 'vencida' } }
+        const toast = criarToastAviso(avisoAssinatura, {
+            empresaId: 'emp1',
+            userId: 'user1',
+            onFechar: vi.fn()
+        })
+
+        expect(toast.dataset.avisoTipo).toBe('assinatura')
+    })
+});
