@@ -17,6 +17,9 @@ const PYTHON_API_URL = window.ENV_PYTHON_API_URL
 const getToken = () => sessionStorage.getItem(TOKEN_KEY);
 const getFrontendUrl = () => window.ENV_FRONTEND_URL || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:5500' : window.location.origin;
 
+// Contato de suporte - configurável via window.ENV_SUPORTE_CONTATO (placeholder vazio por padrão)
+const SUPORTE_CONTATO = window.ENV_SUPORTE_CONTATO || '';
+
 function mostrarToast(mensagem, tipo = 'info', duracao = 4000) {
     const container = document.getElementById('toast-container') || (() => {
         const div = document.createElement('div');
@@ -362,6 +365,15 @@ function atualizarBotaoFormulario(editando) {
         if (btnCancelar) btnCancelar.classList.toggle('hidden', !editando);
         }
 function navegar(secao) {
+        // Bloquear acesso a 'billing' para não super_admin
+        if (secao === 'billing') {
+            const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
+            if (user.perfil !== 'super_admin') {
+                mostrarToast('Acesso restrito a super administradores.', 'aviso');
+                return;
+            }
+        }
+
         // Redirecionar 'empresas' para 'acessos' com a aba empresas
         if (secao === 'empresas') {
             secao = 'acessos';
@@ -389,14 +401,16 @@ function navegar(secao) {
         const navLgpd = document.getElementById('nav-lgpd');
         const navAcessos = document.getElementById('nav-acessos');
         const navConvites = document.getElementById('nav-convites');
+        const navBilling = document.getElementById('nav-billing');
         const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
         const ehSuperAdmin = user.perfil === 'super_admin';
         if (navLgpd) navLgpd.style.display = ehSuperAdmin ? 'flex' : 'none';
         if (navAcessos) navAcessos.style.display = ehSuperAdmin ? 'flex' : 'none';
         if (navConvites) navConvites.style.display = ehSuperAdmin ? 'flex' : 'none';
-        // Verificar banner de plano para profissionais
+        if (navBilling) navBilling.style.display = ehSuperAdmin ? 'flex' : 'none';
+        // Verificar avisos de plano para profissionais (substitui banner antigo)
         if (secao !== 'login' && secao !== 'onboarding' && secao !== 'convite' && secao !== 'definir-senha') {
-            verificarBannerPlano();
+            verificarAvisosPlano();
         }
         }
 async function carregarPacientes() {
@@ -568,12 +582,8 @@ async function cadastrarPaciente(event) {
 
         // Tratamento especial para 403: plano não permite cadastrar pacientes
         if (response.status === 403) {
-            mostrarToastComAcao(
-                "Seu plano atual não permite cadastrar pacientes. Assine um plano para continuar.",
-                'erro',
-                'Ver Planos',
-                () => navegar('billing')
-            );
+            const mensagem = montarMensagemLimite({ suporteContato: SUPORTE_CONTATO });
+            mostrarToast(mensagem, 'erro');
         } else {
             mostrarToast("Erro ao guardar os dados do paciente: " + erroTexto, 'erro');
         }
@@ -4465,87 +4475,154 @@ async function definirSenha(e) {
     }
 }
 
-// ===== BANNER DE PLANO / LIMITES =====
-async function verificarBannerPlano() {
+// ===== AVISOS DE PLANO / ASSINATURA (substitui banner antigo) =====
+// Importa a lógica pura do módulo plano-warnings.js (carregado via script no index.html)
+// obterAvisoPlano, lerDispensados, marcarDispensado, gerarChaveDismiss
+
+// Memória para avisos mostrados quando não há empresaId/userId válidos
+let _avisosMemoria = null;
+
+function gerarChaveAvisoMostrado(empresaId, userId, aviso) {
+    // Chave baseada em tipo + assinaturaDoEstado para detectar mudança de estado
+    const estadoStr = JSON.stringify(aviso.assinaturaDoEstado);
+    return `aviso_mostrado_${empresaId}_${userId}_${aviso.tipo}_${estadoStr}`;
+}
+
+async function verificarAvisosPlano() {
     try {
         const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
-        // Não mostrar banner para super_admin, admin ou atendente — apenas profissional
-        if (!['profissional'].includes(user.perfil)) return;
+        // Apenas profissional vê avisos
+        if (user.perfil !== 'profissional') return;
 
         const res = await fetch(`${API_URL}/assinatura/status`);
         if (!res.ok) return;
         const data = await res.json();
 
-        // Se for sem_plano E houver limite finito, mostrar banner
-        // limite_pacientes null/0/undefined = ilimitado
         const limite = data.limite_pacientes;
-        const temLimiteFinito = limite != null && limite > 0;
-        if (data.status === 'sem_plano' && temLimiteFinito) {
-            mostrarBannerPlano(data);
+        const totalPacientes = listaPacientes?.length ?? 0;
+        const statusAssinatura = data.status;
+        // dias_para_renovar pode vir da API no futuro; por enquanto null (não inventar)
+        const diasParaRenovar = data.dias_para_renovar ?? null;
+
+        // Ler dispensados usando a nova API do módulo
+        const empresaId = user.empresa_id ?? 'unknown';
+        const userId = user.id ?? user.sub ?? 'unknown';
+        const dispensados = lerDispensados(empresaId, userId);
+
+        const aviso = obterAvisoPlano({
+            perfil: user.perfil,
+            limite,
+            totalPacientes,
+            statusAssinatura,
+            diasParaRenovar,
+            dispensados,
+            suporteContato: SUPORTE_CONTATO
+        });
+
+        if (!aviso) return;
+
+        // Verificar se já mostramos este mesmo aviso (tipo + estado) nesta sessão
+        const temIdsValidos = empresaId !== 'unknown' && userId !== 'unknown';
+        const chaveAviso = gerarChaveAvisoMostrado(empresaId, userId, aviso);
+
+        let jaMostrou = false;
+        if (temIdsValidos) {
+            jaMostrou = sessionStorage.getItem(chaveAviso) === '1';
+        } else {
+            // Sem IDs válidos: usa variável em memória
+            jaMostrou = _avisosMemoria === chaveAviso;
         }
 
-        // Atualizar contador de pacientes se estiver na tela de pacientes
-        if (typeof listaPacientes !== 'undefined' && listaPacientes.length !== undefined) {
-            atualizarContadorPacientes(limite || 3, listaPacientes.length);
+        if (jaMostrou) return;
+
+        // Marcar como mostrado antes de exibir (evita race condition)
+        if (temIdsValidos) {
+            sessionStorage.setItem(chaveAviso, '1');
+        } else {
+            _avisosMemoria = chaveAviso;
         }
+
+        mostrarAvisoPlano(aviso, empresaId, userId);
     } catch {
-        console.warn('Não foi possível verificar status do plano');
+        console.warn('Não foi possível verificar avisos do plano');
     }
 }
 
-function mostrarBannerPlano(data) {
-    // Verificar se já existe
-    if (document.getElementById('banner-plano')) return;
+function mostrarAvisoPlano(aviso, empresaId, userId) {
+    // Usar toast existente (não banner fixo, não cobre conteúdo)
+    const tipoToast = aviso.severidade === 'erro' ? 'erro' : 'aviso';
 
-    const banner = document.createElement('div');
-    banner.id = 'banner-plano';
-    // Posicionado dentro da área principal (main), não fixo no viewport
-    banner.className = 'bg-amber-900/90 border-b border-amber-700 backdrop-blur-sm';
-    banner.innerHTML = `
-        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div class="flex items-center gap-3 min-w-0">
-                <i class="fa-solid fa-triangle-exclamation text-amber-400 text-xl shrink-0"></i>
-                <div class="min-w-0">
-                    <p class="font-semibold text-amber-100">Plano não ativo</p>
-                    <p class="text-sm text-amber-300 truncate">Você está no plano <strong>Sem Plano</strong> (limite: ${data.limite_pacientes ?? 3} pacientes). Assine um plano para desbloquear todos os recursos.</p>
-                </div>
-            </div>
-            <div class="flex gap-2 shrink-0">
-                <button onclick="navegar('billing')" class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded-xl transition whitespace-nowrap">
-                    Ver Planos
-                </button>
-                <button onclick="document.getElementById('banner-plano').remove()" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-amber-200 font-semibold rounded-xl transition whitespace-nowrap">
-                    Dispensar
-                </button>
-            </div>
-        </div>
-    `;
-
-    // Inserir no início do main (área de conteúdo à direita da sidebar)
-    const main = document.querySelector('main');
-    if (main) {
-        main.insertBefore(banner, main.firstChild);
-    } else {
-        // Fallback se main não existir
-        document.body.appendChild(banner);
+    // Verificar se já existe um toast do mesmo tipo na tela
+    const container = document.getElementById('toast-container');
+    if (container) {
+        const toastsExistentes = container.querySelectorAll('[data-aviso-tipo]');
+        for (const toast of toastsExistentes) {
+            if (toast.dataset.avisoTipo === aviso.tipo) {
+                // Já existe toast deste tipo, não criar outro
+                return;
+            }
+        }
     }
-}
 
-function atualizarContadorPacientes(limite, atual) {
-    const container = document.getElementById('contador-pacientes-banner');
-    if (!container) return;
+    // Criar toast com botão "Dispensar" que usa a assinatura do estado
+    const toastContainer = container || (() => {
+        const div = document.createElement('div');
+        div.id = 'toast-container';
+        div.className = 'fixed bottom-6 right-6 z-50 flex flex-col gap-2';
+        document.body.appendChild(div);
+        return div;
+    })();
 
-    const atingiuLimite = atual >= limite;
-    container.innerHTML = `
-        <div class="flex items-center gap-3 px-4 py-2 ${atingiuLimite ? 'bg-rose-900/50 border-rose-700' : 'bg-emerald-900/30 border-emerald-700'} rounded-xl border">
-            <i class="fa-solid ${atingiuLimite ? 'fa-circle-exclamation text-rose-400' : 'fa-users text-emerald-400'}"></i>
-            <span class="font-medium ${atingiuLimite ? 'text-rose-300' : 'text-emerald-300'}">
-                ${atingiuLimite ? 'Limite atingido' : 'Pacientes'}: ${atual}/${limite}
-            </span>
-            ${atingiuLimite ? '<span class="text-xs text-rose-400">Assine um plano para adicionar mais</span>' : ''}
-        </div>
+    const cores = {
+        erro: 'bg-rose-600 text-white',
+        aviso: 'bg-amber-600 text-white'
+    };
+
+    const icones = {
+        erro: 'fa-circle-xmark',
+        aviso: 'fa-triangle-exclamation'
+    };
+
+    const toast = document.createElement('div');
+    toast.className = `flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg ${cores[tipoToast]} animate-slide-in`;
+    toast.dataset.avisoTipo = aviso.tipo;
+
+    // A mensagem já vem formatada com suporteContato (via obterAvisoPlano -> montarMensagemLimite)
+    const mensagemCompleta = aviso.mensagem;
+
+    toast.innerHTML = `
+        <i class="fa-solid ${icones[tipoToast]}"></i>
+        <span class="text-sm font-medium flex-1 min-w-0">${mensagemCompleta}</span>
+        <button class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/20 hover:bg-white/30 transition whitespace-nowrap" onclick="dispensarAvisoPlano('${aviso.tipo}', '${JSON.stringify(aviso.assinaturaDoEstado).replace(/"/g, '"')}')">
+            Dispensar
+        </button>
     `;
+
+    toastContainer.appendChild(toast);
+
+    // Auto-remover após 10 segundos (mais tempo que toast normal para ser lido)
+    setTimeout(() => {
+        if (toast.parentNode) {
+            toast.classList.add('opacity-0', 'translate-x-4', 'transition-all', 'duration-300');
+            setTimeout(() => toast.remove(), 300);
+        }
+    }, 10000);
 }
+
+// Função global para o botão "Dispensar" do toast
+window.dispensarAvisoPlano = function(tipo, assinaturaDoEstadoStr) {
+    try {
+        const user = JSON.parse(sessionStorage.getItem('bybar_user') || '{}');
+        const empresaId = user.empresa_id ?? 'unknown';
+        const userId = user.id ?? user.sub ?? 'unknown';
+        const assinaturaDoEstado = JSON.parse(assinaturaDoEstadoStr);
+        // marcarDispensado já trata IDs inválidos (não grava se unknown)
+        marcarDispensado(empresaId, userId, tipo, assinaturaDoEstado);
+        mostrarToast('Aviso dispensado.', 'info', 2000);
+    } catch (e) {
+        console.warn('Erro ao dispensar aviso:', e);
+    }
+};
 
 // Verificar limite ao tentar cadastrar paciente
 async function verificarLimitePacientes() {
@@ -4553,8 +4630,10 @@ async function verificarLimitePacientes() {
         const res = await fetch(`${API_URL}/assinatura/status`);
         if (!res.ok) return true;
         const data = await res.json();
-        if (data.status === 'sem_plano' && listaPacientes.length >= (data.limite_pacientes || 3)) {
-            mostrarToast(`Limite de pacientes atingido (${listaPacientes.length}/${data.limite_pacientes || 3}). Assine um plano para adicionar mais.`, 'erro');
+        const limite = data.limite_pacientes || 3;
+        if (data.status === 'sem_plano' && listaPacientes.length >= limite) {
+            const mensagem = montarMensagemLimite({ limite, suporteContato: SUPORTE_CONTATO });
+            mostrarToast(mensagem, 'erro');
             return false;
         }
         return true;
@@ -6804,7 +6883,6 @@ async function cadastrarEmpresa(event) {
         document.getElementById('form-empresa').reset();
         carregarEmpresas();
 
-        // Atualizar contador se necessário
         atualizarDashboard();
     } catch (err) {
         console.error("Erro ao cadastrar empresa:", err);
